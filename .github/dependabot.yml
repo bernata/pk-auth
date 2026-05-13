@@ -1,0 +1,29 @@
+# Dependabot configuration for pk-auth.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Ecosystems are added as the corresponding directories land in later phases:
+#   - `npm` for clients/passkeys-browser  (Phase 11)
+#   - additional `gradle` directories are not needed — a single root entry covers the whole
+#     multi-project build, including build-logic and example apps.
+
+version: 2
+updates:
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    groups:
+      dev-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      gh-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
