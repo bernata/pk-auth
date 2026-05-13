@@ -1,0 +1,23 @@
+name: FIDO Conformance (informational)
+
+# TODO: implement once Phase 12 wires demo apps. For Phase 0 this is a stub so the workflow file
+# exists at the path pk-auth-build-brief.md §9 declares; the rationale for stubbing is captured in
+# docs/adr/0001-record-architecture-decisions.md.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Nightly placeholder; real conformance runs land in Phase 12.
+    - cron: '0 7 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conformance harness not yet wired
+        run: |
+          echo "FIDO conformance harness is not yet integrated. See pk-auth-build-brief.md §9."
+          echo "This workflow is intentionally informational — failures here will not block main."
