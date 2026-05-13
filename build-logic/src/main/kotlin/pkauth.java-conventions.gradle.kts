@@ -29,7 +29,14 @@ tasks.withType<JavaCompile>().configureEach {
     // settings, and adapter modules may need to fine-tune lints per-module. The brief calls for
     // -Xlint:all -Werror on production modules — that gets layered on in library-conventions where
     // we know it is safe.
-    options.compilerArgs.addAll(listOf("-Xlint:all", "-parameters"))
+    //
+    // -XDaddTypeAnnotationsToSymbol=true is required by Error Prone 2.27+ on JDK 21 so that
+    // type-use annotations (e.g. JSpecify's @Nullable) are visible on symbols at analysis time.
+    // Without it Error Prone refuses to start. See
+    // https://github.com/google/error-prone/issues/4011
+    options.compilerArgs.addAll(
+        listOf("-Xlint:all", "-parameters", "-XDaddTypeAnnotationsToSymbol=true"),
+    )
     options.errorprone.disableWarningsInGeneratedCode = true
     // Default Error Prone check set, with one project-wide override:
     // pk-auth's wire contract is WebAuthn's, which is binary-heavy (challenge bytes, credential
