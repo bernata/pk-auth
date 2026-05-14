@@ -66,3 +66,11 @@ spotless {
 tasks.named("check") {
     dependsOn("spotlessCheck")
 }
+
+// Spotless + google-java-format intermittently fails class loading
+// (`NoClassDefFoundError com/google/common/collect/ImmutableList$ReverseImmutableList`) when its
+// outputs are restored from the Gradle build cache. Disabling cache hits for the spotless tasks
+// avoids the bad-cache-state pathway; the formatter itself works correctly on a fresh run.
+tasks.matching { it.name.startsWith("spotless") }.configureEach {
+    outputs.cacheIf { false }
+}
