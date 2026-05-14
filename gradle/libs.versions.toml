@@ -39,6 +39,19 @@ hikaricp = "7.0.2"
 aws-sdk = "2.44.5"
 testcontainers = "1.21.4"
 
+# Dropwizard adapter (Phase 9). Brief §6.11 mandates Dropwizard 4.x (Jakarta EE namespace,
+# `jakarta.*` packages). 4.0.14 is the current latest 4.x release; 5.x is GA but introduces
+# breakage we don't want to absorb until the Spring/Micronaut adapters are also on the line.
+dropwizard = "4.0.14"
+
+# Dagger 2 wires the Dropwizard adapter at compile time. Brief §3 mandates Dagger over Guice/HK2;
+# ADR 0004 explains the rationale.
+dagger = "2.56.2"
+
+# Jakarta inject standard annotations — used in @Inject sites in adapter code that don't want a
+# Dagger compile-time dependency in their public API.
+jakarta-inject = "2.0.1"
+
 # Test (wired in test convention plugin; left ready for Phase 1+)
 junit-jupiter = "6.0.3"
 assertj = "3.27.7"
@@ -65,6 +78,20 @@ hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 # Persistence — AWS SDK v2 (DynamoDB Enhanced)
 aws-dynamodb = { module = "software.amazon.awssdk:dynamodb", version.ref = "aws-sdk" }
 aws-dynamodb-enhanced = { module = "software.amazon.awssdk:dynamodb-enhanced", version.ref = "aws-sdk" }
+
+# Dropwizard 4.x (Phase 9 adapter + demo).
+dropwizard-core = { module = "io.dropwizard:dropwizard-core", version.ref = "dropwizard" }
+dropwizard-auth = { module = "io.dropwizard:dropwizard-auth", version.ref = "dropwizard" }
+dropwizard-jersey = { module = "io.dropwizard:dropwizard-jersey", version.ref = "dropwizard" }
+dropwizard-testing = { module = "io.dropwizard:dropwizard-testing", version.ref = "dropwizard" }
+dropwizard-assets = { module = "io.dropwizard:dropwizard-assets", version.ref = "dropwizard" }
+
+# Dagger 2 — compile-time DI for the Dropwizard adapter (ADR 0004).
+dagger = { module = "com.google.dagger:dagger", version.ref = "dagger" }
+dagger-compiler = { module = "com.google.dagger:dagger-compiler", version.ref = "dagger" }
+
+# Jakarta inject API — @Inject without forcing Dagger onto consumers.
+jakarta-inject-api = { module = "jakarta.inject:jakarta.inject-api", version.ref = "jakarta-inject" }
 
 # Testcontainers
 testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
