@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: MIT
+package com.codeheadsystems.pkauth.testkit;
+
+import com.codeheadsystems.pkauth.api.UserHandle;
+import com.codeheadsystems.pkauth.spi.UserLookup;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * In-memory {@link UserLookup} that mints a random user handle the first time it sees a username.
+ */
+public final class InMemoryUserLookup implements UserLookup {
+
+  private final Map<String, UserView> byUsername = new ConcurrentHashMap<>();
+  private final Map<UserHandle, UserView> byHandle = new ConcurrentHashMap<>();
+
+  public InMemoryUserLookup() {}
+
+  @Override
+  public Optional<UserHandle> findUserHandleByUsername(String username) {
+    UserView u = byUsername.get(username);
+    return u == null ? Optional.empty() : Optional.of(u.handle());
+  }
+
+  @Override
+  public Optional<UserView> findUserByHandle(UserHandle handle) {
+    return Optional.ofNullable(byHandle.get(handle));
+  }
+
+  @Override
+  public UserHandle createOrGetUserHandle(String username) {
+    UserView existing = byUsername.get(username);
+    if (existing != null) {
+      return existing.handle();
+    }
+    UserHandle handle = UserHandle.random();
+    UserView view = new UserView(handle, username, username, false, false);
+    UserView prior = byUsername.putIfAbsent(username, view);
+    if (prior != null) {
+      return prior.handle();
+    }
+    byHandle.put(handle, view);
+    return handle;
+  }
+
+  /**
+   * Test helper that lets a fixture pre-register a user with a specific handle and display name.
+   */
+  public UserHandle register(String username, String displayName) {
+    UserHandle handle = UserHandle.random();
+    UserView view = new UserView(handle, username, displayName, false, false);
+    byUsername.put(username, view);
+    byHandle.put(handle, view);
+    return handle;
+  }
+}
