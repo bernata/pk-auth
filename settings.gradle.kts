@@ -15,4 +15,5 @@ includeBuild("build-logic")
 
 // Subprojects are added phase by phase (see pk-auth-build-brief.md §10).
 include("pk-auth-core")
+include("pk-auth-jwt")
 include("pk-auth-testkit")
