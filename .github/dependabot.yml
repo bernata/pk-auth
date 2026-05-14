@@ -18,11 +18,11 @@ updates:
         patterns:
           - "*"
     ignore:
-      # Spotless 8.x's google-java-format integration fails on Gradle 9 / JDK 21 with
-      # `NoClassDefFoundError com/google/common/collect/ImmutableList$SubList` and
-      # `Could not initialize class com.google.googlejavaformat.Newlines`. Stay on the 7.x line
-      # until upstream resolves; remove this ignore once 8.x builds cleanly here.
-      - dependency-name: "com.diffplug.spotless:spotless-plugin-gradle"
+      # Spotless 8.x's google-java-format integration intermittently fails to load Guava / GJF
+      # classes (NoClassDefFoundError on Newlines / ImmutableList$*) on Gradle 9 / JDK 21. Pin
+      # to 7.x until upstream fixes. The Gradle plugin marker artifact uses the plugin id, not
+      # the implementation artifact id, so this is the right Dependabot dependency-name.
+      - dependency-name: "com.diffplug.spotless:com.diffplug.spotless.gradle.plugin"
         versions: [">=8"]
 
   - package-ecosystem: "github-actions"

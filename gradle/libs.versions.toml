@@ -10,7 +10,10 @@
 java = "21"
 
 # Build / quality
-spotless = "8.4.0"
+# Spotless pinned to the 7.x line: Spotless 8's google-java-format integration intermittently
+# fails class loading on Gradle 9 / JDK 21. Dependabot ignore in .github/dependabot.yml keeps
+# this from getting bumped back. Revisit when Spotless 8 ships a fix.
+spotless = "7.2.1"
 errorprone-plugin = "4.1.0"
 errorprone-core = "2.49.0"
 google-java-format = "1.25.2"
@@ -25,6 +28,14 @@ caffeine = "3.2.4"
 micrometer = "1.16.5"
 slf4j = "2.0.18"
 
+# Persistence
+jdbi = "3.53.0"
+flyway = "12.6.1"
+postgresql = "42.7.11"
+hikaricp = "7.0.2"
+aws-sdk = "2.44.5"
+testcontainers = "1.21.4"
+
 # Test (wired in test convention plugin; left ready for Phase 1+)
 junit-jupiter = "6.0.3"
 assertj = "3.27.7"
@@ -37,6 +48,22 @@ jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 # pk-auth-core runtime
 webauthn4j-core = { module = "com.webauthn4j:webauthn4j-core", version.ref = "webauthn4j" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose-jwt" }
+
+# Persistence — JDBI / Flyway / Postgres
+jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgres = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
+
+# Persistence — AWS SDK v2 (DynamoDB Enhanced)
+aws-dynamodb = { module = "software.amazon.awssdk:dynamodb", version.ref = "aws-sdk" }
+aws-dynamodb-enhanced = { module = "software.amazon.awssdk:dynamodb-enhanced", version.ref = "aws-sdk" }
+
+# Testcontainers
+testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
+testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
 # Jackson 3 ("tools.jackson") — java.time and JDK 8 datatype support is built into databind 3,
 # so we no longer pull jackson-datatype-jdk8 / jackson-datatype-jsr310 separately.
 jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
