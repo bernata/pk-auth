@@ -28,6 +28,9 @@ caffeine = "3.2.4"
 micrometer = "1.16.5"
 slf4j = "2.0.18"
 
+# Alt-flow modules
+argon2-jvm = "2.12"
+
 # Persistence
 jdbi = "3.53.0"
 flyway = "12.6.1"
@@ -48,6 +51,9 @@ jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
 # pk-auth-core runtime
 webauthn4j-core = { module = "com.webauthn4j:webauthn4j-core", version.ref = "webauthn4j" }
 nimbus-jose-jwt = { module = "com.nimbusds:nimbus-jose-jwt", version.ref = "nimbus-jose-jwt" }
+
+# Alt-flow modules
+argon2-jvm = { module = "de.mkammerer:argon2-jvm", version.ref = "argon2-jvm" }
 
 # Persistence — JDBI / Flyway / Postgres
 jdbi-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
