@@ -1,0 +1,5 @@
+com.codeheadsystems.pkauth.spring.autoconfigure.PkAuthJdbiPersistenceAutoConfiguration
+com.codeheadsystems.pkauth.spring.autoconfigure.PkAuthDynamoDbPersistenceAutoConfiguration
+com.codeheadsystems.pkauth.spring.autoconfigure.PkAuthAutoConfiguration
+com.codeheadsystems.pkauth.spring.autoconfigure.PkAuthAdminAutoConfiguration
+com.codeheadsystems.pkauth.spring.autoconfigure.PkAuthWebAutoConfiguration
