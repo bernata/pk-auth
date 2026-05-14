@@ -4,11 +4,11 @@ package com.codeheadsystems.pkauth.ceremony;
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
-import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson;
-import com.codeheadsystems.pkauth.api.PublicKeyCredentialRequestOptionsJson;
 import com.codeheadsystems.pkauth.api.RegistrationResult;
 import com.codeheadsystems.pkauth.api.StartAuthenticationRequest;
+import com.codeheadsystems.pkauth.api.StartAuthenticationResponse;
 import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
+import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
 
 /**
  * Framework-neutral entry point for WebAuthn ceremonies. Implemented by the core's {@code
@@ -22,18 +22,22 @@ public interface PasskeyAuthenticationService {
 
   /**
    * Issue {@code PublicKeyCredentialCreationOptions} for a new registration and store the matching
-   * challenge in the {@code ChallengeStore} for later verification.
+   * challenge in the {@code ChallengeStore} for later verification. The returned envelope carries
+   * both the WebAuthn options the browser consumes and the {@code ChallengeId} the client must
+   * round-trip in {@code finishRegistration}.
    */
-  PublicKeyCredentialCreationOptionsJson startRegistration(StartRegistrationRequest req);
+  StartRegistrationResponse startRegistration(StartRegistrationRequest req);
 
   /** Verify a registration response and produce a persistable credential record. */
   RegistrationResult finishRegistration(FinishRegistrationRequest req);
 
   /**
    * Issue {@code PublicKeyCredentialRequestOptions} for an authentication ceremony and store the
-   * matching challenge in the {@code ChallengeStore}.
+   * matching challenge in the {@code ChallengeStore}. The returned envelope carries both the
+   * WebAuthn options the browser consumes and the {@code ChallengeId} the client must round-trip in
+   * {@code finishAuthentication}.
    */
-  PublicKeyCredentialRequestOptionsJson startAuthentication(StartAuthenticationRequest req);
+  StartAuthenticationResponse startAuthentication(StartAuthenticationRequest req);
 
   /** Verify an authentication response. */
   AssertionResult finishAuthentication(FinishAuthenticationRequest req);
