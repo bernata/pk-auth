@@ -9,6 +9,7 @@ module com.codeheadsystems.pkauth.testkit {
   requires com.github.benmanes.caffeine;
   requires org.slf4j;
   requires org.jspecify;
+  requires transitive org.assertj.core;
 
   exports com.codeheadsystems.pkauth.testkit;
 }

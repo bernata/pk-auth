@@ -19,6 +19,10 @@ dependencies {
     api(project(":pk-auth-core"))
     api(libs.bundles.jackson)
     api(libs.webauthn4j.core)
+    // AssertJ on the api surface because CeremonyScenarios uses `assertThat`. Downstream
+    // persistence modules drive these scenarios from their integration tests and inherit the
+    // dependency without redeclaring it.
+    api(libs.assertj.core)
     implementation(libs.caffeine)
     implementation(libs.slf4j.api)
 
