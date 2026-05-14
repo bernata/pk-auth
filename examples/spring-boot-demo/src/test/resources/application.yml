@@ -1,0 +1,19 @@
+demo:
+  rp-id: example.com
+  rp-name: pk-auth Spring Boot demo (test)
+  origins:
+    - https://example.com
+  persistence: memory
+pkauth:
+  relying-party:
+    id: example.com
+    name: pk-auth Spring Boot demo (test)
+    origins:
+      - https://example.com
+  jwt:
+    issuer: pk-auth-demo-test
+    audience: pk-auth-demo-test-clients
+    secret: demo-test-secret-must-be-32-bytes!
+    token-ttl: PT1H
+  ceremony:
+    challenge-ttl: PT5M

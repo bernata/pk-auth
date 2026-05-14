@@ -1,0 +1,35 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: pk-auth-spring-boot-demo
+  threads:
+    virtual:
+      enabled: true   # brief §11 — virtual threads in every adapter's HTTP server
+demo:
+  rp-id: localhost
+  rp-name: pk-auth Spring Boot demo
+  origins:
+    - http://localhost:8080
+  # `memory` (default) uses the testkit's InMemory SPIs — boots with no external services.
+  # `jdbi` requires a running Postgres + flyway-migrated schema (see docker-compose.yml).
+  # `dynamodb` requires a running DynamoDB Local + bootstrapped tables.
+  persistence: memory
+pkauth:
+  relying-party:
+    id: localhost
+    name: pk-auth Spring Boot demo
+    origins:
+      - http://localhost:8080
+  jwt:
+    issuer: pk-auth-demo
+    audience: pk-auth-demo-clients
+    # Dev-only secret; set PKAUTH_JWT_SECRET (≥ 32 bytes) in any non-dev deployment.
+    secret: change-me-this-is-a-demo-secret-32b!
+    token-ttl: PT1H
+  ceremony:
+    challenge-ttl: PT5M
+logging:
+  level:
+    com.codeheadsystems.pkauth: INFO
+    org.springframework.security: WARN

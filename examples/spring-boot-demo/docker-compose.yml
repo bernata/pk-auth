@@ -1,0 +1,22 @@
+# pk-auth Spring Boot demo — external services for the `jdbi` and `dynamodb` profiles.
+# The default `memory` profile needs none of these.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: pkauth
+      POSTGRES_USER: pkauth
+      POSTGRES_PASSWORD: pkauth
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:2.5.2
+    command: -jar DynamoDBLocal.jar -inMemory -sharedDb
+    ports:
+      - "8000:8000"
+
+volumes:
+  pg-data:
