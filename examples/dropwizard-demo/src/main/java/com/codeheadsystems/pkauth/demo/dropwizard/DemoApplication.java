@@ -1,0 +1,171 @@
+// SPDX-License-Identifier: MIT
+package com.codeheadsystems.pkauth.demo.dropwizard;
+
+import com.codeheadsystems.pkauth.admin.AdminAuthorizer;
+import com.codeheadsystems.pkauth.admin.AdminService;
+import com.codeheadsystems.pkauth.admin.DefaultAdminService;
+import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
+import com.codeheadsystems.pkauth.dropwizard.PkAuthBundle;
+import com.codeheadsystems.pkauth.dropwizard.dagger.PersistenceBindings;
+import com.codeheadsystems.pkauth.jwt.JwtConfig;
+import com.codeheadsystems.pkauth.jwt.JwtKeyset;
+import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
+import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
+import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
+import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
+import com.codeheadsystems.pkauth.otp.OtpService;
+import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
+import com.codeheadsystems.pkauth.spi.ClockProvider;
+import com.codeheadsystems.pkauth.spi.OtpRepository;
+import com.codeheadsystems.pkauth.testkit.InMemoryBackupCodeRepository;
+import com.codeheadsystems.pkauth.testkit.InMemoryChallengeStore;
+import com.codeheadsystems.pkauth.testkit.InMemoryCredentialRepository;
+import com.codeheadsystems.pkauth.testkit.InMemoryOtpRepository;
+import com.codeheadsystems.pkauth.testkit.InMemoryUserLookup;
+import io.dropwizard.assets.AssetsBundle;
+import io.dropwizard.core.Application;
+import io.dropwizard.core.setup.Bootstrap;
+import io.dropwizard.core.setup.Environment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Single-page Dropwizard demo for pk-auth. Boots with in-memory persistence by default; the brief
+ * §6.14 calls for {@code --persistence=jdbi} (default) and {@code --persistence=dynamodb} flavors —
+ * both are stubbed below; the JDBI variant routes to the in-memory SPIs in v0.x so the demo runs
+ * without external Postgres. A real JDBI / DynamoDB wiring lands when the JDBI and DynamoDB modules
+ * surface a higher-level {@code build()} factory (Phase 12 polish).
+ */
+public final class DemoApplication extends Application<DemoConfiguration> {
+
+  private static final Logger LOG = LoggerFactory.getLogger(DemoApplication.class);
+
+  /** Entry point for {@code ./gradlew :examples:dropwizard-demo:run}. */
+  public static void main(String[] args) throws Exception {
+    new DemoApplication().run(args.length == 0 ? new String[] {"server"} : args);
+  }
+
+  @Override
+  public String getName() {
+    return "pk-auth-dropwizard-demo";
+  }
+
+  @Override
+  public void initialize(Bootstrap<DemoConfiguration> bootstrap) {
+    // Mount the SPA under /ui/* to avoid the AssetsBundle clashing with Jersey at /*; the
+    // application root redirects to /ui/ via a servlet filter in run().
+    bootstrap.addBundle(new AssetsBundle("/assets", "/ui", "index.html", "assets"));
+
+    DemoPersistence persistence = DemoPersistence.create(persistenceFlavor());
+    AdminService adminService = buildAdminService(persistence);
+    PkAuthBundle<DemoConfiguration> pkAuth =
+        new PkAuthBundle<>(persistence.bindings(), adminService);
+    bootstrap.addBundle(pkAuth);
+  }
+
+  @Override
+  public void run(DemoConfiguration configuration, Environment environment) {
+    LOG.info("Demo server starting at http://localhost:8080/ui/");
+    LOG.info("Persistence flavor: {}", persistenceFlavor());
+    // Tiny redirect servlet so http://localhost:8080/ lands on the SPA.
+    environment
+        .servlets()
+        .addServlet(
+            "root-redirect",
+            new jakarta.servlet.http.HttpServlet() {
+              @Override
+              protected void doGet(
+                  jakarta.servlet.http.HttpServletRequest req,
+                  jakarta.servlet.http.HttpServletResponse resp)
+                  throws java.io.IOException {
+                if ("/".equals(req.getRequestURI())) {
+                  resp.sendRedirect("/ui/");
+                } else {
+                  resp.sendError(404);
+                }
+              }
+            })
+        .addMapping("");
+  }
+
+  private String persistenceFlavor() {
+    String env = System.getenv("PKAUTH_PERSISTENCE");
+    if (env != null && !env.isBlank()) {
+      return env;
+    }
+    String prop = System.getProperty("pkauth.persistence");
+    return prop == null ? "memory" : prop;
+  }
+
+  private AdminService buildAdminService(DemoPersistence persistence) {
+    ClockProvider clock = ClockProvider.system();
+    BackupCodeService backupCodeService =
+        new BackupCodeService(persistence.bindings().backupCodeRepository(), clock);
+    JwtKeyset keyset = JwtKeyset.hs256(DemoConfiguration.defaultDevSecret());
+    JwtConfig jwtConfig = JwtConfig.defaults("issuer-magic-demo", "magic-demo");
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(jwtConfig, keyset, clock);
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(jwtConfig, keyset, clock);
+    MagicLinkService magicLink =
+        new MagicLinkService(
+            issuer,
+            validator,
+            new LoggingEmailSender(),
+            persistence.userLookup(),
+            clock,
+            "http://localhost:8080");
+    OtpService otp =
+        new OtpService(persistence.bindings().otpRepository(), new LoggingSmsSender(), clock);
+    return DefaultAdminService.builder()
+        .credentialRepository(persistence.bindings().credentialRepository())
+        .userLookup(persistence.userLookup())
+        .backupCodeService(backupCodeService)
+        .magicLinkService(magicLink)
+        .otpService(otp)
+        .authorizer(AdminAuthorizer.subjectScoped())
+        .build();
+  }
+
+  /**
+   * Small holder bundling the bound SPIs so the demo can hand them to both the bundle and the admin
+   * service without re-instantiating in-memory state.
+   */
+  static final class DemoPersistence {
+    private final PersistenceBindings bindings;
+    private final InMemoryUserLookup userLookup;
+
+    private DemoPersistence(PersistenceBindings bindings, InMemoryUserLookup userLookup) {
+      this.bindings = bindings;
+      this.userLookup = userLookup;
+    }
+
+    PersistenceBindings bindings() {
+      return bindings;
+    }
+
+    InMemoryUserLookup userLookup() {
+      return userLookup;
+    }
+
+    static DemoPersistence create(String flavor) {
+      // The brief calls for jdbi/dynamodb flavors. v0.x routes both to the testkit's in-memory
+      // SPIs so the demo runs without external services. Real Postgres / DynamoDB wiring lands
+      // alongside the JDBI/DDB module's "all-in-one" factories (Phase 12 polish).
+      LOG.info("Using {} (in-memory backing for v0.x)", flavor);
+      InMemoryCredentialRepository credentials = new InMemoryCredentialRepository();
+      InMemoryUserLookup users = new InMemoryUserLookup();
+      InMemoryChallengeStore challenges = new InMemoryChallengeStore();
+      BackupCodeRepository backupCodes = new InMemoryBackupCodeRepository();
+      OtpRepository otps = new InMemoryOtpRepository();
+      return new DemoPersistence(
+          PersistenceBindings.builder()
+              .credentialRepository(credentials)
+              .userLookup(users)
+              .challengeStore(challenges)
+              .backupCodeRepository(backupCodes)
+              .otpRepository(otps)
+              .build(),
+          users);
+    }
+  }
+}

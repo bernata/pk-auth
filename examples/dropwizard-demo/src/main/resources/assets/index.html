@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>pk-auth Dropwizard demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  h1, h2 { color: #134; }
+  fieldset { margin: 1rem 0; padding: 1rem; border: 1px solid #cdd; border-radius: 6px; }
+  input, button { padding: 0.4rem 0.6rem; font: inherit; }
+  button { background: #134; color: white; border: 0; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #245; }
+  pre { background: #f3f5f7; padding: 0.6rem; overflow: auto; font-size: 0.85em; border-radius: 4px; }
+  .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .ok { color: #052; }
+  .err { color: #a22; }
+  table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+  th, td { text-align: left; padding: 0.35rem; border-bottom: 1px solid #e1e4e8; }
+</style>
+</head>
+<body>
+<h1>pk-auth Dropwizard demo</h1>
+<p>
+  This page exercises the pk-auth ceremony and admin endpoints exposed by the Dropwizard bundle.
+  Backend persistence is in-memory: restart the server and your account vanishes. Every action
+  hits <code>/auth/**</code>; payloads use the same wire shapes the TypeScript SDK will consume in
+  Phase 11.
+</p>
+
+<fieldset>
+  <legend>1. Register a passkey</legend>
+  <div class="row">
+    <input id="reg-username" placeholder="username" value="alice" />
+    <input id="reg-label" placeholder="passkey label" value="Demo key" />
+    <button onclick="register()">Register</button>
+  </div>
+  <pre id="reg-out"></pre>
+</fieldset>
+
+<fieldset>
+  <legend>2. Sign in</legend>
+  <div class="row">
+    <input id="auth-username" placeholder="username" value="alice" />
+    <button onclick="signIn()">Sign in</button>
+  </div>
+  <pre id="auth-out"></pre>
+</fieldset>
+
+<fieldset>
+  <legend>3. JWT contents (post-login)</legend>
+  <pre id="jwt-claims">Sign in to see the decoded JWT.</pre>
+</fieldset>
+
+<fieldset>
+  <legend>4. Account summary</legend>
+  <button onclick="loadAccount()">Refresh</button>
+  <pre id="account-out"></pre>
+</fieldset>
+
+<fieldset>
+  <legend>5. Passkeys (rename / delete)</legend>
+  <button onclick="loadCredentials()">Refresh</button>
+  <table id="creds"><thead><tr><th>Label</th><th>Created</th><th>Actions</th></tr></thead><tbody></tbody></table>
+</fieldset>
+
+<fieldset>
+  <legend>6. Backup codes</legend>
+  <button onclick="regenBackup()">Regenerate (view once)</button>
+  <button onclick="countBackup()">Remaining count</button>
+  <pre id="backup-out"></pre>
+</fieldset>
+
+<fieldset>
+  <legend>7. Email magic link</legend>
+  <div class="row">
+    <input id="email-addr" placeholder="email@example.com" />
+    <button onclick="sendMagic()">Send</button>
+  </div>
+  <pre id="email-out"></pre>
+</fieldset>
+
+<fieldset>
+  <legend>8. Phone OTP</legend>
+  <div class="row">
+    <input id="phone-num" placeholder="+15551234567" />
+    <button onclick="sendOtp()">Send OTP</button>
+  </div>
+  <div class="row">
+    <input id="otp-code" placeholder="6-digit code" />
+    <button onclick="verifyOtp()">Verify</button>
+  </div>
+  <pre id="phone-out"></pre>
+</fieldset>
+
+<script>
+// -- helpers ----------------------------------------------------------------
+const b64u = {
+  enc(buf) {
+    const bytes = new Uint8Array(buf);
+    let s = "";
+    for (const b of bytes) s += String.fromCharCode(b);
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  },
+  dec(str) {
+    const pad = "=".repeat((4 - (str.length % 4)) % 4);
+    const s = atob(str.replace(/-/g, "+").replace(/_/g, "/") + pad);
+    const bytes = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+    return bytes;
+  }
+};
+
+let token = null;
+let phoneStorage = null;
+
+function show(el, obj, klass) {
+  document.getElementById(el).textContent = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
+  if (klass) document.getElementById(el).className = klass;
+}
+
+async function api(method, path, body, auth) {
+  const headers = { "content-type": "application/json" };
+  if (auth) headers["authorization"] = "Bearer " + token;
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch(path, opts);
+  const text = await r.text();
+  if (!r.ok) throw new Error("HTTP " + r.status + ": " + text);
+  return text.length ? JSON.parse(text) : null;
+}
+
+function decodeJwt(t) {
+  const [, payload] = t.split(".");
+  return JSON.parse(new TextDecoder().decode(b64u.dec(payload)));
+}
+
+// -- registration -----------------------------------------------------------
+async function register() {
+  try {
+    const username = document.getElementById("reg-username").value;
+    const label = document.getElementById("reg-label").value;
+    const start = await api("POST", "/auth/registration/start", { username, displayName: username, label });
+    const options = start.publicKey;
+    const created = await navigator.credentials.create({
+      publicKey: {
+        challenge: b64u.dec(options.challenge),
+        rp: options.rp,
+        user: { id: b64u.dec(options.user.id), name: options.user.name, displayName: options.user.displayName },
+        pubKeyCredParams: options.pubKeyCredParams,
+        timeout: options.timeout,
+        authenticatorSelection: options.authenticatorSelection,
+        attestation: options.attestation
+      }
+    });
+    const resp = {
+      id: b64u.enc(created.rawId),
+      rawId: b64u.enc(created.rawId),
+      type: created.type,
+      response: {
+        clientDataJSON: b64u.enc(created.response.clientDataJSON),
+        attestationObject: b64u.enc(created.response.attestationObject),
+        transports: created.response.getTransports ? created.response.getTransports() : []
+      }
+    };
+    const finish = await api("POST", "/auth/registration/finish", {
+      challengeId: start.challengeId, username, label, response: resp
+    });
+    show("reg-out", finish, "ok");
+  } catch (e) { show("reg-out", e.message, "err"); }
+}
+
+// -- authentication ---------------------------------------------------------
+async function signIn() {
+  try {
+    const username = document.getElementById("auth-username").value;
+    const start = await api("POST", "/auth/authentication/start", { username });
+    const options = start.publicKey;
+    const got = await navigator.credentials.get({
+      publicKey: {
+        challenge: b64u.dec(options.challenge),
+        timeout: options.timeout,
+        rpId: options.rpId,
+        allowCredentials: (options.allowCredentials || []).map(c => ({
+          id: b64u.dec(c.id), type: c.type, transports: c.transports
+        })),
+        userVerification: options.userVerification
+      }
+    });
+    const resp = {
+      id: b64u.enc(got.rawId),
+      rawId: b64u.enc(got.rawId),
+      type: got.type,
+      response: {
+        clientDataJSON: b64u.enc(got.response.clientDataJSON),
+        authenticatorData: b64u.enc(got.response.authenticatorData),
+        signature: b64u.enc(got.response.signature),
+        userHandle: got.response.userHandle ? b64u.enc(got.response.userHandle) : null
+      }
+    };
+    const finish = await api("POST", "/auth/authentication/finish", { challengeId: start.challengeId, response: resp });
+    token = finish.token;
+    show("auth-out", finish, "ok");
+    show("jwt-claims", decodeJwt(token));
+  } catch (e) { show("auth-out", e.message, "err"); }
+}
+
+// -- admin ------------------------------------------------------------------
+async function loadAccount() {
+  try { show("account-out", await api("GET", "/auth/admin/account", undefined, true)); }
+  catch (e) { show("account-out", e.message, "err"); }
+}
+
+async function loadCredentials() {
+  try {
+    const list = await api("GET", "/auth/admin/credentials", undefined, true);
+    const tbody = document.querySelector("#creds tbody");
+    tbody.innerHTML = "";
+    for (const c of list) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${c.label}</td><td>${c.createdAt}</td>` +
+        `<td><button onclick="renameCred('${c.credentialId}')">Rename</button>` +
+        ` <button onclick="deleteCred('${c.credentialId}')">Delete</button></td>`;
+      tbody.appendChild(tr);
+    }
+  } catch (e) { alert(e.message); }
+}
+
+async function renameCred(id) {
+  const label = prompt("New label?");
+  if (!label) return;
+  try {
+    await api("PATCH", "/auth/admin/credentials/" + id, { label }, true);
+    await loadCredentials();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteCred(id) {
+  if (!confirm("Delete this passkey?")) return;
+  try {
+    await api("DELETE", "/auth/admin/credentials/" + id, undefined, true);
+    await loadCredentials();
+  } catch (e) { alert(e.message); }
+}
+
+async function regenBackup() {
+  try { show("backup-out", await api("POST", "/auth/admin/backup-codes/regenerate", "", true)); }
+  catch (e) { show("backup-out", e.message, "err"); }
+}
+
+async function countBackup() {
+  try { show("backup-out", await api("GET", "/auth/admin/backup-codes/count", undefined, true)); }
+  catch (e) { show("backup-out", e.message, "err"); }
+}
+
+async function sendMagic() {
+  try { show("email-out", await api("POST", "/auth/admin/email/start-verification",
+    { email: document.getElementById("email-addr").value }, true)); }
+  catch (e) { show("email-out", e.message, "err"); }
+}
+
+async function sendOtp() {
+  try {
+    phoneStorage = document.getElementById("phone-num").value;
+    show("phone-out", await api("POST", "/auth/admin/phone/start-verification", { phone: phoneStorage }, true));
+  } catch (e) { show("phone-out", e.message, "err"); }
+}
+
+async function verifyOtp() {
+  try {
+    const code = document.getElementById("otp-code").value;
+    show("phone-out", await api("POST", "/auth/admin/phone/complete-verification",
+      { phone: phoneStorage, code }, true));
+  } catch (e) { show("phone-out", e.message, "err"); }
+}
+</script>
+</body>
+</html>

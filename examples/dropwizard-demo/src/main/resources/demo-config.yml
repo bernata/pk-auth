@@ -1,0 +1,12 @@
+# pk-auth Dropwizard demo configuration.
+#
+# Minimal Dropwizard config: the bundle pulls everything else from DemoConfiguration defaults.
+# Run with `./gradlew :examples:dropwizard-demo:run` — the application is started with the
+# `server` command and no config file path; Dropwizard tolerates missing YAML when the
+# Configuration class defaults are usable.
+server:
+  type: simple
+  applicationContextPath: /
+  connector:
+    type: http
+    port: 8080
