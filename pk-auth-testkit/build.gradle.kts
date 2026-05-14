@@ -1,0 +1,43 @@
+plugins {
+    id("pkauth.library-conventions")
+    id("pkauth.test-conventions")
+    id("pkauth.publish-conventions")
+}
+
+description = "pk-auth testkit: FakeAuthenticator, in-memory SPIs, and fixtures for unit tests."
+
+// Same module-level lint relaxations as pk-auth-core: -XDaddTypeAnnotationsToSymbol is required by
+// Error Prone on JDK 21, and the -Xlint:-requires-automatic pair lets us surface Micrometer as a
+// `requires static` without -Werror tripping on automatic-module warnings.
+tasks.named<JavaCompile>("compileJava") {
+    options.compilerArgs.addAll(
+        listOf("-Xlint:-requires-automatic", "-Xlint:-requires-transitive-automatic"),
+    )
+}
+
+dependencies {
+    api(project(":pk-auth-core"))
+    api(libs.bundles.jackson)
+    api(libs.webauthn4j.core)
+    implementation(libs.caffeine)
+    implementation(libs.slf4j.api)
+
+    testRuntimeOnly(libs.logback.classic)
+}
+
+tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                // Adapter-tier threshold from brief §11 — testkit is adapter-flavored: complex
+                // crypto wiring that's mostly exercised via the end-to-end ceremony test.
+                minimum = "0.70".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("jacocoTestCoverageVerification")
+}
