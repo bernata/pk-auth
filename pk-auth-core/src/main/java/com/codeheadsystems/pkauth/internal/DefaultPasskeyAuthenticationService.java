@@ -1,0 +1,586 @@
+// SPDX-License-Identifier: MIT
+package com.codeheadsystems.pkauth.internal;
+
+import com.codeheadsystems.pkauth.api.AssertionResult;
+import com.codeheadsystems.pkauth.api.ChallengeId;
+import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
+import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
+import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson;
+import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson.AuthenticatorSelectionCriteria;
+import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson.PublicKeyCredentialDescriptor;
+import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson.PublicKeyCredentialParameters;
+import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson.RelyingParty;
+import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson.UserInfo;
+import com.codeheadsystems.pkauth.api.PublicKeyCredentialRequestOptionsJson;
+import com.codeheadsystems.pkauth.api.RegistrationResult;
+import com.codeheadsystems.pkauth.api.StartAuthenticationRequest;
+import com.codeheadsystems.pkauth.api.StartAuthenticationResponse;
+import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
+import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
+import com.codeheadsystems.pkauth.api.UserHandle;
+import com.codeheadsystems.pkauth.api.UserVerificationRequirement;
+import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
+import com.codeheadsystems.pkauth.config.CeremonyConfig;
+import com.codeheadsystems.pkauth.config.CounterRegressionPolicy;
+import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
+import com.codeheadsystems.pkauth.credential.AuthenticatorData;
+import com.codeheadsystems.pkauth.credential.CredentialMetadata;
+import com.codeheadsystems.pkauth.credential.CredentialRecord;
+import com.codeheadsystems.pkauth.metrics.Metrics;
+import com.codeheadsystems.pkauth.spi.AttestationTrustPolicy;
+import com.codeheadsystems.pkauth.spi.ChallengeRecord;
+import com.codeheadsystems.pkauth.spi.ChallengeStore;
+import com.codeheadsystems.pkauth.spi.ClockProvider;
+import com.codeheadsystems.pkauth.spi.CredentialRepository;
+import com.codeheadsystems.pkauth.spi.OriginValidator;
+import com.codeheadsystems.pkauth.spi.UserLookup;
+import com.webauthn4j.WebAuthnManager;
+import com.webauthn4j.converter.exception.DataConversionException;
+import com.webauthn4j.converter.util.ObjectConverter;
+import com.webauthn4j.data.AuthenticationData;
+import com.webauthn4j.data.AuthenticationParameters;
+import com.webauthn4j.data.RegistrationData;
+import com.webauthn4j.data.RegistrationParameters;
+import com.webauthn4j.data.attestation.authenticator.AAGUID;
+import com.webauthn4j.data.attestation.authenticator.AttestedCredentialData;
+import com.webauthn4j.verifier.exception.BadChallengeException;
+import com.webauthn4j.verifier.exception.BadOriginException;
+import com.webauthn4j.verifier.exception.BadRpIdException;
+import com.webauthn4j.verifier.exception.BadSignatureException;
+import com.webauthn4j.verifier.exception.MaliciousCounterValueException;
+import com.webauthn4j.verifier.exception.MissingChallengeException;
+import com.webauthn4j.verifier.exception.UserNotPresentException;
+import com.webauthn4j.verifier.exception.UserNotVerifiedException;
+import com.webauthn4j.verifier.exception.VerificationException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HexFormat;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Default {@link PasskeyAuthenticationService} backed by WebAuthn4J's {@link WebAuthnManager}.
+ *
+ * <p>Construct via {@link com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices} (the
+ * public factory in the {@code ceremony} package).
+ */
+public final class DefaultPasskeyAuthenticationService implements PasskeyAuthenticationService {
+
+  private static final Logger LOG =
+      LoggerFactory.getLogger(DefaultPasskeyAuthenticationService.class);
+  private static final long DEFAULT_TIMEOUT_MS = 60_000L;
+
+  private final WebAuthnManager webAuthnManager;
+  private final ObjectConverter objectConverter;
+  private final CredentialRepository credentialRepository;
+  private final UserLookup userLookup;
+  private final ChallengeStore challengeStore;
+  private final ClockProvider clockProvider;
+  private final OriginValidator originValidator;
+  private final AttestationTrustPolicy attestationTrustPolicy;
+  private final RelyingPartyConfig rpConfig;
+  private final CeremonyConfig ceremonyConfig;
+  private final ChallengeGenerator challengeGenerator;
+  private final Metrics metrics;
+
+  public DefaultPasskeyAuthenticationService(
+      WebAuthnManager webAuthnManager,
+      ObjectConverter objectConverter,
+      CredentialRepository credentialRepository,
+      UserLookup userLookup,
+      ChallengeStore challengeStore,
+      ClockProvider clockProvider,
+      OriginValidator originValidator,
+      AttestationTrustPolicy attestationTrustPolicy,
+      RelyingPartyConfig rpConfig,
+      CeremonyConfig ceremonyConfig,
+      ChallengeGenerator challengeGenerator,
+      Metrics metrics) {
+    this.webAuthnManager = Objects.requireNonNull(webAuthnManager, "webAuthnManager");
+    this.objectConverter = Objects.requireNonNull(objectConverter, "objectConverter");
+    this.credentialRepository =
+        Objects.requireNonNull(credentialRepository, "credentialRepository");
+    this.userLookup = Objects.requireNonNull(userLookup, "userLookup");
+    this.challengeStore = Objects.requireNonNull(challengeStore, "challengeStore");
+    this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
+    this.originValidator = Objects.requireNonNull(originValidator, "originValidator");
+    this.attestationTrustPolicy =
+        Objects.requireNonNull(attestationTrustPolicy, "attestationTrustPolicy");
+    this.rpConfig = Objects.requireNonNull(rpConfig, "rpConfig");
+    this.ceremonyConfig = Objects.requireNonNull(ceremonyConfig, "ceremonyConfig");
+    this.challengeGenerator = Objects.requireNonNull(challengeGenerator, "challengeGenerator");
+    this.metrics = Objects.requireNonNull(metrics, "metrics");
+  }
+
+  // -- Registration ----------------------------------------------------------------------------
+
+  @Override
+  public StartRegistrationResponse startRegistration(StartRegistrationRequest req) {
+    Objects.requireNonNull(req, "req");
+    UserHandle userHandle = userLookup.createOrGetUserHandle(req.username());
+
+    byte[] challenge = challengeGenerator.generate();
+    ChallengeId challengeId = ChallengeGenerator.idOf(challenge);
+
+    challengeStore.put(
+        challengeId,
+        new ChallengeRecord(
+            challenge,
+            ChallengeRecord.Purpose.REGISTRATION,
+            userHandle,
+            clockProvider.now().plus(ceremonyConfig.challengeTtl())),
+        ceremonyConfig.challengeTtl());
+
+    List<PublicKeyCredentialDescriptor> excludeCredentials =
+        credentialRepository.findByUserHandle(userHandle).stream()
+            .map(this::toExcludeDescriptor)
+            .toList();
+
+    UserVerificationRequirement uv =
+        req.userVerification() == null ? ceremonyConfig.userVerification() : req.userVerification();
+
+    AuthenticatorSelectionCriteria selection =
+        new AuthenticatorSelectionCriteria(null, ceremonyConfig.residentKey(), null, uv);
+
+    PublicKeyCredentialCreationOptionsJson options =
+        new PublicKeyCredentialCreationOptionsJson(
+            new RelyingParty(rpConfig.id(), rpConfig.name()),
+            new UserInfo(
+                userHandle.value(),
+                req.username(),
+                req.displayName() == null ? req.username() : req.displayName()),
+            challenge,
+            List.of(
+                new PublicKeyCredentialParameters("public-key", -7),
+                new PublicKeyCredentialParameters("public-key", -8),
+                new PublicKeyCredentialParameters("public-key", -257)),
+            DEFAULT_TIMEOUT_MS,
+            excludeCredentials.isEmpty() ? null : excludeCredentials,
+            selection,
+            ceremonyConfig.attestationConveyance(),
+            null);
+
+    metrics.incrementCounter("pkauth.registration.start", "rp", rpConfig.id());
+    LOG.info("registration.start userHandle={} challengeId={}", userHandle, challengeId.value());
+    return new StartRegistrationResponse(challengeId, options);
+  }
+
+  @Override
+  public RegistrationResult finishRegistration(FinishRegistrationRequest req) {
+    Objects.requireNonNull(req, "req");
+    long start = System.nanoTime();
+    try {
+      ClientDataJsonParser.ClientData clientData;
+      try {
+        clientData = ClientDataJsonParser.parse(req.response().response().clientDataJSON());
+      } catch (RuntimeException ex) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidPayload("malformed clientDataJSON"),
+            start);
+      }
+
+      if (!"webauthn.create".equals(clientData.type())) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidPayload("clientData.type must be webauthn.create"),
+            start);
+      }
+
+      if (!originValidator.isAllowed(clientData.origin())) {
+        return outcome(
+            "registration",
+            new RegistrationResult.OriginMismatch(
+                rpConfig.origins().toString(), clientData.origin()),
+            start);
+      }
+
+      ChallengeId derivedId;
+      try {
+        derivedId = ChallengeGenerator.idOf(clientData.challengeBytes());
+      } catch (RuntimeException ex) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidPayload("invalid challenge encoding"),
+            start);
+      }
+      if (!derivedId.equals(req.challengeId())) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidChallenge("challengeId / clientData.challenge mismatch"),
+            start);
+      }
+
+      Optional<ChallengeRecord> stored = challengeStore.takeOnce(req.challengeId());
+      if (stored.isEmpty()) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidChallenge(
+                "unknown, expired, or already-consumed challenge"),
+            start);
+      }
+      ChallengeRecord challengeRecord = stored.get();
+      if (challengeRecord.purpose() != ChallengeRecord.Purpose.REGISTRATION) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidChallenge("challenge bound to a different ceremony"),
+            start);
+      }
+      if (!Arrays.equals(challengeRecord.challenge(), clientData.challengeBytes())) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidChallenge("challenge bytes do not match stored value"),
+            start);
+      }
+      if (clockProvider.now().isAfter(challengeRecord.expiresAt())) {
+        return outcome(
+            "registration", new RegistrationResult.InvalidChallenge("challenge expired"), start);
+      }
+
+      var w4jRequest = WebAuthn4JConverters.toRegistrationRequest(req.response());
+      var serverProperty =
+          WebAuthn4JConverters.serverProperty(rpConfig, challengeRecord.challenge());
+      var w4jParams =
+          new RegistrationParameters(
+              serverProperty,
+              WebAuthn4JConverters.DEFAULT_PUB_KEY_PARAMS,
+              WebAuthn4JConverters.userVerificationRequired(ceremonyConfig.userVerification()),
+              /* userPresenceRequired */ true);
+
+      RegistrationData data;
+      try {
+        data = webAuthnManager.verify(w4jRequest, w4jParams);
+      } catch (DataConversionException ex) {
+        LOG.debug("registration.finish DataConversionException", ex);
+        return outcome("registration", new RegistrationResult.InvalidPayload(messageOf(ex)), start);
+      } catch (VerificationException ex) {
+        return outcome("registration", mapRegistrationException(ex, clientData), start);
+      }
+
+      AttestedCredentialData acd =
+          data.getAttestationObject().getAuthenticatorData().getAttestedCredentialData();
+      if (acd == null) {
+        return outcome(
+            "registration",
+            new RegistrationResult.InvalidPayload("attested credential data missing"),
+            start);
+      }
+
+      AttestationTrustPolicy.Decision policyDecision =
+          attestationTrustPolicy.evaluate(
+              new AttestationTrustPolicy.AttestationData(
+                  acd.getAaguid() == null ? null : acd.getAaguid().getValue(),
+                  data.getAttestationObject().getFormat(),
+                  ceremonyConfig.attestationConveyance()));
+      if (policyDecision instanceof AttestationTrustPolicy.Decision.Rejected rej) {
+        return outcome(
+            "registration", new RegistrationResult.AttestationRejected(rej.reason()), start);
+      }
+
+      if (credentialRepository.findByCredentialId(acd.getCredentialId()).isPresent()) {
+        return outcome(
+            "registration",
+            new RegistrationResult.DuplicateCredential(acd.getCredentialId()),
+            start);
+      }
+
+      var authData = data.getAttestationObject().getAuthenticatorData();
+      byte[] coseBytes = WebAuthn4JConverters.serializeCoseKey(acd.getCOSEKey(), objectConverter);
+      UUID aaguidUuid = AAGUID.ZERO.equals(acd.getAaguid()) ? null : acd.getAaguid().getValue();
+
+      Set<String> transportStrings = new LinkedHashSet<>();
+      if (data.getTransports() != null) {
+        data.getTransports().forEach(t -> transportStrings.add(t.getValue()));
+      }
+
+      Instant now = clockProvider.now();
+      CredentialRecord stored2 =
+          new CredentialRecord(
+              acd.getCredentialId(),
+              challengeRecord.userHandle() != null
+                  ? challengeRecord.userHandle()
+                  : userLookup.createOrGetUserHandle("__usernameless__"),
+              coseBytes,
+              authData.getSignCount(),
+              labelOrDefault(req.label()),
+              aaguidUuid,
+              transportStrings,
+              authData.isFlagBE(),
+              authData.isFlagBS(),
+              now,
+              null);
+      credentialRepository.save(stored2);
+
+      AuthenticatorData ourAuthData =
+          new AuthenticatorData(
+              new byte[0],
+              authData.isFlagUP(),
+              authData.isFlagUV(),
+              authData.isFlagBE(),
+              authData.isFlagBS(),
+              authData.isFlagAT(),
+              authData.isFlagED(),
+              authData.getSignCount());
+
+      return outcome("registration", new RegistrationResult.Success(stored2, ourAuthData), start);
+    } catch (RuntimeException ex) {
+      LOG.warn("registration.finish unexpected error", ex);
+      return outcome("registration", new RegistrationResult.InvalidPayload(messageOf(ex)), start);
+    }
+  }
+
+  // -- Authentication --------------------------------------------------------------------------
+
+  @Override
+  public StartAuthenticationResponse startAuthentication(StartAuthenticationRequest req) {
+    Objects.requireNonNull(req, "req");
+
+    @Nullable UserHandle resolvedHandle = null;
+    List<PublicKeyCredentialDescriptor> allowCredentials = List.of();
+    if (req.username() != null) {
+      Optional<UserHandle> handle = userLookup.findUserHandleByUsername(req.username());
+      if (handle.isPresent()) {
+        resolvedHandle = handle.get();
+        allowCredentials =
+            credentialRepository.findByUserHandle(resolvedHandle).stream()
+                .map(this::toAllowDescriptor)
+                .toList();
+      }
+    }
+
+    byte[] challenge = challengeGenerator.generate();
+    ChallengeId challengeId = ChallengeGenerator.idOf(challenge);
+
+    challengeStore.put(
+        challengeId,
+        new ChallengeRecord(
+            challenge,
+            ChallengeRecord.Purpose.ASSERTION,
+            resolvedHandle,
+            clockProvider.now().plus(ceremonyConfig.challengeTtl())),
+        ceremonyConfig.challengeTtl());
+
+    UserVerificationRequirement uv =
+        req.userVerification() == null ? ceremonyConfig.userVerification() : req.userVerification();
+
+    PublicKeyCredentialRequestOptionsJson options =
+        new PublicKeyCredentialRequestOptionsJson(
+            challenge,
+            DEFAULT_TIMEOUT_MS,
+            rpConfig.id(),
+            allowCredentials.isEmpty() ? null : allowCredentials,
+            uv,
+            null);
+
+    metrics.incrementCounter("pkauth.authentication.start", "rp", rpConfig.id());
+    LOG.info(
+        "authentication.start username={} challengeId={}", req.username(), challengeId.value());
+    return new StartAuthenticationResponse(challengeId, options);
+  }
+
+  @Override
+  public AssertionResult finishAuthentication(FinishAuthenticationRequest req) {
+    Objects.requireNonNull(req, "req");
+    long start = System.nanoTime();
+    try {
+      ClientDataJsonParser.ClientData clientData;
+      try {
+        clientData = ClientDataJsonParser.parse(req.response().response().clientDataJSON());
+      } catch (RuntimeException ex) {
+        return outcomeAssertion(
+            new AssertionResult.InvalidChallenge("malformed clientDataJSON"), start);
+      }
+
+      if (!"webauthn.get".equals(clientData.type())) {
+        return outcomeAssertion(
+            new AssertionResult.InvalidChallenge("clientData.type must be webauthn.get"), start);
+      }
+
+      if (!originValidator.isAllowed(clientData.origin())) {
+        return outcomeAssertion(
+            new AssertionResult.OriginMismatch(rpConfig.origins().toString(), clientData.origin()),
+            start);
+      }
+
+      ChallengeId derivedId;
+      try {
+        derivedId = ChallengeGenerator.idOf(clientData.challengeBytes());
+      } catch (RuntimeException ex) {
+        return outcomeAssertion(
+            new AssertionResult.InvalidChallenge("invalid challenge encoding"), start);
+      }
+      if (!derivedId.equals(req.challengeId())) {
+        return outcomeAssertion(
+            new AssertionResult.InvalidChallenge("challengeId / clientData.challenge mismatch"),
+            start);
+      }
+
+      Optional<ChallengeRecord> stored = challengeStore.takeOnce(req.challengeId());
+      if (stored.isEmpty()) {
+        return outcomeAssertion(
+            new AssertionResult.InvalidChallenge("unknown, expired, or already-consumed challenge"),
+            start);
+      }
+      ChallengeRecord challengeRecord = stored.get();
+      if (challengeRecord.purpose() != ChallengeRecord.Purpose.ASSERTION) {
+        return outcomeAssertion(
+            new AssertionResult.InvalidChallenge("challenge bound to a different ceremony"), start);
+      }
+      if (!Arrays.equals(challengeRecord.challenge(), clientData.challengeBytes())) {
+        return outcomeAssertion(
+            new AssertionResult.InvalidChallenge("challenge bytes do not match stored value"),
+            start);
+      }
+      if (clockProvider.now().isAfter(challengeRecord.expiresAt())) {
+        return outcomeAssertion(new AssertionResult.InvalidChallenge("challenge expired"), start);
+      }
+
+      byte[] credentialId = req.response().rawId();
+      Optional<CredentialRecord> credOpt = credentialRepository.findByCredentialId(credentialId);
+      if (credOpt.isEmpty()) {
+        return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
+      }
+      CredentialRecord cred = credOpt.get();
+
+      var w4jRequest = WebAuthn4JConverters.toAuthenticationRequest(req.response());
+      var serverProperty =
+          WebAuthn4JConverters.serverProperty(rpConfig, challengeRecord.challenge());
+      var w4jCred = WebAuthn4JConverters.toW4jCredentialRecord(cred, objectConverter);
+      var w4jParams =
+          new AuthenticationParameters(
+              serverProperty,
+              w4jCred,
+              /* allowCredentials */ null,
+              WebAuthn4JConverters.userVerificationRequired(ceremonyConfig.userVerification()),
+              /* userPresenceRequired */ true);
+
+      AuthenticationData data;
+      try {
+        data = webAuthnManager.verify(w4jRequest, w4jParams);
+      } catch (DataConversionException ex) {
+        return outcomeAssertion(new AssertionResult.InvalidChallenge(messageOf(ex)), start);
+      } catch (MaliciousCounterValueException ex) {
+        return handleCounterRegression(cred, ex.getPresentedCounter(), start);
+      } catch (UserNotVerifiedException ex) {
+        return outcomeAssertion(new AssertionResult.UserVerificationRequired(), start);
+      } catch (UserNotPresentException ex) {
+        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+      } catch (BadSignatureException ex) {
+        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+      } catch (BadOriginException ex) {
+        return outcomeAssertion(
+            new AssertionResult.OriginMismatch(rpConfig.origins().toString(), clientData.origin()),
+            start);
+      } catch (BadChallengeException | MissingChallengeException ex) {
+        return outcomeAssertion(new AssertionResult.InvalidChallenge(messageOf(ex)), start);
+      } catch (BadRpIdException ex) {
+        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+      } catch (VerificationException ex) {
+        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+      }
+
+      long newSignCount = data.getAuthenticatorData().getSignCount();
+      credentialRepository.updateSignCount(credentialId, newSignCount, clockProvider.now());
+
+      return outcomeAssertion(
+          new AssertionResult.Success(cred.userHandle(), credentialId, newSignCount), start);
+    } catch (RuntimeException ex) {
+      LOG.warn("authentication.finish unexpected error", ex);
+      return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+    }
+  }
+
+  // -- Helpers ---------------------------------------------------------------------------------
+
+  private AssertionResult handleCounterRegression(
+      CredentialRecord cred, long received, long start) {
+    if (ceremonyConfig.counterRegression() == CounterRegressionPolicy.WARN) {
+      LOG.warn(
+          "authentication.counter-regression accepted stored={} received={} credId={}",
+          cred.signCount(),
+          received,
+          shortCredId(cred.credentialId()));
+      return outcomeAssertion(
+          new AssertionResult.Success(cred.userHandle(), cred.credentialId(), cred.signCount()),
+          start);
+    }
+    return outcomeAssertion(
+        new AssertionResult.CounterRegression(cred.signCount(), received), start);
+  }
+
+  private RegistrationResult mapRegistrationException(
+      VerificationException ex, ClientDataJsonParser.ClientData clientData) {
+    if (ex instanceof BadOriginException) {
+      return new RegistrationResult.OriginMismatch(
+          rpConfig.origins().toString(), clientData.origin());
+    }
+    if (ex instanceof BadChallengeException || ex instanceof MissingChallengeException) {
+      return new RegistrationResult.InvalidChallenge(messageOf(ex));
+    }
+    if (ex instanceof BadSignatureException) {
+      return new RegistrationResult.AttestationRejected("signature failed");
+    }
+    return new RegistrationResult.InvalidPayload(messageOf(ex));
+  }
+
+  private PublicKeyCredentialDescriptor toExcludeDescriptor(CredentialRecord cred) {
+    return new PublicKeyCredentialDescriptor(
+        "public-key", cred.credentialId(), new ArrayList<>(cred.transports()));
+  }
+
+  private PublicKeyCredentialDescriptor toAllowDescriptor(CredentialRecord cred) {
+    return new PublicKeyCredentialDescriptor(
+        "public-key", cred.credentialId(), new ArrayList<>(cred.transports()));
+  }
+
+  private String labelOrDefault(@Nullable String supplied) {
+    return supplied == null || supplied.isBlank() ? "Passkey" : supplied;
+  }
+
+  private static String messageOf(Throwable t) {
+    return t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
+  }
+
+  private static String shortCredId(byte[] credentialId) {
+    int len = Math.min(8, credentialId.length);
+    return HexFormat.of().formatHex(Arrays.copyOf(credentialId, len));
+  }
+
+  private RegistrationResult outcome(String phase, RegistrationResult result, long start) {
+    Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+    String variant = result.getClass().getSimpleName();
+    metrics.incrementCounter("pkauth." + phase + ".outcome", "result", variant);
+    metrics.recordTimer("pkauth." + phase + ".duration", elapsed, "result", variant);
+    LOG.info("{}.finish outcome={} latencyMs={}", phase, variant, elapsed.toMillis());
+    return result;
+  }
+
+  private AssertionResult outcomeAssertion(AssertionResult result, long start) {
+    Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+    String variant = result.getClass().getSimpleName();
+    metrics.incrementCounter("pkauth.authentication.outcome", "result", variant);
+    metrics.recordTimer("pkauth.authentication.duration", elapsed, "result", variant);
+    LOG.info("authentication.finish outcome={} latencyMs={}", variant, elapsed.toMillis());
+    return result;
+  }
+
+  /**
+   * Returns a {@link CredentialMetadata} view of every credential we know about for {@code handle}.
+   * Adapters / admin endpoints may call this; kept here so tests can exercise the repository wiring
+   * without a separate facade.
+   */
+  public List<CredentialMetadata> listCredentialMetadata(UserHandle handle) {
+    return credentialRepository.findByUserHandle(handle).stream()
+        .map(CredentialRecord::toMetadata)
+        .toList();
+  }
+}
