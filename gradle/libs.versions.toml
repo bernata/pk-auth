@@ -39,6 +39,17 @@ hikaricp = "7.0.2"
 aws-sdk = "2.44.5"
 testcontainers = "1.21.4"
 
+# Spring Boot adapter (Phase 8). 3.5.x is the current Spring Boot 3.5 line as of 2026-05;
+# it pulls Spring Security 6.5.x and Spring Framework 6.2.x transitively. Java 21 is
+# required. We pin Spring Boot here rather than applying the Spring Boot Gradle plugin
+# globally because the starter module is a library (auto-config + filters), not an
+# application — applying the plugin to a library would enable bootJar everywhere.
+spring-boot = "3.5.5"
+spring-security = "6.5.3"
+# H2 in the demo so reviewers can run the spring-boot-demo without an external Postgres.
+# Confined to the demo's runtime; the starter does not pull it in.
+h2 = "2.4.240"
+
 # Test (wired in test convention plugin; left ready for Phase 1+)
 junit-jupiter = "6.0.3"
 assertj = "3.27.7"
@@ -77,6 +88,20 @@ jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 micrometer-core = { module = "io.micrometer:micrometer-core", version.ref = "micrometer" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+
+# Spring Boot / Spring Security (Phase 8). Each module pinned via its direct artifact rather
+# than the Spring Boot dependency-management plugin: the starter is a plain library, and
+# pulling the BOM-as-platform would force every consumer to inherit Spring versions whether
+# they want them or not. Consumers who want full BOM management can apply
+# `io.spring.dependency-management` themselves.
+spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure", version.ref = "spring-boot" }
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter", version.ref = "spring-boot" }
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web", version.ref = "spring-boot" }
+spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security", version.ref = "spring-boot" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
+spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor", version.ref = "spring-boot" }
+spring-security-test = { module = "org.springframework.security:spring-security-test", version.ref = "spring-security" }
+h2 = { module = "com.h2database:h2", version.ref = "h2" }
 
 # Convention-plugin classpath deps (used by build-logic, exposed here for single-source-of-truth).
 build-spotless-plugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }

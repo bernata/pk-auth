@@ -1,0 +1,44 @@
+{
+  "properties": [
+    {
+      "name": "pkauth.relying-party.id",
+      "type": "java.lang.String",
+      "description": "WebAuthn relying-party id (usually the registrable domain, e.g. example.com)."
+    },
+    {
+      "name": "pkauth.relying-party.name",
+      "type": "java.lang.String",
+      "description": "Human-readable relying-party name surfaced by the authenticator."
+    },
+    {
+      "name": "pkauth.relying-party.origins",
+      "type": "java.util.Set<java.lang.String>",
+      "description": "Allow-listed origins for strict origin validation."
+    },
+    {
+      "name": "pkauth.jwt.issuer",
+      "type": "java.lang.String",
+      "description": "JWT iss claim value."
+    },
+    {
+      "name": "pkauth.jwt.audience",
+      "type": "java.lang.String",
+      "description": "JWT aud claim value."
+    },
+    {
+      "name": "pkauth.jwt.secret",
+      "type": "java.lang.String",
+      "description": "HS256 shared secret. Leave unset only for dev — a random per-startup secret will be generated."
+    },
+    {
+      "name": "pkauth.jwt.token-ttl",
+      "type": "java.time.Duration",
+      "description": "How long an issued JWT is valid for."
+    },
+    {
+      "name": "pkauth.ceremony.challenge-ttl",
+      "type": "java.time.Duration",
+      "description": "How long a generated WebAuthn challenge remains valid."
+    }
+  ]
+}

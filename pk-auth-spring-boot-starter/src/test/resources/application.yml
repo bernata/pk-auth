@@ -1,0 +1,17 @@
+pkauth:
+  relying-party:
+    id: example.com
+    name: pk-auth starter integration test
+    origins:
+      - https://example.com
+  jwt:
+    issuer: pk-auth-test
+    audience: pk-auth-test-clients
+    # 32-byte deterministic secret so issuer/validator agree across the integration test.
+    secret: integration-test-secret-must-be-32-bytes
+    token-ttl: PT1H
+  ceremony:
+    challenge-ttl: PT5M
+logging:
+  level:
+    com.codeheadsystems.pkauth: INFO
