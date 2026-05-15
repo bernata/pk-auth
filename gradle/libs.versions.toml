@@ -58,10 +58,11 @@ h2 = "2.4.240"
 # .github/dependabot.yml until the project moves to a newer JDK baseline.
 micronaut = "4.10.23"
 
-# Dropwizard adapter (Phase 9). Brief §6.11 mandates Dropwizard 4.x (Jakarta EE namespace,
-# `jakarta.*` packages). 5.x changes the bundle / configuration surface in ways the Phase 9
-# adapter doesn't yet accommodate. Dependabot ignore keeps this from getting bumped to 5.x.
-dropwizard = "4.0.17"
+# Dropwizard adapter (Phase 9). Brief §6.11 tracks the latest Dropwizard release. 5.x adds
+# Jetty 12 / Jersey 4 (EE 10); the adapter rides the parent's `dropwizard-jackson` which is still
+# Jackson 2 — `PkAuthJacksonBridge` continues to translate the wire types until a future
+# Dropwizard major moves to Jackson 3 (`tools.jackson.*`).
+dropwizard = "5.0.1"
 
 # Dagger 2 wires the Dropwizard adapter at compile time. Brief §3 mandates Dagger over Guice/HK2;
 # ADR 0004 explains the rationale.

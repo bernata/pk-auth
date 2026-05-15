@@ -428,7 +428,7 @@ public interface AdminService {
 
 ### 6.11 `pk-auth-dropwizard`
 
-- Targets Dropwizard 4.x (Jakarta EE namespace, not javax). Java 21.
+- Targets the **latest released Dropwizard** (currently 5.x — Jakarta EE 10, Jetty 12, Jersey 4). The adapter tracks upstream rather than pinning a major: the Dependabot config does not block Dropwizard majors, and when a new major surfaces it is treated as a deliberate framework refresh (the same pattern as the Spring Boot 4 / Spring Security 7 move). Jackson 2 is still in play here — Dropwizard ships its own Jackson 2 ObjectMapper on the 5.x line; `PkAuthJacksonBridge` keeps translating until a future Dropwizard major moves to Jackson 3. Java 21.
 - `PkAuthBundle implements ConfiguredBundle<HasPkAuthConfig>` with an `initialize` and `run`.
 - Dagger 2 wiring:
   - `@Module PkAuthModule` providing all core services.
