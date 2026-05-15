@@ -1,0 +1,10 @@
+pkauth:
+  relying-party:
+    id: example.com
+    name: pk-auth micronaut test
+    origins:
+      - https://example.com
+  jwt:
+    issuer: https://pkauth.example.com
+    audience: https://app.example.com
+    secret: ZmFrZS1zZWNyZXQtdGhhdC1pcy0zMi1ieXRlcy1sb25nIQ==

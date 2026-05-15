@@ -1,0 +1,16 @@
+micronaut:
+  application:
+    name: pk-auth-micronaut-demo
+  server:
+    port: 8080
+
+pkauth:
+  relying-party:
+    id: localhost
+    name: pk-auth Micronaut demo
+    origins:
+      - http://localhost:8080
+  jwt:
+    issuer: pk-auth-micronaut-demo
+    audience: pk-auth-micronaut-demo-clients
+    secret: change-me-in-prod-use-a-32-byte-secret!!

@@ -50,6 +50,12 @@ spring-security = "7.0.5"
 # Confined to the demo's runtime; the starter does not pull it in.
 h2 = "2.4.240"
 
+# Micronaut adapter (Phase 10). Micronaut 4.x line per brief §6.12. 4.10.23 is the current
+# latest 4.x. We avoid Micronaut Security entirely — its `SecurityRule<R extends HttpRequest<?>>`
+# generic surface stalled the original implementation, and we don't need it: a plain
+# `@Filter` validating the JWT against pk-auth-jwt's PkAuthJwtValidator is sufficient.
+micronaut = "4.10.23"
+
 # Dropwizard adapter (Phase 9). Brief §6.11 mandates Dropwizard 4.x (Jakarta EE namespace,
 # `jakarta.*` packages). 4.0.14 is the current latest 4.x release; 5.x is GA but introduces
 # breakage we don't want to absorb until the Spring/Micronaut adapters are also on the line.
@@ -89,6 +95,17 @@ hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 # Persistence — AWS SDK v2 (DynamoDB Enhanced)
 aws-dynamodb = { module = "software.amazon.awssdk:dynamodb", version.ref = "aws-sdk" }
 aws-dynamodb-enhanced = { module = "software.amazon.awssdk:dynamodb-enhanced", version.ref = "aws-sdk" }
+
+# Micronaut 4.x (Phase 10 adapter + demo).
+micronaut-core = { module = "io.micronaut:micronaut-core", version.ref = "micronaut" }
+micronaut-context = { module = "io.micronaut:micronaut-context", version.ref = "micronaut" }
+micronaut-inject-java = { module = "io.micronaut:micronaut-inject-java", version.ref = "micronaut" }
+micronaut-http = { module = "io.micronaut:micronaut-http", version.ref = "micronaut" }
+micronaut-http-server-netty = { module = "io.micronaut:micronaut-http-server-netty", version.ref = "micronaut" }
+micronaut-http-client = { module = "io.micronaut:micronaut-http-client", version.ref = "micronaut" }
+micronaut-jackson-databind = { module = "io.micronaut:micronaut-jackson-databind", version.ref = "micronaut" }
+micronaut-test-junit5 = { module = "io.micronaut.test:micronaut-test-junit5", version = "4.10.0" }
+micronaut-runtime = { module = "io.micronaut:micronaut-runtime", version.ref = "micronaut" }
 
 # Dropwizard 4.x (Phase 9 adapter + demo).
 dropwizard-core = { module = "io.dropwizard:dropwizard-core", version.ref = "dropwizard" }
