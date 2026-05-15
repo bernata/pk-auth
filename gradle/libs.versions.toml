@@ -54,7 +54,9 @@ h2 = "2.4.240"
 # latest 4.x. We avoid Micronaut Security entirely — its `SecurityRule<R extends HttpRequest<?>>`
 # generic surface stalled the original implementation, and we don't need it: a plain
 # `@Filter` validating the JWT against pk-auth-jwt's PkAuthJwtValidator is sufficient.
-micronaut = "5.0.0"
+# Micronaut 5.x requires JVM 25; we target Java 21 (brief §3), so 5.x is pinned out via
+# .github/dependabot.yml until the project moves to a newer JDK baseline.
+micronaut = "4.10.23"
 
 # Dropwizard adapter (Phase 9). Brief §6.11 mandates Dropwizard 4.x (Jakarta EE namespace,
 # `jakarta.*` packages). 5.x changes the bundle / configuration surface in ways the Phase 9
@@ -104,7 +106,7 @@ micronaut-http = { module = "io.micronaut:micronaut-http", version.ref = "micron
 micronaut-http-server-netty = { module = "io.micronaut:micronaut-http-server-netty", version.ref = "micronaut" }
 micronaut-http-client = { module = "io.micronaut:micronaut-http-client", version.ref = "micronaut" }
 micronaut-jackson-databind = { module = "io.micronaut:micronaut-jackson-databind", version.ref = "micronaut" }
-micronaut-test-junit5 = { module = "io.micronaut.test:micronaut-test-junit5", version = "5.0.0" }
+micronaut-test-junit5 = { module = "io.micronaut.test:micronaut-test-junit5", version = "4.10.0" }
 micronaut-runtime = { module = "io.micronaut:micronaut-runtime", version.ref = "micronaut" }
 
 # Dropwizard 4.x (Phase 9 adapter + demo).
@@ -157,7 +159,10 @@ build-errorprone-core = { module = "com.google.errorprone:error_prone_core", ver
 
 # Test bundle ingredients
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
-junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "6.0.3" }
+# JUnit Platform 1.x aligns with JUnit Jupiter 5.x (our junit-jupiter pin). Platform 2.x renamed
+# to "6.x" alongside Jupiter 6 — a major surface change that doesn't ship with Jupiter 5, so the
+# Dependabot ignore keeps us on the 1.x line until Jupiter moves.
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.11.4" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 mockito-junit-jupiter = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito" }

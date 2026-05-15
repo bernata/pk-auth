@@ -28,6 +28,16 @@ updates:
       # doesn't yet accommodate. Brief §6.11 also pins 4.x.
       - dependency-name: "io.dropwizard:*"
         update-types: ["version-update:semver-major"]
+      # Micronaut 5.x requires JVM 25; the project targets Java 21 (brief §3). Stay on the 4.x
+      # line until the JDK baseline moves.
+      - dependency-name: "io.micronaut:*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "io.micronaut.test:*"
+        update-types: ["version-update:semver-major"]
+      # JUnit Platform 2.x ("6.x") is the Jupiter 6 wave — a major surface change that requires
+      # Jupiter 6 to land first. We stay on the Platform 1.x line until our Jupiter pin moves.
+      - dependency-name: "org.junit.platform:*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
