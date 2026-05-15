@@ -1,0 +1,14 @@
+{
+  "name": "@pk-auth/micronaut-demo-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playwright E2E tests for the pk-auth Micronaut demo. Uses Chrome's CDP virtual WebAuthn authenticator.",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.2"
+  }
+}

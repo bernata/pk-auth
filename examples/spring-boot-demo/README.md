@@ -63,14 +63,28 @@ surface beyond `GET /` returning the SPA. The endpoint table:
 | POST   | /auth/admin/phone/start-verification              | Send OTP |
 | POST   | /auth/admin/phone/complete-verification           | Verify OTP |
 
+## End-to-end tests
+
+Playwright drives the full registration → login → manage passkeys → backup codes →
+magic link → OTP flow against Chrome's CDP virtual WebAuthn authenticator. Run with:
+
+```sh
+(cd examples/spring-boot-demo/e2e && npm install)
+(cd examples/spring-boot-demo/e2e && npx playwright test)
+```
+
+The Playwright config's `webServer` block starts the demo on demand via
+`./gradlew :examples:spring-boot-demo:run`. To run against a pre-started demo (e.g.
+in CI alongside Postgres / DynamoDB Local), set `PK_DEMO_EXTERNAL=1`.
+
 ## Notes
 
 - Magic-link tokens and SMS OTPs are logged to the server console (the demo's senders
   are `LoggingEmailSender` / `LoggingSmsSender`). Copy them out of the log and paste
   back into the form to complete the corresponding flow.
-- The demo intentionally uses inline HTML and vanilla JS. The shared TypeScript SDK
-  (`clients/passkeys-browser`) lands in Phase 11; the demos will be rewired to consume
-  it then.
+- The demo's SPA lives in `src/main/resources/static/index.html` and `demo.js`, both of
+  which consume the `@pk-auth/passkeys-browser` SDK (bundled into the demo's static
+  resources at build time by the `processResources` Copy task).
 - WebAuthn requires a secure origin. `http://localhost:8080` is secure-by-loopback in
   every major browser. Running the demo behind a remote host needs HTTPS.
 - Virtual threads are enabled (`spring.threads.virtual.enabled=true`) per brief §11.

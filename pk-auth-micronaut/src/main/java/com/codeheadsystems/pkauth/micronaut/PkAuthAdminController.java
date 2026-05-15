@@ -116,7 +116,11 @@ public class PkAuthAdminController {
   /** Maps an {@link AdminResult} to an HTTP response. */
   static HttpResponse<?> map(AdminResult<?> result) {
     return switch (result) {
-      case AdminResult.Success<?> s -> HttpResponse.ok(unwrap(s.value()));
+      // Success with no payload (delete, complete-verification etc.) must not return a bare
+      // `Object` body — Micronaut's Jackson codec has no encoder for it and the response would
+      // become a 500. 204 No Content matches the semantic and serializes trivially.
+      case AdminResult.Success<?> s when s.value() == null -> HttpResponse.noContent();
+      case AdminResult.Success<?> s -> HttpResponse.ok(s.value());
       case AdminResult.NotFound<?> n -> HttpResponse.notFound();
       case AdminResult.Forbidden<?> f -> HttpResponse.status(HttpStatus.FORBIDDEN);
       case AdminResult.ValidationFailed<?> v ->
@@ -127,10 +131,6 @@ public class PkAuthAdminController {
           HttpResponse.status(HttpStatus.TOO_MANY_REQUESTS)
               .header("Retry-After", Long.toString(r.retryAfter().toSeconds()));
     };
-  }
-
-  private static Object unwrap(Object value) {
-    return value == null ? new Object() : value;
   }
 
   // -- request / response bodies --

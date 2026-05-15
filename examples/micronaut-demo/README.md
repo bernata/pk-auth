@@ -37,5 +37,30 @@ Replace the `InMemoryPersistenceFactory` with a factory that surfaces those repo
 
 ## Frontend
 
-A full browser walkthrough lands when the TS SDK from `clients/passkeys-browser` is wired
-(Phase 11). For now the demo exposes only the JSON API.
+The demo's SPA lives in `src/main/resources/public/index.html` and `demo.js`, both of
+which consume the shared `@pk-auth/passkeys-browser` SDK (bundled into the demo's
+classpath at build time by the `processResources` Copy task). The SDK is served at
+`/passkeys-browser/index.js` via the `StaticAssetsController`.
+
+> The idiomatic Micronaut path here would be `micronaut.router.static-resources` in
+> `application.yml`. That binding wasn't picking the classpath path up in this demo's
+> runtime, so the controller serves the three files explicitly. A fresh project would
+> not need the workaround.
+
+The demo sets `pkauth.relying-party.id=localhost` (and friends) via JVM system
+properties on the `run` task — Micronaut's nested `@ConfigurationProperties` binding
+didn't propagate the YAML keys through `PkAuthConfiguration.RelyingParty` reliably.
+
+## End-to-end tests
+
+Playwright drives the full registration → login → manage passkeys → backup codes →
+magic link → OTP flow against Chrome's CDP virtual WebAuthn authenticator:
+
+```sh
+(cd examples/micronaut-demo/e2e && npm install)
+(cd examples/micronaut-demo/e2e && npx playwright test)
+```
+
+The Playwright config's `webServer` block starts the demo on demand via
+`./gradlew :examples:micronaut-demo:run`. Set `PK_DEMO_EXTERNAL=1` to run against a
+pre-started demo.

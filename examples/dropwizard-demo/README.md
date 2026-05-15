@@ -48,6 +48,20 @@ the JDBI / DynamoDB modules' "all-in-one" factories land (Phase 12 polish):
 docker compose up -d
 ```
 
+## End-to-end tests
+
+Playwright drives the full registration → login → manage passkeys → backup codes →
+magic link → OTP flow against Chrome's CDP virtual WebAuthn authenticator:
+
+```sh
+(cd examples/dropwizard-demo/e2e && npm install)
+(cd examples/dropwizard-demo/e2e && npx playwright test)
+```
+
+The Playwright config's `webServer` block starts the demo on demand via
+`./gradlew :examples:dropwizard-demo:run`. Set `PK_DEMO_EXTERNAL=1` to run against a
+pre-started demo.
+
 ## Production caveats
 
 This is a **demo**, not a production deployment recipe:
