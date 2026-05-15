@@ -30,10 +30,6 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "io.micronaut.test:*"
         update-types: ["version-update:semver-major"]
-      # JUnit Platform 2.x ("6.x") is the Jupiter 6 wave — a major surface change that requires
-      # Jupiter 6 to land first. We stay on the Platform 1.x line until our Jupiter pin moves.
-      - dependency-name: "org.junit.platform:*"
-        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"

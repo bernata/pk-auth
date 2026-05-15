@@ -160,10 +160,10 @@ build-errorprone-core = { module = "com.google.errorprone:error_prone_core", ver
 
 # Test bundle ingredients
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
-# JUnit Platform 1.x aligns with JUnit Jupiter 5.x (our junit-jupiter pin). Platform 2.x renamed
-# to "6.x" alongside Jupiter 6 — a major surface change that doesn't ship with Jupiter 5, so the
-# Dependabot ignore keeps us on the 1.x line until Jupiter moves.
-junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version = "1.14.4" }
+# JUnit 6 unified Platform and Jupiter under a single version (6.x). The launcher tracks
+# `junit-jupiter` directly: Jupiter 6.0.3 transitively pulls in Platform 6.0.3, so any explicit
+# launcher pin below 6.x would be silently overridden by Gradle's highest-wins resolution.
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junit-jupiter" }
 assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 mockito-junit-jupiter = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito" }
