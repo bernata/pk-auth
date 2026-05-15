@@ -2,13 +2,13 @@
 package com.codeheadsystems.pkauth.spring.autoconfigure;
 
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
+import com.codeheadsystems.pkauth.json.PkAuthObjectMappers;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import com.codeheadsystems.pkauth.spring.security.PkAuthAuthenticationProvider;
 import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationFilter;
 import com.codeheadsystems.pkauth.spring.web.PkAuthCeremonyController;
-import com.codeheadsystems.pkauth.spring.web.PkAuthJacksonModule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -24,6 +24,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import tools.jackson.databind.module.SimpleModule;
 
 /**
  * Wires the HTTP-facing portion of the starter: the ceremony controller, the JWT validation filter,
@@ -50,14 +51,16 @@ public class PkAuthWebAutoConfiguration {
   private static final Logger LOG = LoggerFactory.getLogger(PkAuthWebAutoConfiguration.class);
 
   /**
-   * Register the pk-auth Jackson 2 module on every Spring Jackson {@code ObjectMapper} so the
-   * starter's controllers produce the same base64url-no-padding wire format the testkit and
-   * Jackson-3 core mapper use. Spring's autoconfigured {@code ObjectMapper} picks up every {@link
-   * com.fasterxml.jackson.databind.Module} bean automatically.
+   * Register the pk-auth Jackson 3 module on Spring's autoconfigured {@code ObjectMapper}. Spring
+   * Boot 4 standardized on Jackson 3 ({@code tools.jackson.*}), the same namespace pk-auth-core's
+   * ObjectMapper uses (ADR 0009); the core's {@link PkAuthObjectMappers#pkAuthModule()} supplies
+   * the byte[] / UserHandle / ChallengeId (de)serializers, so Spring's mapper produces the same
+   * base64url-no-padding wire format the testkit and core mapper use. Spring picks up every {@code
+   * tools.jackson.databind.module.JacksonModule} bean automatically.
    */
   @Bean
-  public PkAuthJacksonModule pkAuthJacksonModule() {
-    return new PkAuthJacksonModule();
+  public SimpleModule pkAuthJacksonModule() {
+    return PkAuthObjectMappers.pkAuthModule();
   }
 
   @Bean

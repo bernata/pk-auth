@@ -24,15 +24,6 @@ updates:
       # the implementation artifact id, so this is the right Dependabot dependency-name.
       - dependency-name: "com.diffplug.spotless:com.diffplug.spotless.gradle.plugin"
         versions: [">=8"]
-      # Spring Boot 4.x dropped Jackson 2 in favor of Jackson 3 (`tools.jackson.*`). Our Phase 8
-      # adapter's `PkAuthJacksonModule` bridges Jackson 2 ↔ pk-auth's Jackson 3 wire types;
-      # moving to Spring Boot 4 requires rewriting that bridge. Brief §6.10 also pins 3.5.x.
-      - dependency-name: "org.springframework.boot:*"
-        update-types: ["version-update:semver-major"]
-      # Spring Security 7 is tied to Spring Framework 7 / Spring Boot 4. Stay on the 6.x line
-      # until the Spring Boot 4 migration is planned.
-      - dependency-name: "org.springframework.security:*"
-        update-types: ["version-update:semver-major"]
       # Dropwizard 5 changes the bundle and configuration surface in ways the Phase 9 adapter
       # doesn't yet accommodate. Brief §6.11 also pins 4.x.
       - dependency-name: "io.dropwizard:*"

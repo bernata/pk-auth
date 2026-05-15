@@ -53,8 +53,13 @@ public final class PkAuthObjectMappers {
             value -> value.withValueInclusion(JsonInclude.Include.NON_NULL));
   }
 
-  /** Module registering byte[] / UserHandle / ChallengeId (de)serializers. */
-  static SimpleModule pkAuthModule() {
+  /**
+   * Returns a fresh {@link SimpleModule} registering the byte[] / {@link UserHandle} / {@link
+   * ChallengeId} (de)serializers used by pk-auth's wire contract. Adapter modules that drive a
+   * host-framework {@link ObjectMapper} (Spring Boot 4 / Micronaut on Jackson 3, etc.) register
+   * this module so their mapper produces the same wire shape the core's mapper does.
+   */
+  public static SimpleModule pkAuthModule() {
     SimpleModule module = new SimpleModule("pk-auth");
     module.addSerializer(byte[].class, new Base64UrlBytesSerializer());
     module.addDeserializer(byte[].class, new Base64UrlBytesDeserializer());

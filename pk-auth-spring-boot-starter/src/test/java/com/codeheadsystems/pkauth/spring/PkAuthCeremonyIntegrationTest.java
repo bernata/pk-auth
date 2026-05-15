@@ -20,7 +20,6 @@ import com.codeheadsystems.pkauth.jwt.JwtVerificationResult;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import com.codeheadsystems.pkauth.testkit.FakeAuthenticator;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.webauthn4j.converter.util.ObjectConverter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,6 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * End-to-end ceremony test: register a passkey via {@code /auth/passkeys/registration/*}, assert

@@ -39,13 +39,13 @@ hikaricp = "7.0.2"
 aws-sdk = "2.44.6"
 testcontainers = "1.21.4"
 
-# Spring Boot adapter (Phase 8). Brief §6.10 mandates Spring Boot 3.5.x / Spring Security 6.5.x.
-# Spring Boot 4.0 dropped Jackson 2 in favor of Jackson 3 (`tools.jackson.*`), which breaks our
-# Phase 8 Jackson 2 bridge (`PkAuthJacksonModule`). Stay on 3.5.x until we revisit the
-# Jackson-bridge strategy in a future phase. Dependabot ignore in .github/dependabot.yml keeps
-# this from getting bumped back automatically.
-spring-boot = "3.5.5"
-spring-security = "6.5.3"
+# Spring Boot adapter (Phase 8). Spring Boot 4 / Spring Security 7. Spring Boot 4 standardized
+# on Jackson 3 (`tools.jackson.*`), the same namespace pk-auth-core uses (ADR 0009) — so the
+# previous Jackson 2 bridge module is gone, replaced by direct registration of the core's
+# `PkAuthObjectMappers.pkAuthModule()` as a Spring bean. Brief §6.10 originally specified
+# 3.5.x / 6.5.x; the upgrade landed as a deliberate framework refresh.
+spring-boot = "4.0.6"
+spring-security = "7.0.5"
 # H2 in the demo so reviewers can run the spring-boot-demo without an external Postgres.
 # Confined to the demo's runtime; the starter does not pull it in.
 h2 = "2.4.240"
@@ -143,6 +143,9 @@ spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter",
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web", version.ref = "spring-boot" }
 spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security", version.ref = "spring-boot" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test", version.ref = "spring-boot" }
+# Spring Boot 4 carved AutoConfigureMockMvc / the MockMvc test slice out of
+# spring-boot-test-autoconfigure into a dedicated spring-boot-webmvc-test artifact.
+spring-boot-webmvc-test = { module = "org.springframework.boot:spring-boot-webmvc-test", version.ref = "spring-boot" }
 spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor", version.ref = "spring-boot" }
 spring-security-test = { module = "org.springframework.security:spring-security-test", version.ref = "spring-security" }
 h2 = { module = "com.h2database:h2", version.ref = "h2" }

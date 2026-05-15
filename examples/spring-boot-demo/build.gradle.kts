@@ -34,6 +34,7 @@ dependencies {
 
     testImplementation(project(":pk-auth-testkit"))
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.webmvc.test)
     testImplementation(libs.spring.security.test)
 }
 

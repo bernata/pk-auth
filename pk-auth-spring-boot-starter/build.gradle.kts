@@ -65,6 +65,7 @@ dependencies {
     testImplementation(project(":pk-auth-persistence-jdbi"))
     testImplementation(project(":pk-auth-persistence-dynamodb"))
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.spring.boot.webmvc.test)
     testImplementation(libs.spring.security.test)
     testImplementation(libs.h2)
     testRuntimeOnly(libs.logback.classic)
