@@ -52,6 +52,16 @@ dependencies {
     testImplementation(libs.dropwizard.testing)
 }
 
+// Bundle the @pk-auth/passkeys-browser SDK so the demo's index page can import it
+// as an ES module. dist/ is committed (see clients/passkeys-browser/README.md).
+val passkeysBrowserDist = rootProject.file("clients/passkeys-browser/dist")
+tasks.named<Copy>("processResources") {
+    from(passkeysBrowserDist) {
+        include("index.js", "index.js.map")
+        into("assets/passkeys-browser")
+    }
+}
+
 // The demo intentionally has no coverage gate (it's a runnable showcase, not a library).
 // Tests that ship with it are smoke tests over the wire.
 

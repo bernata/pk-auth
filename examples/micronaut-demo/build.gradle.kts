@@ -34,6 +34,16 @@ dependencies {
     testAnnotationProcessor(libs.micronaut.inject.java)
 }
 
+// Bundle the @pk-auth/passkeys-browser SDK so the demo's index page can import it
+// as an ES module. dist/ is committed (see clients/passkeys-browser/README.md).
+val passkeysBrowserDist = rootProject.file("clients/passkeys-browser/dist")
+tasks.named<Copy>("processResources") {
+    from(passkeysBrowserDist) {
+        include("index.js", "index.js.map")
+        into("public/passkeys-browser")
+    }
+}
+
 tasks.named<Test>("test") {
     useJUnitPlatform()
 }

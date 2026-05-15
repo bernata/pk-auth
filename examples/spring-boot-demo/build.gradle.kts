@@ -45,6 +45,18 @@ configurations.testImplementation {
     exclude(group = "org.mockito", module = "mockito-junit-jupiter")
 }
 
+// Bundle the @pk-auth/passkeys-browser SDK into the demo's static resources so the
+// single-page demo can `import` it as an ES module. The SDK ships its prebuilt
+// `dist/` (see clients/passkeys-browser/README.md); rebuild it with
+// `npm run build` whenever its TypeScript sources change.
+val passkeysBrowserDist = rootProject.file("clients/passkeys-browser/dist")
+tasks.named<Copy>("processResources") {
+    from(passkeysBrowserDist) {
+        include("index.js", "index.js.map")
+        into("static/passkeys-browser")
+    }
+}
+
 tasks.named<Test>("test") {
     // Spring Boot's reflective DI on JDK 21 needs java.base/java.lang opened up for Mockito's
     // inline mocker (transitively pulled by spring-boot-starter-test) when proxying records.

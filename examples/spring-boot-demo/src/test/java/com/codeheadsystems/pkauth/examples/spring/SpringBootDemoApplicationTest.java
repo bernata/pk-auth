@@ -39,8 +39,11 @@ class SpringBootDemoApplicationTest {
 
   @Test
   void indexPageServesHtml() throws Exception {
+    // `/` forwards to `/index.html` via WelcomePageHandlerMapping. MockMvc captures the forward
+    // without rendering its body, so probe `/index.html` directly — that hits the static resource
+    // handler, which sets Content-Type and streams the body.
     mockMvc
-        .perform(get("/"))
+        .perform(get("/index.html"))
         .andExpect(status().isOk())
         .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_HTML))
         .andExpect(
