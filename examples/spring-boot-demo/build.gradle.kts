@@ -45,12 +45,13 @@ configurations.testImplementation {
     exclude(group = "org.mockito", module = "mockito-junit-jupiter")
 }
 
-// Bundle the @pk-auth/passkeys-browser SDK into the demo's static resources so the
-// single-page demo can `import` it as an ES module. The SDK ships its prebuilt
-// `dist/` (see clients/passkeys-browser/README.md); rebuild it with
-// `npm run build` whenever its TypeScript sources change.
+// Bundle the @pk-auth/passkeys-browser SDK into the demo's static resources so the single-page
+// demo can `import` it as an ES module. The SDK's `dist/` is gitignored — the root task
+// `:buildPasskeysBrowserSdk` invokes `npm ci && npm run build` to produce it, and processResources
+// depends on that task so a fresh clone gets a freshly-built bundle.
 val passkeysBrowserDist = rootProject.file("clients/passkeys-browser/dist")
 tasks.named<Copy>("processResources") {
+    dependsOn(rootProject.tasks.named("buildPasskeysBrowserSdk"))
     from(passkeysBrowserDist) {
         include("index.js", "index.js.map")
         into("static/passkeys-browser")

@@ -30,9 +30,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 dist/
-# clients/passkeys-browser ships its prebuilt bundle so the example apps work
-# after a fresh clone without an npm install step. Rebuild with `npm run build`.
-!clients/passkeys-browser/dist/
 .npm/
 .pnpm-store/
 

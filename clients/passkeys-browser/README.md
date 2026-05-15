@@ -66,5 +66,7 @@ npm test         # vitest, jsdom env
 npm run build    # tsup → dist/index.{js,cjs,d.ts}
 ```
 
-`dist/` is committed so the example apps work after a fresh clone without an npm
-install step. Regenerate it with `npm run build` whenever `src/` changes.
+`dist/` is gitignored — Gradle's `:buildPasskeysBrowserSdk` task (defined in the root
+`build.gradle.kts`) runs `npm ci && npm run build` before each demo's `processResources`,
+so the bundle is regenerated from source on every fresh clone. Run the npm commands above
+directly when iterating on the SDK in isolation.

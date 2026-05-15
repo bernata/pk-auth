@@ -52,10 +52,12 @@ dependencies {
     testImplementation(libs.dropwizard.testing)
 }
 
-// Bundle the @pk-auth/passkeys-browser SDK so the demo's index page can import it
-// as an ES module. dist/ is committed (see clients/passkeys-browser/README.md).
+// Bundle the @pk-auth/passkeys-browser SDK so the demo's index page can import it as an ES
+// module. The SDK's `dist/` is gitignored — the root task `:buildPasskeysBrowserSdk` invokes
+// `npm ci && npm run build` to produce it before processResources copies the bundle.
 val passkeysBrowserDist = rootProject.file("clients/passkeys-browser/dist")
 tasks.named<Copy>("processResources") {
+    dependsOn(rootProject.tasks.named("buildPasskeysBrowserSdk"))
     from(passkeysBrowserDist) {
         include("index.js", "index.js.map")
         into("assets/passkeys-browser")
