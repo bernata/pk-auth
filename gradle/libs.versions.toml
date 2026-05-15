@@ -39,13 +39,13 @@ hikaricp = "7.0.2"
 aws-sdk = "2.44.6"
 testcontainers = "1.21.4"
 
-# Spring Boot adapter (Phase 8). 3.5.x is the current Spring Boot 3.5 line as of 2026-05;
-# it pulls Spring Security 6.5.x and Spring Framework 6.2.x transitively. Java 21 is
-# required. We pin Spring Boot here rather than applying the Spring Boot Gradle plugin
-# globally because the starter module is a library (auto-config + filters), not an
-# application — applying the plugin to a library would enable bootJar everywhere.
-spring-boot = "4.0.6"
-spring-security = "7.0.5"
+# Spring Boot adapter (Phase 8). Brief §6.10 mandates Spring Boot 3.5.x / Spring Security 6.5.x.
+# Spring Boot 4.0 dropped Jackson 2 in favor of Jackson 3 (`tools.jackson.*`), which breaks our
+# Phase 8 Jackson 2 bridge (`PkAuthJacksonModule`). Stay on 3.5.x until we revisit the
+# Jackson-bridge strategy in a future phase. Dependabot ignore in .github/dependabot.yml keeps
+# this from getting bumped back automatically.
+spring-boot = "3.5.5"
+spring-security = "6.5.3"
 # H2 in the demo so reviewers can run the spring-boot-demo without an external Postgres.
 # Confined to the demo's runtime; the starter does not pull it in.
 h2 = "2.4.240"
@@ -57,9 +57,9 @@ h2 = "2.4.240"
 micronaut = "4.10.23"
 
 # Dropwizard adapter (Phase 9). Brief §6.11 mandates Dropwizard 4.x (Jakarta EE namespace,
-# `jakarta.*` packages). 4.0.14 is the current latest 4.x release; 5.x is GA but introduces
-# breakage we don't want to absorb until the Spring/Micronaut adapters are also on the line.
-dropwizard = "5.0.1"
+# `jakarta.*` packages). 5.x changes the bundle / configuration surface in ways the Phase 9
+# adapter doesn't yet accommodate. Dependabot ignore keeps this from getting bumped to 5.x.
+dropwizard = "4.0.14"
 
 # Dagger 2 wires the Dropwizard adapter at compile time. Brief §3 mandates Dagger over Guice/HK2;
 # ADR 0004 explains the rationale.
