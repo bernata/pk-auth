@@ -4,7 +4,6 @@ package com.codeheadsystems.pkauth.micronaut;
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper.CeremonyResponse;
-import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.StartAuthenticationRequest;
@@ -93,7 +92,7 @@ public class PkAuthCeremonyController {
       String token = PkAuthCeremonyJwt.mintForAssertion(success, jwtIssuer);
       String label =
           credentialRepository
-              .findByCredentialId(CredentialId.of(success.credentialId()))
+              .findByCredentialId(success.credentialId())
               .map(CredentialRecord::label)
               .orElse(null);
       CeremonyResponse wire = CeremonyWireMapper.forAssertionSuccess(success, token, label);

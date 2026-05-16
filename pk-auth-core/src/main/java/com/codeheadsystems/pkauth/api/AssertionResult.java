@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.api;
 
-import java.util.Arrays;
-import java.util.HexFormat;
 import java.util.Objects;
 
 /**
@@ -33,10 +31,15 @@ public sealed interface AssertionResult {
    * the prior convenience constructor that defaulted to {@link CounterStatus#OK} was removed in
    * 0.9.1 to force the counter-status decision to be visible at every call site.
    *
+   * <p>The {@code credentialId} component is the type-safe {@link CredentialId} value class (was
+   * raw {@code byte[]} prior to 0.9.1). Adapter mappers and JWT helpers consume the value class
+   * directly; wire JSON is unchanged because {@link CredentialId} has a registered Jackson
+   * (de)serializer that emits base64url.
+   *
    * @since 0.9.1
    */
   record Success(
-      UserHandle userHandle, byte[] credentialId, long signCount, CounterStatus counterStatus)
+      UserHandle userHandle, CredentialId credentialId, long signCount, CounterStatus counterStatus)
       implements AssertionResult {
     public Success {
       Objects.requireNonNull(userHandle, "userHandle");
@@ -45,68 +48,20 @@ public sealed interface AssertionResult {
       if (signCount < 0) {
         throw new IllegalArgumentException("signCount must be non-negative");
       }
-      credentialId = credentialId.clone();
-    }
-
-    @Override
-    public byte[] credentialId() {
-      return credentialId.clone();
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      return o instanceof Success other
-          && this.userHandle.equals(other.userHandle)
-          && Arrays.equals(this.credentialId, other.credentialId)
-          && this.signCount == other.signCount
-          && this.counterStatus == other.counterStatus;
-    }
-
-    @Override
-    public int hashCode() {
-      return Objects.hash(userHandle, Arrays.hashCode(credentialId), signCount, counterStatus);
-    }
-
-    @Override
-    public String toString() {
-      return "Success[userHandle="
-          + userHandle
-          + ", credentialId="
-          + HexFormat.of().formatHex(credentialId)
-          + ", signCount="
-          + signCount
-          + ", counterStatus="
-          + counterStatus
-          + "]";
     }
   }
 
-  /** The asserted credential id is not in the repository. */
-  record UnknownCredential(byte[] credentialId) implements AssertionResult {
+  /**
+   * The asserted credential id is not in the repository.
+   *
+   * <p>The {@code credentialId} component is the type-safe {@link CredentialId} value class (was
+   * raw {@code byte[]} prior to 0.9.1).
+   *
+   * @since 0.9.1
+   */
+  record UnknownCredential(CredentialId credentialId) implements AssertionResult {
     public UnknownCredential {
       Objects.requireNonNull(credentialId, "credentialId");
-      credentialId = credentialId.clone();
-    }
-
-    @Override
-    public byte[] credentialId() {
-      return credentialId.clone();
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      return o instanceof UnknownCredential other
-          && Arrays.equals(this.credentialId, other.credentialId);
-    }
-
-    @Override
-    public int hashCode() {
-      return Arrays.hashCode(credentialId);
-    }
-
-    @Override
-    public String toString() {
-      return "UnknownCredential[credentialId=" + HexFormat.of().formatHex(credentialId) + "]";
     }
   }
 

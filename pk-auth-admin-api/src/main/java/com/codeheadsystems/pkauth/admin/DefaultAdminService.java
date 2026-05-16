@@ -31,41 +31,36 @@ public final class DefaultAdminService implements AdminService {
   private final AdminAuthorizer authorizer;
   private final AdminSafetyConfig safetyConfig;
 
-  private DefaultAdminService(
-      Dependencies deps, AdminAuthorizer authorizer, AdminSafetyConfig safetyConfig) {
+  private DefaultAdminService(Dependencies deps, Config config) {
     this.credentialRepository = deps.credentialRepository();
     this.userLookup = deps.userLookup();
     this.backupCodeService = deps.backupCodeService();
     this.magicLinkService = deps.magicLinkService();
     this.otpService = deps.otpService();
-    this.authorizer = authorizer;
-    this.safetyConfig = safetyConfig;
+    this.authorizer = config.authorizer();
+    this.safetyConfig = config.safetyConfig();
   }
 
   /**
-   * Creates a {@link DefaultAdminService} with default {@link AdminAuthorizer} and {@link
-   * AdminSafetyConfig}.
+   * Canonical factory: required collaborators in {@link Dependencies}, tunables in {@link Config}.
+   *
+   * @since 0.9.1
+   */
+  public static DefaultAdminService create(Dependencies deps, Config config) {
+    Objects.requireNonNull(deps, "deps");
+    Objects.requireNonNull(config, "config");
+    return new DefaultAdminService(deps, config);
+  }
+
+  /**
+   * Convenience overload that builds a {@link Config} with the documented defaults (subject-scoped
+   * {@link AdminAuthorizer} and default {@link AdminSafetyConfig}).
+   *
+   * @since 0.9.1
    */
   public static DefaultAdminService create(Dependencies deps) {
-    return new DefaultAdminService(
-        deps, AdminAuthorizer.subjectScoped(), AdminSafetyConfig.defaults());
-  }
-
-  /**
-   * Creates a {@link DefaultAdminService} with a custom authorizer and default {@link
-   * AdminSafetyConfig}.
-   */
-  public static DefaultAdminService create(Dependencies deps, AdminAuthorizer authorizer) {
-    return new DefaultAdminService(deps, authorizer, AdminSafetyConfig.defaults());
-  }
-
-  /**
-   * Creates a {@link DefaultAdminService} with a custom authorizer and custom {@link
-   * AdminSafetyConfig}.
-   */
-  public static DefaultAdminService create(
-      Dependencies deps, AdminAuthorizer authorizer, AdminSafetyConfig safetyConfig) {
-    return new DefaultAdminService(deps, authorizer, safetyConfig);
+    Objects.requireNonNull(deps, "deps");
+    return new DefaultAdminService(deps, Config.defaults());
   }
 
   // -- Account --
@@ -254,6 +249,31 @@ public final class DefaultAdminService implements AdminService {
       Objects.requireNonNull(backupCodeService, "backupCodeService");
       Objects.requireNonNull(magicLinkService, "magicLinkService");
       Objects.requireNonNull(otpService, "otpService");
+    }
+  }
+
+  /**
+   * Tunable configuration for {@link DefaultAdminService}.
+   *
+   * <p>{@link #defaults()} wires {@link AdminAuthorizer#subjectScoped()} and {@link
+   * AdminSafetyConfig#defaults()}.
+   *
+   * @since 0.9.1
+   */
+  public record Config(AdminAuthorizer authorizer, AdminSafetyConfig safetyConfig) {
+    /** Compact constructor — enforces non-null on every field. */
+    public Config {
+      Objects.requireNonNull(authorizer, "authorizer");
+      Objects.requireNonNull(safetyConfig, "safetyConfig");
+    }
+
+    /**
+     * Returns a {@link Config} with the documented defaults.
+     *
+     * @since 0.9.1
+     */
+    public static Config defaults() {
+      return new Config(AdminAuthorizer.subjectScoped(), AdminSafetyConfig.defaults());
     }
   }
 }

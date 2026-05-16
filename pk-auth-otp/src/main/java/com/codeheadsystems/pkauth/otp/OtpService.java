@@ -3,6 +3,7 @@ package com.codeheadsystems.pkauth.otp;
 
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
+import com.codeheadsystems.pkauth.spi.MessageFormatter;
 import com.codeheadsystems.pkauth.spi.OtpRepository;
 import com.codeheadsystems.pkauth.spi.OtpRepository.StoredOtp;
 import java.security.InvalidKeyException;
@@ -32,6 +33,10 @@ import org.slf4j.LoggerFactory;
  * per-attempt limit enforced by the repository is the primary brute-force defence. A server-side
  * pepper (never stored in the database) means a DB dump alone cannot enumerate codes; the attacker
  * also needs the pepper secret.
+ *
+ * <p>Construct via {@link #create(Dependencies, Config)} (or {@link #create(Dependencies, byte[])}
+ * for the all-default case). Required collaborators (repository, sender, clock, formatter) live in
+ * {@link Dependencies}; tunables (pepper, TTL, attempt caps, rate-limit) live in {@link Config}.
  */
 public final class OtpService {
 
@@ -98,58 +103,42 @@ public final class OtpService {
   private final int maxAttempts;
   private final int rateLimit;
   private final Duration rateWindow;
+  private final MessageFormatter<OtpContext, OtpMessage> messageFormatter;
 
-  /**
-   * Convenience constructor using all defaults.
-   *
-   * @param repository OTP persistent store
-   * @param smsSender delivery adapter
-   * @param clockProvider time source
-   * @param pepper server-side HMAC key; must be at least 16 bytes
-   */
-  public OtpService(
-      OtpRepository repository, SmsSender smsSender, ClockProvider clockProvider, byte[] pepper) {
-    this(
-        repository,
-        smsSender,
-        clockProvider,
-        new SecureRandom(),
-        pepper,
-        DEFAULT_TTL,
-        DEFAULT_MAX_ATTEMPTS,
-        DEFAULT_RATE_LIMIT,
-        DEFAULT_RATE_WINDOW);
+  private OtpService(Dependencies deps, Config config) {
+    this.repository = deps.repository();
+    this.smsSender = deps.smsSender();
+    this.clockProvider = deps.clockProvider();
+    this.messageFormatter = deps.messageFormatter();
+    this.random = config.random();
+    this.pepper = Arrays.copyOf(config.pepper(), config.pepper().length);
+    this.ttl = config.ttl();
+    this.maxAttempts = config.maxAttempts();
+    this.rateLimit = config.rateLimit();
+    this.rateWindow = config.rateWindow();
   }
 
   /**
-   * Full constructor allowing override of every tunable parameter (test seam and advanced
-   * configuration).
+   * Canonical factory: required collaborators in {@link Dependencies}, tunables in {@link Config}.
    *
-   * @param pepper server-side HMAC key; a DB dump without this value cannot brute-force codes
+   * @since 0.9.1
    */
-  public OtpService(
-      OtpRepository repository,
-      SmsSender smsSender,
-      ClockProvider clockProvider,
-      SecureRandom random,
-      byte[] pepper,
-      Duration ttl,
-      int maxAttempts,
-      int rateLimit,
-      Duration rateWindow) {
-    this.repository = Objects.requireNonNull(repository, "repository");
-    this.smsSender = Objects.requireNonNull(smsSender, "smsSender");
-    this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
-    this.random = Objects.requireNonNull(random, "random");
-    Objects.requireNonNull(pepper, "pepper");
-    if (pepper.length < 16) {
-      throw new IllegalArgumentException("pepper must be at least 16 bytes");
-    }
-    this.pepper = Arrays.copyOf(pepper, pepper.length);
-    this.ttl = Objects.requireNonNull(ttl, "ttl");
-    this.maxAttempts = maxAttempts;
-    this.rateLimit = rateLimit;
-    this.rateWindow = Objects.requireNonNull(rateWindow, "rateWindow");
+  public static OtpService create(Dependencies deps, Config config) {
+    Objects.requireNonNull(deps, "deps");
+    Objects.requireNonNull(config, "config");
+    return new OtpService(deps, config);
+  }
+
+  /**
+   * Convenience overload that builds a {@link Config} with all defaults and the supplied {@code
+   * pepper}. The pepper has no sensible library default — hosts must supply a Base64-encoded ≥16
+   * byte secret.
+   *
+   * @since 0.9.1
+   */
+  public static OtpService create(Dependencies deps, byte[] pepper) {
+    Objects.requireNonNull(deps, "deps");
+    return new OtpService(deps, Config.defaults(pepper));
   }
 
   /** Generates a new OTP, persists it, and hands it to the {@link SmsSender}. */
@@ -171,7 +160,8 @@ public final class OtpService {
     String otpId = UUID.randomUUID().toString();
     repository.save(
         new StoredOtp(otpId, user, phoneE164, hash, 0, maxAttempts, false, now, now.plus(ttl)));
-    smsSender.sendOtp(phoneE164, "Your verification code is " + code);
+    OtpMessage message = messageFormatter.format(new OtpContext(user, phoneE164, code));
+    smsSender.send(phoneE164, message.body());
     LOG.info("otp.send issued user={} phone={} otpId={}", user, maskPhone(phoneE164), otpId);
     return new SendResult.Sent(otpId);
   }
@@ -279,5 +269,86 @@ public final class OtpService {
     String prefix = phone.substring(0, 2); // e.g. "+1", "+4", "+3"
     String suffix = phone.substring(phone.length() - 4); // last 4 digits
     return prefix + "***" + suffix;
+  }
+
+  /**
+   * Canonical holder of the required collaborators for {@link OtpService}.
+   *
+   * <p>The {@code messageFormatter} renders the {@link OtpContext} (user, phone, generated code)
+   * into an {@link OtpMessage} that is passed verbatim to {@link SmsSender#send(String, String)}.
+   * Pass {@link DefaultOtpFormatter} to keep the historical hard-coded {@code "Your verification
+   * code is XXXXXX"} body, or supply a host-specific formatter to brand or localize the SMS copy
+   * without forking this service.
+   *
+   * @since 0.9.1
+   */
+  public record Dependencies(
+      OtpRepository repository,
+      SmsSender smsSender,
+      ClockProvider clockProvider,
+      MessageFormatter<OtpContext, OtpMessage> messageFormatter) {
+    /** Compact constructor — enforces non-null on all required collaborators. */
+    public Dependencies {
+      Objects.requireNonNull(repository, "repository");
+      Objects.requireNonNull(smsSender, "smsSender");
+      Objects.requireNonNull(clockProvider, "clockProvider");
+      Objects.requireNonNull(messageFormatter, "messageFormatter");
+    }
+
+    /**
+     * Convenience factory that wires {@link DefaultOtpFormatter} as the message formatter — the
+     * historical default body.
+     *
+     * @since 0.9.1
+     */
+    public static Dependencies of(
+        OtpRepository repository, SmsSender smsSender, ClockProvider clockProvider) {
+      return new Dependencies(repository, smsSender, clockProvider, new DefaultOtpFormatter());
+    }
+  }
+
+  /**
+   * Tunable configuration for {@link OtpService}.
+   *
+   * <p>The HMAC {@code pepper} is required (no library default) — hosts must supply a
+   * Base64-encoded ≥16 byte secret. Every other field has a sensible default exposed via {@link
+   * #defaults(byte[])}.
+   *
+   * @since 0.9.1
+   */
+  public record Config(
+      SecureRandom random,
+      byte[] pepper,
+      Duration ttl,
+      int maxAttempts,
+      int rateLimit,
+      Duration rateWindow) {
+    /** Compact constructor — validates pepper length and non-null fields. */
+    public Config {
+      Objects.requireNonNull(random, "random");
+      Objects.requireNonNull(pepper, "pepper");
+      Objects.requireNonNull(ttl, "ttl");
+      Objects.requireNonNull(rateWindow, "rateWindow");
+      if (pepper.length < 16) {
+        throw new IllegalArgumentException("pepper must be at least 16 bytes");
+      }
+    }
+
+    /**
+     * Returns a {@link Config} carrying the supplied pepper and the documented defaults for every
+     * other field.
+     *
+     * @param pepper server-side HMAC key; must be at least 16 bytes
+     * @since 0.9.1
+     */
+    public static Config defaults(byte[] pepper) {
+      return new Config(
+          new SecureRandom(),
+          pepper,
+          DEFAULT_TTL,
+          DEFAULT_MAX_ATTEMPTS,
+          DEFAULT_RATE_LIMIT,
+          DEFAULT_RATE_WINDOW);
+    }
   }
 }

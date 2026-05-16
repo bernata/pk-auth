@@ -60,7 +60,9 @@ public final class CeremonyWireMapper {
           new CeremonyResponse(
               409,
               errorBody(
-                  "duplicate_credential", "credentialId", Base64Url.encode(dc.credentialId())));
+                  "duplicate_credential",
+                  "credentialId",
+                  Base64Url.encode(dc.credentialId().value())));
       case RegistrationResult.InvalidPayload ip ->
           new CeremonyResponse(400, errorBody("invalid_payload", "detail", ip.detail()));
       case RegistrationResult.RateLimited rl ->
@@ -90,7 +92,7 @@ public final class CeremonyWireMapper {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("outcome", "success");
     body.put("userHandle", Base64Url.encode(success.userHandle().value()));
-    body.put("credentialId", Base64Url.encode(success.credentialId()));
+    body.put("credentialId", success.credentialId().b64url());
     if (label != null) {
       body.put("label", label);
     }
@@ -108,7 +110,10 @@ public final class CeremonyWireMapper {
       case AssertionResult.UnknownCredential uc ->
           new CeremonyResponse(
               404,
-              errorBody("unknown_credential", "credentialId", Base64Url.encode(uc.credentialId())));
+              errorBody(
+                  "unknown_credential",
+                  "credentialId",
+                  Base64Url.encode(uc.credentialId().value())));
       case AssertionResult.InvalidChallenge ic ->
           new CeremonyResponse(400, errorBody("invalid_challenge", "detail", ic.detail()));
       case AssertionResult.OriginMismatch om ->

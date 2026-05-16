@@ -12,7 +12,6 @@ import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
 import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
 import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationToken;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -122,7 +121,7 @@ public class PkAuthAdminController {
         adminService.completeEmailVerification(body == null ? "" : body.token());
     return switch (result) {
       case AdminResult.Success<UserHandle> s ->
-          ResponseEntity.ok(new EmailVerificationResult(Base64Url.encode(s.value().value())));
+          ResponseEntity.ok(new EmailVerificationResult(s.value()));
       default -> PkAuthAdminResultMapper.toResponse(result);
     };
   }

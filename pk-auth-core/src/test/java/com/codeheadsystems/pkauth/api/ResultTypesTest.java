@@ -53,13 +53,14 @@ class ResultTypesTest {
     assertThat(new RegistrationResult.AttestationRejected("fail").reason()).isEqualTo("fail");
     assertThat(new RegistrationResult.InvalidPayload("bad").detail()).isEqualTo("bad");
 
-    RegistrationResult.DuplicateCredential dup =
-        new RegistrationResult.DuplicateCredential(new byte[] {7, 8, 9});
-    assertThat(dup.credentialId()).containsExactly(7, 8, 9);
+    CredentialId credId = CredentialId.of(new byte[] {7, 8, 9});
+    RegistrationResult.DuplicateCredential dup = new RegistrationResult.DuplicateCredential(credId);
+    assertThat(dup.credentialId()).isEqualTo(credId);
     assertThat(dup)
-        .isEqualTo(new RegistrationResult.DuplicateCredential(new byte[] {7, 8, 9}))
-        .hasSameHashCodeAs(new RegistrationResult.DuplicateCredential(new byte[] {7, 8, 9}));
-    assertThat(dup.toString()).contains("070809");
+        .isEqualTo(
+            new RegistrationResult.DuplicateCredential(CredentialId.of(new byte[] {7, 8, 9})))
+        .hasSameHashCodeAs(
+            new RegistrationResult.DuplicateCredential(CredentialId.of(new byte[] {7, 8, 9})));
 
     assertThatThrownBy(() -> new RegistrationResult.InvalidChallenge(null))
         .isInstanceOf(NullPointerException.class);
@@ -68,32 +69,32 @@ class ResultTypesTest {
   @Test
   void assertionResultSuccessConstructionAndAccessors() {
     UserHandle uh = UserHandle.random();
+    CredentialId credId = CredentialId.of(new byte[] {10, 11});
     AssertionResult.Success success =
-        new AssertionResult.Success(uh, new byte[] {10, 11}, 42L, AssertionResult.CounterStatus.OK);
+        new AssertionResult.Success(uh, credId, 42L, AssertionResult.CounterStatus.OK);
 
     assertThat(success.userHandle()).isEqualTo(uh);
-    assertThat(success.credentialId()).containsExactly(10, 11);
+    assertThat(success.credentialId()).isEqualTo(credId);
     assertThat(success.signCount()).isEqualTo(42L);
     assertThat(success.counterStatus()).isEqualTo(AssertionResult.CounterStatus.OK);
     assertThat(success)
         .isEqualTo(
             new AssertionResult.Success(
-                uh, new byte[] {10, 11}, 42L, AssertionResult.CounterStatus.OK))
+                uh, CredentialId.of(new byte[] {10, 11}), 42L, AssertionResult.CounterStatus.OK))
         .hasSameHashCodeAs(
             new AssertionResult.Success(
-                uh, new byte[] {10, 11}, 42L, AssertionResult.CounterStatus.OK));
-    assertThat(success.toString()).contains("0a0b").contains("42");
+                uh, CredentialId.of(new byte[] {10, 11}), 42L, AssertionResult.CounterStatus.OK));
     assertThatThrownBy(
             () ->
                 new AssertionResult.Success(
-                    uh, new byte[] {0}, -1, AssertionResult.CounterStatus.OK))
+                    uh, CredentialId.of(new byte[] {0}), -1, AssertionResult.CounterStatus.OK))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
   void assertionResultVariantsExhaustiveSwitch() {
     AssertionResult[] cases = {
-      new AssertionResult.UnknownCredential(new byte[] {1}),
+      new AssertionResult.UnknownCredential(CredentialId.of(new byte[] {1})),
       new AssertionResult.InvalidChallenge("x"),
       new AssertionResult.OriginMismatch("a", "b"),
       new AssertionResult.CounterRegression(5, 4),
@@ -104,7 +105,8 @@ class ResultTypesTest {
       String tag =
           switch (r) {
             case AssertionResult.Success s -> "success";
-            case AssertionResult.UnknownCredential uc -> "unknown:" + uc.credentialId().length;
+            case AssertionResult.UnknownCredential uc ->
+                "unknown:" + uc.credentialId().value().length;
             case AssertionResult.InvalidChallenge ic -> "ic";
             case AssertionResult.OriginMismatch om -> "om";
             case AssertionResult.CounterRegression cr -> "cr:" + cr.stored() + "/" + cr.received();
@@ -116,10 +118,9 @@ class ResultTypesTest {
     }
 
     AssertionResult.UnknownCredential uc1 =
-        new AssertionResult.UnknownCredential(new byte[] {1, 2});
+        new AssertionResult.UnknownCredential(CredentialId.of(new byte[] {1, 2}));
     AssertionResult.UnknownCredential uc2 =
-        new AssertionResult.UnknownCredential(new byte[] {1, 2});
+        new AssertionResult.UnknownCredential(CredentialId.of(new byte[] {1, 2}));
     assertThat(uc1).isEqualTo(uc2).hasSameHashCodeAs(uc2);
-    assertThat(uc1.toString()).contains("0102");
   }
 }

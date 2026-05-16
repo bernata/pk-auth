@@ -25,7 +25,8 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>Adapters call {@link #resolve(Supplier, BooleanSupplier)} once during factory wiring and pass
- * the returned bytes to {@code new OtpService(..., pepper)}.
+ * the returned bytes to {@code OtpService.create(deps, pepper)} (or {@code
+ * OtpService.Config.defaults(pepper)}).
  *
  * @since 0.9.1
  */

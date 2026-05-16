@@ -13,7 +13,6 @@ import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
 import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthPasskeyPrincipal;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import io.dropwizard.auth.Auth;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -127,7 +126,7 @@ public class PkAuthAdminResource {
     AdminResult<UserHandle> result = adminService.completeEmailVerification(token);
     return switch (result) {
       case AdminResult.Success<UserHandle> s ->
-          Response.ok(new EmailVerificationResult(Base64Url.encode(s.value().value()))).build();
+          Response.ok(new EmailVerificationResult(s.value())).build();
       default -> PkAuthAdminResultMapper.toResponse(result);
     };
   }

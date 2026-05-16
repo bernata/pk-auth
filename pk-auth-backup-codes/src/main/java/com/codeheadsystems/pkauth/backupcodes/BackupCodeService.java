@@ -31,9 +31,11 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Verification is rate-limited via a {@link BackupCodeRateLimiter} (default: 5 attempts per user
  * per 60 seconds) to bound the CPU cost of the Argon2id work. Supply a custom {@link
- * BackupCodeRateLimiter} via {@link #BackupCodeService(BackupCodeRepository, ClockProvider,
- * BackupCodeRateLimiter)} to integrate with a shared (Redis/DB-backed) store in multi-instance
- * deployments.
+ * BackupCodeRateLimiter} via the {@link Dependencies} record (or {@link Config}) to integrate with
+ * a shared (Redis/DB-backed) store in multi-instance deployments.
+ *
+ * <p>Construct via {@link #create(Dependencies, Config)} (or {@link #create(Dependencies)} for the
+ * all-default case).
  */
 public final class BackupCodeService {
 
@@ -48,6 +50,15 @@ public final class BackupCodeService {
 
   /** Default window for the verify rate limit. */
   public static final Duration DEFAULT_RATE_WINDOW = Duration.ofSeconds(60);
+
+  /** Default Argon2id iterations. */
+  public static final int DEFAULT_ARGON2_ITERATIONS = 2;
+
+  /** Default Argon2id memory cost (KiB). */
+  public static final int DEFAULT_ARGON2_MEMORY = 65_536;
+
+  /** Default Argon2id parallelism. */
+  public static final int DEFAULT_ARGON2_PARALLELISM = 1;
 
   /**
    * A fixed throwaway Argon2id hash used for dummy verifications on consumed code slots so that
@@ -69,6 +80,7 @@ public final class BackupCodeService {
 
   private final BackupCodeRepository repository;
   private final ClockProvider clockProvider;
+  private final BackupCodeRateLimiter rateLimiter;
   private final SecureRandom random;
   private final Argon2 argon2;
   private final int iterations;
@@ -76,7 +88,6 @@ public final class BackupCodeService {
   private final int parallelism;
   private final int codeCount;
   private final int rateLimit;
-  private final BackupCodeRateLimiter rateLimiter;
 
   /**
    * Pluggable rate limiter for {@link #verify} calls.
@@ -125,95 +136,39 @@ public final class BackupCodeService {
     record RateLimited(int retryAfterSeconds) implements VerifyResult {}
   }
 
-  /**
-   * Production constructor: uses the default in-process rate limiter (5 verify attempts per user
-   * per 60 seconds).
-   */
-  public BackupCodeService(BackupCodeRepository repository, ClockProvider clockProvider) {
-    this(
-        repository,
-        clockProvider,
-        new InMemoryBackupCodeRateLimiter(DEFAULT_RATE_WINDOW),
-        new SecureRandom(),
-        Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id),
-        2,
-        65_536,
-        1,
-        DEFAULT_CODE_COUNT,
-        DEFAULT_RATE_LIMIT);
+  private BackupCodeService(Dependencies deps, Config config) {
+    this.repository = deps.repository();
+    this.clockProvider = deps.clockProvider();
+    this.rateLimiter = deps.rateLimiter();
+    this.random = config.random();
+    this.argon2 = config.argon2();
+    this.iterations = config.iterations();
+    this.memory = config.memory();
+    this.parallelism = config.parallelism();
+    this.codeCount = config.codeCount();
+    this.rateLimit = config.rateLimit();
   }
 
   /**
-   * Constructor that allows injection of a custom {@link BackupCodeRateLimiter} while keeping all
-   * other parameters at their defaults. Use this in multi-instance deployments where rate limits
-   * must be shared across replicas.
+   * Canonical factory: required collaborators in {@link Dependencies}, tunables in {@link Config}.
    *
-   * @param repository persistent store for backup code hashes
-   * @param clockProvider wall-clock source for timestamps and rate-window anchoring
-   * @param rateLimiter shared rate-limiter implementation; must be thread-safe
+   * @since 0.9.1
    */
-  public BackupCodeService(
-      BackupCodeRepository repository,
-      ClockProvider clockProvider,
-      BackupCodeRateLimiter rateLimiter) {
-    this(
-        repository,
-        clockProvider,
-        rateLimiter,
-        new SecureRandom(),
-        Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id),
-        2,
-        65_536,
-        1,
-        DEFAULT_CODE_COUNT,
-        DEFAULT_RATE_LIMIT);
+  public static BackupCodeService create(Dependencies deps, Config config) {
+    Objects.requireNonNull(deps, "deps");
+    Objects.requireNonNull(config, "config");
+    return new BackupCodeService(deps, config);
   }
 
-  /** Test seam allowing override of Argon2id parameters and the random source. */
-  public BackupCodeService(
-      BackupCodeRepository repository,
-      ClockProvider clockProvider,
-      SecureRandom random,
-      Argon2 argon2,
-      int iterations,
-      int memory,
-      int parallelism,
-      int codeCount) {
-    this(
-        repository,
-        clockProvider,
-        new InMemoryBackupCodeRateLimiter(DEFAULT_RATE_WINDOW),
-        random,
-        argon2,
-        iterations,
-        memory,
-        parallelism,
-        codeCount,
-        DEFAULT_RATE_LIMIT);
-  }
-
-  /** Full constructor used internally and by tests that need to override the rate limiter too. */
-  public BackupCodeService(
-      BackupCodeRepository repository,
-      ClockProvider clockProvider,
-      BackupCodeRateLimiter rateLimiter,
-      SecureRandom random,
-      Argon2 argon2,
-      int iterations,
-      int memory,
-      int parallelism,
-      int codeCount,
-      int rateLimit) {
-    this.repository = Objects.requireNonNull(repository, "repository");
-    this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
-    this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter");
-    this.random = Objects.requireNonNull(random, "random");
-    this.argon2 = Objects.requireNonNull(argon2, "argon2");
-    this.iterations = iterations;
-    this.memory = memory;
-    this.parallelism = parallelism;
-    this.codeCount = codeCount;
-    this.rateLimit = rateLimit;
+  /**
+   * Convenience overload that builds a {@link Config} with the documented defaults for every
+   * tunable.
+   *
+   * @since 0.9.1
+   */
+  public static BackupCodeService create(Dependencies deps) {
+    Objects.requireNonNull(deps, "deps");
+    return new BackupCodeService(deps, Config.defaults());
   }
 
   /**
@@ -349,6 +304,78 @@ public final class BackupCodeService {
       sb.append(ALPHABET[random.nextInt(ALPHABET.length)]);
     }
     return sb.toString();
+  }
+
+  /**
+   * Canonical holder of the required collaborators for {@link BackupCodeService}.
+   *
+   * <p>The {@code rateLimiter} defaults to {@link InMemoryBackupCodeRateLimiter} when constructed
+   * via {@link #of(BackupCodeRepository, ClockProvider)}; multi-instance deployments SHOULD supply
+   * a shared (Redis/DB-backed) implementation directly to the canonical constructor.
+   *
+   * @since 0.9.1
+   */
+  public record Dependencies(
+      BackupCodeRepository repository,
+      ClockProvider clockProvider,
+      BackupCodeRateLimiter rateLimiter) {
+    /** Compact constructor — enforces non-null on all required collaborators. */
+    public Dependencies {
+      Objects.requireNonNull(repository, "repository");
+      Objects.requireNonNull(clockProvider, "clockProvider");
+      Objects.requireNonNull(rateLimiter, "rateLimiter");
+    }
+
+    /**
+     * Convenience factory that wires {@link InMemoryBackupCodeRateLimiter} sized to {@link
+     * #DEFAULT_RATE_WINDOW}. Suitable only for dev / single-instance deployments.
+     *
+     * @since 0.9.1
+     */
+    public static Dependencies of(BackupCodeRepository repository, ClockProvider clockProvider) {
+      return new Dependencies(
+          repository, clockProvider, new InMemoryBackupCodeRateLimiter(DEFAULT_RATE_WINDOW));
+    }
+  }
+
+  /**
+   * Tunable configuration for {@link BackupCodeService}.
+   *
+   * <p>Every field has a documented default exposed via {@link #defaults()}. Tests override the
+   * Argon2id parameters and code count to keep wall-clock time low.
+   *
+   * @since 0.9.1
+   */
+  public record Config(
+      SecureRandom random,
+      Argon2 argon2,
+      int iterations,
+      int memory,
+      int parallelism,
+      int codeCount,
+      int rateLimit) {
+    /** Compact constructor — enforces non-null on object-typed fields. */
+    public Config {
+      Objects.requireNonNull(random, "random");
+      Objects.requireNonNull(argon2, "argon2");
+    }
+
+    /**
+     * Returns a {@link Config} with the documented production defaults for every field. Fresh
+     * {@link SecureRandom} and {@link Argon2} instances are created.
+     *
+     * @since 0.9.1
+     */
+    public static Config defaults() {
+      return new Config(
+          new SecureRandom(),
+          Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id),
+          DEFAULT_ARGON2_ITERATIONS,
+          DEFAULT_ARGON2_MEMORY,
+          DEFAULT_ARGON2_PARALLELISM,
+          DEFAULT_CODE_COUNT,
+          DEFAULT_RATE_LIMIT);
+    }
   }
 
   /**

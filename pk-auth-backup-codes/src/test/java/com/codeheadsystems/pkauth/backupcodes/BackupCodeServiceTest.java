@@ -33,17 +33,17 @@ class BackupCodeServiceTest {
     // Light Argon2 parameters to keep tests fast.
     Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
     service =
-        new BackupCodeService(
-            repository,
-            ClockProvider.fromClock(Clock.fixed(NOW, ZoneOffset.UTC)),
-            rateLimiter,
-            new SecureRandom(),
-            argon2,
-            /* iterations */ 1,
-            /* memory */ 1024,
-            /* parallelism */ 1,
-            /* codeCount */ 5,
-            /* rateLimit */ BackupCodeService.DEFAULT_RATE_LIMIT);
+        BackupCodeService.create(
+            new BackupCodeService.Dependencies(
+                repository, ClockProvider.fromClock(Clock.fixed(NOW, ZoneOffset.UTC)), rateLimiter),
+            new BackupCodeService.Config(
+                new SecureRandom(),
+                argon2,
+                /* iterations */ 1,
+                /* memory */ 1024,
+                /* parallelism */ 1,
+                /* codeCount */ 5,
+                /* rateLimit */ BackupCodeService.DEFAULT_RATE_LIMIT));
   }
 
   @Test

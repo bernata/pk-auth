@@ -71,22 +71,22 @@ public final class TestApplication extends Application<TestConfiguration> {
 
   @Override
   public void initialize(Bootstrap<TestConfiguration> bootstrap) {
-    state.backupCodeService = new BackupCodeService(state.backupCodes, state.clock);
+    state.backupCodeService =
+        BackupCodeService.create(BackupCodeService.Dependencies.of(state.backupCodes, state.clock));
     JwtKeyset keyset = JwtKeyset.hs256(new byte[32]);
     JwtConfig jwtConfig = JwtConfig.defaults("issuer-magic", "audience-magic");
     PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(jwtConfig, keyset, state.clock);
     PkAuthJwtValidator validator = new PkAuthJwtValidator(jwtConfig, keyset, state.clock);
     state.magicLinkService =
-        new MagicLinkService(
-            issuer,
-            validator,
-            new LoggingEmailSender(),
-            state.everything.users,
-            state.clock,
+        MagicLinkService.create(
+            MagicLinkService.Dependencies.of(
+                issuer, validator, new LoggingEmailSender(), state.everything.users, state.clock),
             "https://example.com");
     byte[] otpPepper = new byte[32];
     new java.security.SecureRandom().nextBytes(otpPepper);
-    state.otpService = new OtpService(state.otps, new LoggingSmsSender(), state.clock, otpPepper);
+    state.otpService =
+        OtpService.create(
+            OtpService.Dependencies.of(state.otps, new LoggingSmsSender(), state.clock), otpPepper);
     state.adminService =
         DefaultAdminService.create(
             new DefaultAdminService.Dependencies(
@@ -95,7 +95,9 @@ public final class TestApplication extends Application<TestConfiguration> {
                 state.backupCodeService,
                 state.magicLinkService,
                 state.otpService),
-            AdminAuthorizer.subjectScoped());
+            new DefaultAdminService.Config(
+                AdminAuthorizer.subjectScoped(),
+                com.codeheadsystems.pkauth.admin.AdminSafetyConfig.defaults()));
 
     PersistenceBindings persistence =
         PersistenceBindings.builder()

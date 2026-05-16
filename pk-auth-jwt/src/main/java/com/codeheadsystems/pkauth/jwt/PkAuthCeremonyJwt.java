@@ -40,7 +40,7 @@ public final class PkAuthCeremonyJwt {
     Objects.requireNonNull(success, "success");
     Objects.requireNonNull(issuer, "issuer");
     JwtClaims claims =
-        JwtClaims.forPasskey(success.userHandle(), success.credentialId(), ASSERTION_AMR);
+        JwtClaims.forPasskey(success.userHandle(), success.credentialId().value(), ASSERTION_AMR);
     return issuer.issue(claims);
   }
 }

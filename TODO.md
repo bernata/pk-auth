@@ -193,7 +193,7 @@ These pre-answer questions that would otherwise come up mid-implementation:
   `{error, detail}` schema so they match what the mappers emit.
 
 ### ⚠️ 13. Extract `CeremonyOrchestrator` / `AdminFlow` to remove ~600 lines of triplicated adapter code
-**Blocked:** not attempted in this run — deferred per user request to pause after Tier 2.
+**Not done:** agent-completed work in a worktree was unmerged due to conflicts and the worktree has since been deleted. Needs a fresh agent run against the current main HEAD.
 - Severity: **High** — [Maint #1, #3, #7]
 - Files: ceremony controllers (`PkAuthCeremonyController` x3 + Dropwizard's
   resource) and admin controllers / `PkAuthAdminResultMapper` x3 / inline
@@ -214,8 +214,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: extract `OtpPepperResolver.resolve(Supplier<String> configuredPepper, BooleanSupplier devMode)`
   to `pk-auth-otp`. Adapters become a two-line call.
 
-### ⚠️ 15. Decompose oversized `finishRegistration` and `finishAuthentication`
-**Blocked:** worktree merge conflicted heavily with Tier 1 changes to DefaultPasskeyAuthenticationService (rate limiter, enum leak fix). Agent work exists on branch `worktree-agent-a082f9cbecf7dd83a` (now removed). Re-do as a focused PR.
+### ✅ 15. Decompose oversized `finishRegistration` and `finishAuthentication`
+**Completed:** 2026-05-16 — extracted verifyRegistrationWithW4j / evaluateAttestation / persistRegistration helpers; finishAuthentication uses resolveCredential / verifyAssertionWithW4j / persistAssertion; narrowed catch from RuntimeException to webauthn4j-specific types.
 - Severity: **High** — [Maint #4]
 - File: `pk-auth-core/.../internal/DefaultPasskeyAuthenticationService.java:193-302` (110 lines), `:354-461` (108 lines).
 - Issue: each method does ~seven things and contradicts its own Javadoc's
@@ -280,8 +280,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   tooling can't help hosts find it.
 - Fix: add `boolean devMode` field and bind it; remove string-property reads.
 
-### ⚠️ 22. Stop using `byte[]` in result records — use `CredentialId` / `UserHandle`
-**Blocked:** not attempted in this run — deferred per user pause.
+### ✅ 22. Stop using `byte[]` in result records — use `CredentialId` / `UserHandle`
+**Completed:** 2026-05-16 — registered Jackson serializers for CredentialId/UserHandle in core + Dropwizard + Micronaut; switched AssertionResult.Success/UnknownCredential, RegistrationResult.DuplicateCredential, CredentialSummary, EmailVerificationResult to typed value classes; wire JSON unchanged.
 - Severity: **Med** — [API #10], [API #11], [API #17]
 - Files: `AssertionResult.java:34, 86`; `RegistrationResult.java:48`;
   `CredentialSummary.java:25-27`; `UserHandle.java`; `CeremonyWireMapper.java:75, 121`.
@@ -315,16 +315,16 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Result-type names align too: `*Result.Success` / `Invalid` /
   `AlreadyFinished` across the board.
 
-### ⚠️ 24. Unify service-construction patterns (single `create(Dependencies, Config)` factory)
-**Blocked:** worktree branch off c7064d1 conflicts heavily with Tier 1 SPI changes (MagicLinkService gained ConsumedJtiStore, BackupCodeRepository `consume` returns boolean, etc.). Agent work exists on branch `worktree-agent-a40954b7fe3a473f2`. Re-do as a focused PR after Tier 1 baseline settles.
+### ✅ 24. Unify service-construction patterns (single `create(Dependencies, Config)` factory)
+**Completed:** 2026-05-16 — OtpService/MagicLinkService/BackupCodeService/DefaultAdminService all expose `create(Dependencies, Config)` + convenience overload; old multi-arg constructors removed; all adapter wiring + tests updated. PasskeyAuthenticationServices.Builder kept as-is per task spec.
 - Severity: **Med** — [API #12] and [Maint #6]
 - Files: `OtpService` (2 ctors), `MagicLinkService` (3), `BackupCodeService` (4),
   `DefaultAdminService` (3 statics + `Dependencies`), `PasskeyAuthenticationServices`
   (Builder).
 - Fix: adopt `DefaultAdminService`'s "deps + optional config" idiom uniformly.
 
-### ⚠️ 25. Generalize `EmailSender` and `SmsSender` SPIs
-**Blocked:** worktree branch off c7064d1 conflicts with Tier 1. Agent work exists on branch `worktree-agent-a54b3074c291a9d8f`. Re-do as a focused PR.
+### ✅ 25. Generalize `EmailSender` and `SmsSender` SPIs
+**Completed:** 2026-05-16 — renamed `sendMagicLink`/`sendOtp` to `send`; added generic `MessageFormatter<C,M>` SPI in pk-auth-core; per-feature `Context`/`Message`/`DefaultFormatter` records; existing copy preserved.
 - Severity: **Med** — [API #14]
 - Files: `EmailSender.java:11` (`sendMagicLink(to, subject, body)`),
   `SmsSender.java:12` (`sendOtp(to, message)`).

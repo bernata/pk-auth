@@ -22,6 +22,7 @@ class CeremonyWireMapperTest {
   private static final UserHandle USER = UserHandle.of(new byte[] {1, 2, 3, 4});
   private static final byte[] CRED_ID = new byte[] {9, 9, 9, 9};
   private static final CredentialId CRED_ID_VALUE = CredentialId.of(CRED_ID);
+  private static final String CRED_ID_B64URL = Base64Url.encode(CRED_ID);
 
   @Test
   void registrationSuccessShape() {
@@ -53,11 +54,12 @@ class CeremonyWireMapperTest {
   @Test
   void registrationDuplicateIs409WithCredentialIdEcho() {
     CeremonyResponse r =
-        CeremonyWireMapper.forRegistration(new RegistrationResult.DuplicateCredential(CRED_ID));
+        CeremonyWireMapper.forRegistration(
+            new RegistrationResult.DuplicateCredential(CRED_ID_VALUE));
     assertThat(r.status()).isEqualTo(409);
     assertThat(r.body())
         .containsEntry("outcome", "duplicate_credential")
-        .containsEntry("credentialId", Base64Url.encode(CRED_ID));
+        .containsEntry("credentialId", CRED_ID_B64URL);
   }
 
   @Test
@@ -85,13 +87,13 @@ class CeremonyWireMapperTest {
   @Test
   void assertionSuccessIncludesToken() {
     AssertionResult.Success success =
-        new AssertionResult.Success(USER, CRED_ID, 42L, AssertionResult.CounterStatus.OK);
+        new AssertionResult.Success(USER, CRED_ID_VALUE, 42L, AssertionResult.CounterStatus.OK);
     CeremonyResponse r = CeremonyWireMapper.forAssertionSuccess(success, "the.jwt.token", "Phone");
     assertThat(r.status()).isEqualTo(200);
     assertThat(r.body())
         .containsEntry("outcome", "success")
         .containsEntry("userHandle", Base64Url.encode(USER.value()))
-        .containsEntry("credentialId", Base64Url.encode(CRED_ID))
+        .containsEntry("credentialId", CRED_ID_B64URL)
         .containsEntry("label", "Phone")
         .containsEntry("token", "the.jwt.token")
         .containsEntry("signCount", 42L);
@@ -100,7 +102,7 @@ class CeremonyWireMapperTest {
   @Test
   void assertionSuccessOmitsLabelWhenAbsent() {
     AssertionResult.Success success =
-        new AssertionResult.Success(USER, CRED_ID, 1L, AssertionResult.CounterStatus.OK);
+        new AssertionResult.Success(USER, CRED_ID_VALUE, 1L, AssertionResult.CounterStatus.OK);
     CeremonyResponse r = CeremonyWireMapper.forAssertionSuccess(success, "tok", null);
     assertThat(r.body()).doesNotContainKey("label").containsEntry("token", "tok");
   }
@@ -108,11 +110,11 @@ class CeremonyWireMapperTest {
   @Test
   void assertionUnknownCredentialIs404() {
     CeremonyResponse r =
-        CeremonyWireMapper.forAssertionError(new AssertionResult.UnknownCredential(CRED_ID));
+        CeremonyWireMapper.forAssertionError(new AssertionResult.UnknownCredential(CRED_ID_VALUE));
     assertThat(r.status()).isEqualTo(404);
     assertThat(r.body())
         .containsEntry("outcome", "unknown_credential")
-        .containsEntry("credentialId", Base64Url.encode(CRED_ID));
+        .containsEntry("credentialId", CRED_ID_B64URL);
   }
 
   @Test
@@ -145,7 +147,7 @@ class CeremonyWireMapperTest {
   @Test
   void forAssertionErrorRejectsSuccess() {
     AssertionResult.Success success =
-        new AssertionResult.Success(USER, CRED_ID, 0L, AssertionResult.CounterStatus.OK);
+        new AssertionResult.Success(USER, CRED_ID_VALUE, 0L, AssertionResult.CounterStatus.OK);
     assertThatThrownBy(() -> CeremonyWireMapper.forAssertionError(success))
         .isInstanceOf(IllegalArgumentException.class);
   }

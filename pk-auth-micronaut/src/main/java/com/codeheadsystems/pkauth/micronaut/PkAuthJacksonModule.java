@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.micronaut;
 
 import com.codeheadsystems.pkauth.api.ChallengeId;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -31,6 +32,8 @@ public class PkAuthJacksonModule {
     m.addDeserializer(byte[].class, new BytesDeserializer());
     m.addSerializer(UserHandle.class, new UserHandleSerializer());
     m.addDeserializer(UserHandle.class, new UserHandleDeserializer());
+    m.addSerializer(CredentialId.class, new CredentialIdSerializer());
+    m.addDeserializer(CredentialId.class, new CredentialIdDeserializer());
     m.addSerializer(ChallengeId.class, new ChallengeIdSerializer());
     m.addDeserializer(ChallengeId.class, new ChallengeIdDeserializer());
     return m;
@@ -64,6 +67,21 @@ public class PkAuthJacksonModule {
     @Override
     public UserHandle deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
       return new UserHandle(Base64Url.decode(p.getValueAsString()));
+    }
+  }
+
+  private static final class CredentialIdSerializer extends JsonSerializer<CredentialId> {
+    @Override
+    public void serialize(CredentialId value, JsonGenerator gen, SerializerProvider provider)
+        throws IOException {
+      gen.writeString(Base64Url.encode(value.value()));
+    }
+  }
+
+  private static final class CredentialIdDeserializer extends JsonDeserializer<CredentialId> {
+    @Override
+    public CredentialId deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+      return new CredentialId(Base64Url.decode(p.getValueAsString()));
     }
   }
 

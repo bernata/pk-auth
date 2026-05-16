@@ -282,112 +282,136 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       LOG.info("registration.finish rate-limited ip-bucket clientIp={}", clientIp);
       return outcome("registration", new RegistrationResult.RateLimited("ip"), start);
     }
-    try {
-      ChallengeValidation validation =
-          challengeValidator.validate(
-              ChallengeValidator.Ceremony.REGISTRATION,
-              req.challengeId(),
-              req.response().response().clientDataJSON());
-      if (!(validation instanceof ChallengeValidation.Valid valid)) {
-        return outcome("registration", mapRegistrationPreflight(validation), start);
-      }
-      ChallengeRecord challengeRecord = valid.record();
-      ClientDataJsonParser.ClientData clientData = valid.clientData();
-
-      var w4jRequest = WebAuthn4JConverters.toRegistrationRequest(req.response());
-      var serverProperty =
-          WebAuthn4JConverters.serverProperty(rpConfig, challengeRecord.challenge());
-      var w4jParams =
-          new RegistrationParameters(
-              serverProperty,
-              WebAuthn4JConverters.DEFAULT_PUB_KEY_PARAMS,
-              WebAuthn4JConverters.userVerificationRequired(ceremonyConfig.userVerification()),
-              /* userPresenceRequired */ true);
-
-      RegistrationData data;
-      // Attestation signature verification is intentionally non-strict in the default manager;
-      // BadSignatureException is not thrown here (see finding #41 / #3 for strict-mode opt-in).
-      try {
-        data = webAuthnManager.verify(w4jRequest, w4jParams);
-      } catch (DataConversionException ex) {
-        LOG.debug("registration.finish DataConversionException", ex);
-        return outcome("registration", new RegistrationResult.InvalidPayload(messageOf(ex)), start);
-      } catch (VerificationException ex) {
-        return outcome("registration", mapRegistrationException(ex, clientData), start);
-      }
-
-      AttestedCredentialData acd =
-          data.getAttestationObject().getAuthenticatorData().getAttestedCredentialData();
-      if (acd == null) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidPayload("attested credential data missing"),
-            start);
-      }
-
-      AttestationTrustPolicy.Decision policyDecision =
-          attestationTrustPolicy.evaluate(
-              new AttestationTrustPolicy.AttestationData(
-                  acd.getAaguid() == null ? null : acd.getAaguid().getValue(),
-                  data.getAttestationObject().getFormat(),
-                  ceremonyConfig.attestationConveyance()));
-      if (policyDecision instanceof AttestationTrustPolicy.Decision.Rejected rej) {
-        return outcome(
-            "registration", new RegistrationResult.AttestationRejected(rej.reason()), start);
-      }
-
-      CredentialId acdCredentialId = CredentialId.of(acd.getCredentialId());
-      if (credentialRepository.findByCredentialId(acdCredentialId).isPresent()) {
-        return outcome(
-            "registration",
-            new RegistrationResult.DuplicateCredential(acd.getCredentialId()),
-            start);
-      }
-
-      var authData = data.getAttestationObject().getAuthenticatorData();
-      byte[] coseBytes = WebAuthn4JConverters.serializeCoseKey(acd.getCOSEKey(), objectConverter);
-      UUID aaguidUuid = AAGUID.ZERO.equals(acd.getAaguid()) ? null : acd.getAaguid().getValue();
-
-      Set<Transport> transports = EnumSet.noneOf(Transport.class);
-      if (data.getTransports() != null) {
-        data.getTransports()
-            .forEach(t -> Transport.fromWire(t.getValue()).ifPresent(transports::add));
-      }
-
-      Instant now = clockProvider.now();
-      CredentialRecord stored2 =
-          new CredentialRecord(
-              acdCredentialId,
-              challengeRecord.userHandle() != null
-                  ? challengeRecord.userHandle()
-                  : userLookup.getOrCreateHandle(UserLookup.USERNAMELESS_KEY),
-              coseBytes,
-              authData.getSignCount(),
-              labelOrDefault(req.label()),
-              aaguidUuid,
-              transports,
-              authData.isFlagBE(),
-              authData.isFlagBS(),
-              now,
-              null);
-      credentialRepository.save(stored2);
-
-      AuthenticatorData ourAuthData =
-          new AuthenticatorData(
-              new byte[0],
-              authData.isFlagUP(),
-              authData.isFlagUV(),
-              authData.isFlagBE(),
-              authData.isFlagBS(),
-              authData.isFlagAT(),
-              authData.isFlagED(),
-              authData.getSignCount());
-
-      return outcome("registration", new RegistrationResult.Success(stored2, ourAuthData), start);
-    } catch (RuntimeException ex) {
-      LOG.warn("registration.finish unexpected error", ex);
-      return outcome("registration", new RegistrationResult.InvalidPayload(messageOf(ex)), start);
+    // Step 1: challenge / origin / ceremony-type preflight.
+    ChallengeValidation validation =
+        challengeValidator.validate(
+            ChallengeValidator.Ceremony.REGISTRATION,
+            req.challengeId(),
+            req.response().response().clientDataJSON());
+    if (!(validation instanceof ChallengeValidation.Valid valid)) {
+      return outcome("registration", mapRegistrationPreflight(validation), start);
     }
+
+    // Step 2: WebAuthn4J cryptographic verification.
+    RegistrationData data;
+    try {
+      data = verifyRegistrationWithW4j(req, valid.record());
+    } catch (DataConversionException ex) {
+      LOG.debug("registration.finish DataConversionException", ex);
+      return outcome("registration", new RegistrationResult.InvalidPayload(messageOf(ex)), start);
+    } catch (VerificationException ex) {
+      return outcome("registration", mapRegistrationException(ex, valid.clientData()), start);
+    }
+
+    // Step 3: attestation policy + duplicate-credential check.
+    RegistrationResult evaluation = evaluateAttestation(data);
+    if (evaluation != null) {
+      return outcome("registration", evaluation, start);
+    }
+
+    // Step 4: persist the new credential and build the success result.
+    return outcome("registration", persistRegistration(req, valid.record(), data), start);
+  }
+
+  /**
+   * Hands the registration response off to WebAuthn4J for cryptographic verification. Throws the
+   * WebAuthn4J exception types the caller maps to specific result variants; programming errors
+   * propagate.
+   */
+  private RegistrationData verifyRegistrationWithW4j(
+      FinishRegistrationRequest req, ChallengeRecord challengeRecord) {
+    var w4jRequest = WebAuthn4JConverters.toRegistrationRequest(req.response());
+    var serverProperty = WebAuthn4JConverters.serverProperty(rpConfig, challengeRecord.challenge());
+    var w4jParams =
+        new RegistrationParameters(
+            serverProperty,
+            WebAuthn4JConverters.DEFAULT_PUB_KEY_PARAMS,
+            WebAuthn4JConverters.userVerificationRequired(ceremonyConfig.userVerification()),
+            /* userPresenceRequired */ true);
+    // Attestation signature verification is intentionally non-strict in the default manager;
+    // BadSignatureException is not thrown here (see finding #41 / #3 for strict-mode opt-in).
+    return webAuthnManager.verify(w4jRequest, w4jParams);
+  }
+
+  /**
+   * Validates the attested credential data against the configured {@link AttestationTrustPolicy}
+   * and rejects duplicates already stored. Returns the failure result to emit, or {@code null} when
+   * the registration should proceed to persistence.
+   */
+  private @Nullable RegistrationResult evaluateAttestation(RegistrationData data) {
+    AttestedCredentialData acd =
+        data.getAttestationObject().getAuthenticatorData().getAttestedCredentialData();
+    if (acd == null) {
+      return new RegistrationResult.InvalidPayload("attested credential data missing");
+    }
+
+    AttestationTrustPolicy.Decision policyDecision =
+        attestationTrustPolicy.evaluate(
+            new AttestationTrustPolicy.AttestationData(
+                acd.getAaguid() == null ? null : acd.getAaguid().getValue(),
+                data.getAttestationObject().getFormat(),
+                ceremonyConfig.attestationConveyance()));
+    if (policyDecision instanceof AttestationTrustPolicy.Decision.Rejected rej) {
+      return new RegistrationResult.AttestationRejected(rej.reason());
+    }
+
+    CredentialId acdCredentialId = CredentialId.of(acd.getCredentialId());
+    if (credentialRepository.findByCredentialId(acdCredentialId).isPresent()) {
+      return new RegistrationResult.DuplicateCredential(acdCredentialId);
+    }
+    return null;
+  }
+
+  /**
+   * Builds and saves the {@link CredentialRecord} for the just-verified registration and returns
+   * the {@link RegistrationResult.Success} variant.
+   */
+  private RegistrationResult persistRegistration(
+      FinishRegistrationRequest req, ChallengeRecord challengeRecord, RegistrationData data) {
+    AttestedCredentialData acd =
+        data.getAttestationObject().getAuthenticatorData().getAttestedCredentialData();
+    CredentialId acdCredentialId = CredentialId.of(acd.getCredentialId());
+
+    var authData = data.getAttestationObject().getAuthenticatorData();
+    byte[] coseBytes = WebAuthn4JConverters.serializeCoseKey(acd.getCOSEKey(), objectConverter);
+    UUID aaguidUuid = AAGUID.ZERO.equals(acd.getAaguid()) ? null : acd.getAaguid().getValue();
+
+    Set<Transport> transports = EnumSet.noneOf(Transport.class);
+    if (data.getTransports() != null) {
+      data.getTransports()
+          .forEach(t -> Transport.fromWire(t.getValue()).ifPresent(transports::add));
+    }
+
+    Instant now = clockProvider.now();
+    CredentialRecord stored2 =
+        new CredentialRecord(
+            acdCredentialId,
+            challengeRecord.userHandle() != null
+                ? challengeRecord.userHandle()
+                : userLookup.getOrCreateHandle(UserLookup.USERNAMELESS_KEY),
+            coseBytes,
+            authData.getSignCount(),
+            labelOrDefault(req.label()),
+            aaguidUuid,
+            transports,
+            authData.isFlagBE(),
+            authData.isFlagBS(),
+            now,
+            null);
+    credentialRepository.save(stored2);
+
+    AuthenticatorData ourAuthData =
+        new AuthenticatorData(
+            new byte[0],
+            authData.isFlagUP(),
+            authData.isFlagUV(),
+            authData.isFlagBE(),
+            authData.isFlagBS(),
+            authData.isFlagAT(),
+            authData.isFlagED(),
+            authData.getSignCount());
+
+    return new RegistrationResult.Success(stored2, ourAuthData);
   }
 
   // -- Authentication --------------------------------------------------------------------------
@@ -459,112 +483,157 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       LOG.info("authentication.finish rate-limited ip-bucket clientIp={}", clientIp);
       return outcomeAssertion(new AssertionResult.RateLimited("ip"), start);
     }
+    // Step 1: challenge / origin / ceremony-type preflight.
+    ChallengeValidation validation =
+        challengeValidator.validate(
+            ChallengeValidator.Ceremony.AUTHENTICATION,
+            req.challengeId(),
+            req.response().response().clientDataJSON());
+    if (!(validation instanceof ChallengeValidation.Valid valid)) {
+      return outcomeAssertion(mapAssertionPreflight(validation), start);
+    }
+
+    // Step 2: locate the credential and verify it belongs to the asserted user.
+    CredentialResolution resolution = resolveCredential(req, valid.record());
+    if (resolution.failure() != null) {
+      return outcomeAssertion(resolution.failure(), start);
+    }
+    CredentialRecord cred = resolution.credential();
+    CredentialId credentialId = CredentialId.of(req.response().rawId());
+
+    // Step 3: WebAuthn4J cryptographic verification of the assertion.
+    AuthenticationData data;
     try {
-      ChallengeValidation validation =
-          challengeValidator.validate(
-              ChallengeValidator.Ceremony.AUTHENTICATION,
-              req.challengeId(),
-              req.response().response().clientDataJSON());
-      if (!(validation instanceof ChallengeValidation.Valid valid)) {
-        return outcomeAssertion(mapAssertionPreflight(validation), start);
-      }
-      ChallengeRecord challengeRecord = valid.record();
-      ClientDataJsonParser.ClientData clientData = valid.clientData();
-
-      byte[] credentialId = req.response().rawId();
-      CredentialId credentialIdValue;
-      try {
-        credentialIdValue = CredentialId.of(credentialId);
-      } catch (IllegalArgumentException ex) {
-        // Empty rawId — treat as an unknown credential rather than crash.
-        return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
-      }
-      Optional<CredentialRecord> credOpt =
-          credentialRepository.findByCredentialId(credentialIdValue);
-      if (credOpt.isEmpty()) {
-        return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
-      }
-      CredentialRecord cred = credOpt.get();
-
-      // Fix #18: bind the asserted credential to the start-time user handle (if the start request
-      // named a user) and to the WebAuthn response's userHandle (if the authenticator returned
-      // one).
-      // The sealed AssertionResult hierarchy has no dedicated "credential mismatch" variant; treat
-      // a wrong-owner credential as if it were unknown — same wire response, same metrics bucket.
-      if (challengeRecord.userHandle() != null
-          && !challengeRecord.userHandle().equals(cred.userHandle())) {
-        LOG.warn(
-            "authentication.finish credential userHandle does not match start-time userHandle"
-                + " credId={}",
-            shortCredId(credentialId));
-        return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
-      }
-      byte[] responseUserHandle = req.response().response().userHandle();
-      if (responseUserHandle != null && responseUserHandle.length > 0) {
-        UserHandle asserted;
-        try {
-          asserted = UserHandle.of(responseUserHandle);
-        } catch (IllegalArgumentException ex) {
-          // Malformed handle (wrong length) — treat as unknown credential rather than crash.
-          return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
-        }
-        if (!asserted.equals(cred.userHandle())) {
-          LOG.warn(
-              "authentication.finish response.userHandle does not match credential userHandle"
-                  + " credId={}",
-              shortCredId(credentialId));
-          return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
-        }
-      }
-
-      var w4jRequest = WebAuthn4JConverters.toAuthenticationRequest(req.response());
-      var serverProperty =
-          WebAuthn4JConverters.serverProperty(rpConfig, challengeRecord.challenge());
-      var w4jCred = WebAuthn4JConverters.toW4jCredentialRecord(cred, objectConverter);
-      var w4jParams =
-          new AuthenticationParameters(
-              serverProperty,
-              w4jCred,
-              /* allowCredentials */ null,
-              WebAuthn4JConverters.userVerificationRequired(ceremonyConfig.userVerification()),
-              /* userPresenceRequired */ true);
-
-      AuthenticationData data;
-      try {
-        data = webAuthnManager.verify(w4jRequest, w4jParams);
-      } catch (DataConversionException ex) {
-        return outcomeAssertion(new AssertionResult.InvalidChallenge(messageOf(ex)), start);
-      } catch (MaliciousCounterValueException ex) {
-        return handleCounterRegression(cred, ex.getPresentedCounter(), start);
-      } catch (UserNotVerifiedException ex) {
-        return outcomeAssertion(new AssertionResult.UserVerificationRequired(), start);
-      } catch (UserNotPresentException ex) {
-        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
-      } catch (BadSignatureException ex) {
-        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
-      } catch (BadOriginException ex) {
-        return outcomeAssertion(
-            new AssertionResult.OriginMismatch(rpConfig.origins().toString(), clientData.origin()),
-            start);
-      } catch (BadChallengeException | MissingChallengeException ex) {
-        return outcomeAssertion(new AssertionResult.InvalidChallenge(messageOf(ex)), start);
-      } catch (BadRpIdException ex) {
-        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
-      } catch (VerificationException ex) {
-        return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
-      }
-
-      long newSignCount = data.getAuthenticatorData().getSignCount();
-      credentialRepository.updateSignCount(credentialIdValue, newSignCount, clockProvider.now());
-
+      data = verifyAssertionWithW4j(req, valid.record(), cred);
+    } catch (DataConversionException ex) {
+      return outcomeAssertion(new AssertionResult.InvalidChallenge(messageOf(ex)), start);
+    } catch (MaliciousCounterValueException ex) {
+      return handleCounterRegression(cred, ex.getPresentedCounter(), start);
+    } catch (UserNotVerifiedException ex) {
+      return outcomeAssertion(new AssertionResult.UserVerificationRequired(), start);
+    } catch (UserNotPresentException ex) {
+      return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+    } catch (BadSignatureException ex) {
+      return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+    } catch (BadOriginException ex) {
       return outcomeAssertion(
-          new AssertionResult.Success(
-              cred.userHandle(), credentialId, newSignCount, AssertionResult.CounterStatus.OK),
+          new AssertionResult.OriginMismatch(
+              rpConfig.origins().toString(), valid.clientData().origin()),
           start);
-    } catch (RuntimeException ex) {
-      LOG.warn("authentication.finish unexpected error", ex);
+    } catch (BadChallengeException | MissingChallengeException ex) {
+      return outcomeAssertion(new AssertionResult.InvalidChallenge(messageOf(ex)), start);
+    } catch (BadRpIdException ex) {
+      return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
+    } catch (VerificationException ex) {
       return outcomeAssertion(new AssertionResult.InvalidSignature(), start);
     }
+
+    // Step 4: persist the updated sign count and build the success result.
+    return outcomeAssertion(persistAssertion(cred, credentialId, data), start);
+  }
+
+  /**
+   * Holds the outcome of {@link #resolveCredential(FinishAuthenticationRequest, ChallengeRecord)}.
+   * Exactly one of {@code credential} / {@code failure} is non-null.
+   */
+  private record CredentialResolution(
+      @Nullable CredentialRecord credential, @Nullable AssertionResult failure) {
+    static CredentialResolution success(CredentialRecord cred) {
+      return new CredentialResolution(cred, null);
+    }
+
+    static CredentialResolution failed(AssertionResult result) {
+      return new CredentialResolution(null, result);
+    }
+  }
+
+  /**
+   * Parses the asserted credential id, looks up the stored record, and binds the assertion to the
+   * start-time user handle (when present) and the response's user handle (when returned). Any
+   * mismatch produces an {@link AssertionResult.UnknownCredential} so a wrong-owner credential
+   * cannot be distinguished from a truly unknown one.
+   */
+  private CredentialResolution resolveCredential(
+      FinishAuthenticationRequest req, ChallengeRecord challengeRecord) {
+    byte[] credentialId = req.response().rawId();
+    CredentialId credentialIdValue;
+    try {
+      credentialIdValue = CredentialId.of(credentialId);
+    } catch (IllegalArgumentException ex) {
+      // Empty rawId — substitute a sentinel CredentialId; wire response is still 404.
+      return CredentialResolution.failed(
+          new AssertionResult.UnknownCredential(CredentialId.of(new byte[] {0})));
+    }
+    Optional<CredentialRecord> credOpt = credentialRepository.findByCredentialId(credentialIdValue);
+    if (credOpt.isEmpty()) {
+      return CredentialResolution.failed(new AssertionResult.UnknownCredential(credentialIdValue));
+    }
+    CredentialRecord cred = credOpt.get();
+
+    // Fix #18: bind the asserted credential to the start-time user handle (if the start request
+    // named a user) and to the WebAuthn response's userHandle (if the authenticator returned one).
+    // The sealed AssertionResult hierarchy has no dedicated "credential mismatch" variant; treat
+    // a wrong-owner credential as if it were unknown — same wire response, same metrics bucket.
+    if (challengeRecord.userHandle() != null
+        && !challengeRecord.userHandle().equals(cred.userHandle())) {
+      LOG.warn(
+          "authentication.finish credential userHandle does not match start-time userHandle"
+              + " credId={}",
+          shortCredId(credentialId));
+      return CredentialResolution.failed(new AssertionResult.UnknownCredential(credentialIdValue));
+    }
+    byte[] responseUserHandle = req.response().response().userHandle();
+    if (responseUserHandle != null && responseUserHandle.length > 0) {
+      UserHandle asserted;
+      try {
+        asserted = UserHandle.of(responseUserHandle);
+      } catch (IllegalArgumentException ex) {
+        // Malformed handle (wrong length) — treat as unknown credential rather than crash.
+        return CredentialResolution.failed(
+            new AssertionResult.UnknownCredential(credentialIdValue));
+      }
+      if (!asserted.equals(cred.userHandle())) {
+        LOG.warn(
+            "authentication.finish response.userHandle does not match credential userHandle"
+                + " credId={}",
+            shortCredId(credentialId));
+        return CredentialResolution.failed(
+            new AssertionResult.UnknownCredential(credentialIdValue));
+      }
+    }
+    return CredentialResolution.success(cred);
+  }
+
+  /**
+   * Hands the assertion response off to WebAuthn4J for cryptographic verification. Throws the
+   * WebAuthn4J exception types the caller maps to specific result variants; programming errors
+   * propagate.
+   */
+  private AuthenticationData verifyAssertionWithW4j(
+      FinishAuthenticationRequest req, ChallengeRecord challengeRecord, CredentialRecord cred) {
+    var w4jRequest = WebAuthn4JConverters.toAuthenticationRequest(req.response());
+    var serverProperty = WebAuthn4JConverters.serverProperty(rpConfig, challengeRecord.challenge());
+    var w4jCred = WebAuthn4JConverters.toW4jCredentialRecord(cred, objectConverter);
+    var w4jParams =
+        new AuthenticationParameters(
+            serverProperty,
+            w4jCred,
+            /* allowCredentials */ null,
+            WebAuthn4JConverters.userVerificationRequired(ceremonyConfig.userVerification()),
+            /* userPresenceRequired */ true);
+    return webAuthnManager.verify(w4jRequest, w4jParams);
+  }
+
+  /**
+   * Persists the post-assertion sign-count update and returns the {@link AssertionResult.Success}
+   * variant.
+   */
+  private AssertionResult persistAssertion(
+      CredentialRecord cred, CredentialId credentialId, AuthenticationData data) {
+    long newSignCount = data.getAuthenticatorData().getSignCount();
+    credentialRepository.updateSignCount(cred.credentialId(), newSignCount, clockProvider.now());
+    return new AssertionResult.Success(
+        cred.userHandle(), credentialId, newSignCount, AssertionResult.CounterStatus.OK);
   }
 
   // -- Helpers ---------------------------------------------------------------------------------
@@ -644,7 +713,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
           elapsed.toMillis());
       return new AssertionResult.Success(
           cred.userHandle(),
-          cred.credentialId().value(),
+          cred.credentialId(),
           cred.signCount(),
           AssertionResult.CounterStatus.REGRESSED_WARN);
     }

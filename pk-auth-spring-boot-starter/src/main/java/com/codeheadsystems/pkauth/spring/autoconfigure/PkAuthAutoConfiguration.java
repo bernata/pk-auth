@@ -274,7 +274,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   public BackupCodeService pkAuthBackupCodeService(
       BackupCodeRepository repo, ClockProvider clockProvider) {
-    return new BackupCodeService(repo, clockProvider);
+    return BackupCodeService.create(BackupCodeService.Dependencies.of(repo, clockProvider));
   }
 
   @Bean
@@ -289,7 +289,9 @@ public class PkAuthAutoConfiguration {
     // baseUrl for the magic link uses the configured RP origin's first entry. Demo apps that
     // serve at a different path override the service bean explicitly.
     String baseUrl = props.relyingParty().origins().iterator().next();
-    return new MagicLinkService(issuer, validator, emailSender, userLookup, clockProvider, baseUrl);
+    return MagicLinkService.create(
+        MagicLinkService.Dependencies.of(issuer, validator, emailSender, userLookup, clockProvider),
+        baseUrl);
   }
 
   @Bean
@@ -300,6 +302,6 @@ public class PkAuthAutoConfiguration {
       ClockProvider clockProvider,
       PkAuthProperties props) {
     byte[] pepper = OtpPepperResolver.resolve(() -> props.otp().pepper(), props::devMode);
-    return new OtpService(repo, smsSender, clockProvider, pepper);
+    return OtpService.create(OtpService.Dependencies.of(repo, smsSender, clockProvider), pepper);
   }
 }

@@ -41,15 +41,18 @@ class MagicLinkServiceTest {
     JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
     ClockProvider clock = ClockProvider.fromClock(Clock.fixed(NOW, ZoneOffset.UTC));
     service =
-        new MagicLinkService(
-            new PkAuthJwtIssuer(config, keyset, clock),
-            new PkAuthJwtValidator(config, keyset, clock),
-            emails,
-            users,
-            clock,
-            BASE_URL,
-            5,
-            new MagicLinkService.InMemoryRateLimiter(Duration.ofHours(1)));
+        MagicLinkService.create(
+            MagicLinkService.Dependencies.of(
+                new PkAuthJwtIssuer(config, keyset, clock),
+                new PkAuthJwtValidator(config, keyset, clock),
+                emails,
+                users,
+                clock),
+            new MagicLinkService.Config(
+                BASE_URL,
+                5,
+                new MagicLinkService.InMemoryRateLimiter(Duration.ofHours(1)),
+                MagicLinkService.DEFAULT_CONSUMED_JTI_TTL));
   }
 
   @Test
@@ -126,7 +129,7 @@ class MagicLinkServiceTest {
 
   @Test
   void loggingSenderIsNoOp() {
-    new LoggingEmailSender().sendMagicLink("a@example.com", "subj", "body");
+    new LoggingEmailSender().send("a@example.com", "subj", "body");
   }
 
   /** Captures emails for inspection. */
@@ -134,7 +137,7 @@ class MagicLinkServiceTest {
     private final List<Sent> sent = new ArrayList<>();
 
     @Override
-    public void sendMagicLink(String to, String subject, String body) {
+    public void send(String to, String subject, String body) {
       sent.add(new Sent(to, subject, body));
     }
 

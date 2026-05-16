@@ -41,16 +41,16 @@ class OtpServiceTest {
     repository = new InMemoryOtpRepository();
     sms = new RecordingSmsSender();
     service =
-        new OtpService(
-            repository,
-            sms,
-            ClockProvider.fromClock(Clock.fixed(NOW, ZoneOffset.UTC)),
-            new SecureRandom(),
-            TEST_PEPPER,
-            Duration.ofMinutes(5),
-            3,
-            3,
-            Duration.ofMinutes(15));
+        OtpService.create(
+            OtpService.Dependencies.of(
+                repository, sms, ClockProvider.fromClock(Clock.fixed(NOW, ZoneOffset.UTC))),
+            new OtpService.Config(
+                new SecureRandom(),
+                TEST_PEPPER,
+                Duration.ofMinutes(5),
+                3,
+                3,
+                Duration.ofMinutes(15)));
   }
 
   @Test
@@ -103,23 +103,26 @@ class OtpServiceTest {
     service.send(USER, PHONE);
     String code = sms.lastCode();
     OtpService advanced =
-        new OtpService(
-            repository,
-            sms,
-            ClockProvider.fromClock(Clock.fixed(NOW.plus(Duration.ofMinutes(10)), ZoneOffset.UTC)),
-            new SecureRandom(),
-            TEST_PEPPER,
-            Duration.ofMinutes(5),
-            3,
-            3,
-            Duration.ofMinutes(15));
+        OtpService.create(
+            OtpService.Dependencies.of(
+                repository,
+                sms,
+                ClockProvider.fromClock(
+                    Clock.fixed(NOW.plus(Duration.ofMinutes(10)), ZoneOffset.UTC))),
+            new OtpService.Config(
+                new SecureRandom(),
+                TEST_PEPPER,
+                Duration.ofMinutes(5),
+                3,
+                3,
+                Duration.ofMinutes(15)));
     assertThat(advanced.verify(USER, PHONE, code))
         .isInstanceOf(OtpService.VerifyResult.Expired.class);
   }
 
   @Test
   void smsSendersDoNotThrowForLoggingFlavor() {
-    new LoggingSmsSender().sendOtp(PHONE, "test");
+    new LoggingSmsSender().send(PHONE, "test");
   }
 
   @Test
@@ -140,8 +143,8 @@ class OtpServiceTest {
     private final List<Sent> messages = new ArrayList<>();
 
     @Override
-    public void sendOtp(String phoneE164, String message) {
-      messages.add(new Sent(phoneE164, message));
+    public void send(String phoneE164, String body) {
+      messages.add(new Sent(phoneE164, body));
     }
 
     String lastCode() {

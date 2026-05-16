@@ -144,7 +144,7 @@ public class PkAuthFactory {
 
   @Singleton
   BackupCodeService backupCodeService(BackupCodeRepository repo, ClockProvider clock) {
-    return new BackupCodeService(repo, clock);
+    return BackupCodeService.create(BackupCodeService.Dependencies.of(repo, clock));
   }
 
   /**
@@ -177,15 +177,16 @@ public class PkAuthFactory {
       EmailSender emailSender,
       UserLookup userLookup,
       ClockProvider clock) {
-    return new MagicLinkService(
-        issuer, validator, emailSender, userLookup, clock, "http://localhost:8080/auth/magic");
+    return MagicLinkService.create(
+        MagicLinkService.Dependencies.of(issuer, validator, emailSender, userLookup, clock),
+        "http://localhost:8080/auth/magic");
   }
 
   @Singleton
   OtpService otpService(
       OtpRepository repo, SmsSender sms, ClockProvider clock, PkAuthConfiguration config) {
     byte[] pepper = OtpPepperResolver.resolve(() -> config.getOtp().getPepper(), config::isDevMode);
-    return new OtpService(repo, sms, clock, pepper);
+    return OtpService.create(OtpService.Dependencies.of(repo, sms, clock), pepper);
   }
 
   @Singleton

@@ -4,7 +4,6 @@ package com.codeheadsystems.pkauth.spring.web;
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper.CeremonyResponse;
-import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.RegistrationResult;
@@ -14,7 +13,6 @@ import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
 import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.jwt.PkAuthCeremonyJwt;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.spi.CeremonyRateLimitedException;
@@ -105,13 +103,13 @@ public class PkAuthCeremonyController {
       // between assertion and now (rare race), we fall back to a null label rather than 500.
       String label =
           credentialRepository
-              .findByCredentialId(CredentialId.of(success.credentialId()))
+              .findByCredentialId(success.credentialId())
               .map(CredentialRecord::label)
               .orElse(null);
       LOG.info(
           "auth.authentication.success user={} credentialId={} signCount={}",
           success.userHandle(),
-          Base64Url.encode(success.credentialId()),
+          success.credentialId().b64url(),
           success.signCount());
       CeremonyResponse wire = CeremonyWireMapper.forAssertionSuccess(success, token, label);
       return ResponseEntity.status(wire.status()).body(wire.body());

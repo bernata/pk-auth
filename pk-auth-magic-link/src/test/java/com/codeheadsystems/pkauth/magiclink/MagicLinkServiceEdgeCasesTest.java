@@ -71,16 +71,18 @@ class MagicLinkServiceEdgeCasesTest {
     JwtKeyset keyset = JwtKeyset.hs256(secret);
     JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
     ClockProvider clock = ClockProvider.fromClock(Clock.fixed(NOW, ZoneOffset.UTC));
-    return new MagicLinkService(
-        new PkAuthJwtIssuer(config, keyset, clock),
-        new PkAuthJwtValidator(config, keyset, clock),
-        (to, subj, body) -> {},
-        lookup,
-        clock,
-        BASE_URL,
-        5,
-        new MagicLinkService.InMemoryRateLimiter(Duration.ofHours(1)),
-        consumedJtiTtl);
+    return MagicLinkService.create(
+        MagicLinkService.Dependencies.of(
+            new PkAuthJwtIssuer(config, keyset, clock),
+            new PkAuthJwtValidator(config, keyset, clock),
+            (to, subj, body) -> {},
+            lookup,
+            clock),
+        new MagicLinkService.Config(
+            BASE_URL,
+            5,
+            new MagicLinkService.InMemoryRateLimiter(Duration.ofHours(1)),
+            consumedJtiTtl));
   }
 
   @Test

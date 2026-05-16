@@ -3,8 +3,6 @@ package com.codeheadsystems.pkauth.api;
 
 import com.codeheadsystems.pkauth.credential.AuthenticatorData;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
-import java.util.Arrays;
-import java.util.HexFormat;
 import java.util.Objects;
 
 /**
@@ -44,32 +42,17 @@ public sealed interface RegistrationResult {
     }
   }
 
-  /** A credential with the same id is already registered. */
-  record DuplicateCredential(byte[] credentialId) implements RegistrationResult {
+  /**
+   * A credential with the same id is already registered.
+   *
+   * <p>The {@code credentialId} component is the type-safe {@link CredentialId} value class (was
+   * raw {@code byte[]} prior to 0.9.1).
+   *
+   * @since 0.9.1
+   */
+  record DuplicateCredential(CredentialId credentialId) implements RegistrationResult {
     public DuplicateCredential {
       Objects.requireNonNull(credentialId, "credentialId");
-      credentialId = credentialId.clone();
-    }
-
-    @Override
-    public byte[] credentialId() {
-      return credentialId.clone();
-    }
-
-    @Override
-    public boolean equals(Object o) {
-      return o instanceof DuplicateCredential other
-          && Arrays.equals(this.credentialId, other.credentialId);
-    }
-
-    @Override
-    public int hashCode() {
-      return Arrays.hashCode(credentialId);
-    }
-
-    @Override
-    public String toString() {
-      return "DuplicateCredential[credentialId=" + HexFormat.of().formatHex(credentialId) + "]";
     }
   }
 

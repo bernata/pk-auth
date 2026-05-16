@@ -17,7 +17,6 @@ import com.codeheadsystems.pkauth.admin.OtpDispatchResult;
 import com.codeheadsystems.pkauth.admin.PhoneVerificationResult;
 import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -139,7 +138,7 @@ public class PkAuthAdminController {
     AdminResult<UserHandle> result = adminService.completeEmailVerification(body.token());
     return switch (result) {
       case AdminResult.Success<UserHandle> s ->
-          HttpResponse.ok(new EmailVerificationResult(Base64Url.encode(s.value().value())));
+          HttpResponse.ok(new EmailVerificationResult(s.value()));
       default -> map(result);
     };
   }

@@ -147,7 +147,7 @@ public final class AltFlowsModule {
   @Provides
   @Singleton
   BackupCodeService provideBackupCodeService(BackupCodeRepository repo, ClockProvider clock) {
-    return new BackupCodeService(repo, clock);
+    return BackupCodeService.create(BackupCodeService.Dependencies.of(repo, clock));
   }
 
   @Provides
@@ -165,7 +165,9 @@ public final class AltFlowsModule {
           "pkAuth.magicLink configuration block is required when alt-flow auto-wiring is enabled"
               + " (set magicLink.baseUrl).");
     }
-    return new MagicLinkService(issuer, validator, emailSender, userLookup, clock, ml.baseUrl());
+    return MagicLinkService.create(
+        MagicLinkService.Dependencies.of(issuer, validator, emailSender, userLookup, clock),
+        ml.baseUrl());
   }
 
   @Provides
@@ -178,7 +180,7 @@ public final class AltFlowsModule {
           "pkAuth.otp configuration block is required when alt-flow auto-wiring is enabled (set"
               + " otp.pepper to ≥ 16 bytes of cryptographic randomness).");
     }
-    return new OtpService(repo, smsSender, clock, otp.pepper());
+    return OtpService.create(OtpService.Dependencies.of(repo, smsSender, clock), otp.pepper());
   }
 
   @Provides
@@ -195,13 +197,11 @@ public final class AltFlowsModule {
     DefaultAdminService.Dependencies deps =
         new DefaultAdminService.Dependencies(
             credentialRepository, userLookup, backupCodeService, magicLinkService, otpService);
-    if (authorizer != null && safety != null) {
-      return DefaultAdminService.create(deps, authorizer, safety);
-    }
-    if (authorizer != null) {
-      return DefaultAdminService.create(deps, authorizer);
-    }
-    return DefaultAdminService.create(deps);
+    DefaultAdminService.Config config =
+        new DefaultAdminService.Config(
+            authorizer != null ? authorizer : AdminAuthorizer.subjectScoped(),
+            safety != null ? safety : AdminSafetyConfig.defaults());
+    return DefaultAdminService.create(deps, config);
   }
 
   @Provides

@@ -7,6 +7,8 @@ import java.util.Objects;
  * Skeleton {@link SmsSender} for Twilio. Per brief §3, pk-auth ships only the SPI — host
  * applications are expected to add the Twilio SDK and complete the implementation. Throwing on call
  * keeps surprises loud.
+ *
+ * @since 0.9.1
  */
 public final class TwilioSmsSender implements SmsSender {
 
@@ -20,8 +22,13 @@ public final class TwilioSmsSender implements SmsSender {
     this.fromNumber = Objects.requireNonNull(fromNumber, "fromNumber");
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @since 0.9.1
+   */
   @Override
-  public void sendOtp(String phoneE164, String message) {
+  public void send(String phoneE164, String body) {
     throw new UnsupportedOperationException(
         "TwilioSmsSender is a skeleton; host applications must wire the Twilio SDK. accountSid="
             + accountSid
@@ -29,6 +36,9 @@ public final class TwilioSmsSender implements SmsSender {
             + fromNumber
             + " (authToken length="
             + authToken.length()
-            + ")");
+            + ") phone="
+            + phoneE164
+            + " bodyLength="
+            + (body == null ? 0 : body.length()));
   }
 }

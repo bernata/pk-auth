@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.json;
 
 import com.codeheadsystems.pkauth.api.ChallengeId;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import tools.jackson.core.JsonGenerator;
@@ -24,8 +25,8 @@ import tools.jackson.databind.module.SimpleModule;
  *
  * <ul>
  *   <li>{@code byte[]} fields encode as base64url with no padding (RFC 4648 §5).
- *   <li>{@link UserHandle} encodes as a base64url string of its bytes; {@link ChallengeId} encodes
- *       as its string value.
+ *   <li>{@link UserHandle} and {@link CredentialId} encode as a base64url string of their bytes;
+ *       {@link ChallengeId} encodes as its string value.
  *   <li>{@code java.time} types serialize as ISO-8601 strings, never as numeric timestamps.
  *   <li>Unknown properties on the wire fail deserialization (strict input).
  *   <li>Null properties are omitted on output.
@@ -55,9 +56,14 @@ public final class PkAuthObjectMappers {
 
   /**
    * Returns a fresh {@link SimpleModule} registering the byte[] / {@link UserHandle} / {@link
-   * ChallengeId} (de)serializers used by pk-auth's wire contract. Adapter modules that drive a
-   * host-framework {@link ObjectMapper} (Spring Boot 4 / Micronaut on Jackson 3, etc.) register
-   * this module so their mapper produces the same wire shape the core's mapper does.
+   * CredentialId} / {@link ChallengeId} (de)serializers used by pk-auth's wire contract. Adapter
+   * modules that drive a host-framework {@link ObjectMapper} (Spring Boot 4 / Micronaut on Jackson
+   * 3, etc.) register this module so their mapper produces the same wire shape the core's mapper
+   * does.
+   *
+   * @since 0.9.1 {@link CredentialId} (de)serializer registered alongside {@link UserHandle} so
+   *     adapters no longer need per-call-site {@code Base64Url.encode(...)} / {@code
+   *     CredentialId.of(...)} stitching.
    */
   public static SimpleModule pkAuthModule() {
     SimpleModule module = new SimpleModule("pk-auth");
@@ -65,6 +71,8 @@ public final class PkAuthObjectMappers {
     module.addDeserializer(byte[].class, new Base64UrlBytesDeserializer());
     module.addSerializer(UserHandle.class, new UserHandleSerializer());
     module.addDeserializer(UserHandle.class, new UserHandleDeserializer());
+    module.addSerializer(CredentialId.class, new CredentialIdSerializer());
+    module.addDeserializer(CredentialId.class, new CredentialIdDeserializer());
     module.addSerializer(ChallengeId.class, new ChallengeIdSerializer());
     module.addDeserializer(ChallengeId.class, new ChallengeIdDeserializer());
     return module;
@@ -99,6 +107,20 @@ public final class PkAuthObjectMappers {
     @Override
     public UserHandle deserialize(JsonParser p, DeserializationContext ctxt) {
       return new UserHandle(Base64Url.decode(p.getValueAsString()));
+    }
+  }
+
+  private static final class CredentialIdSerializer extends ValueSerializer<CredentialId> {
+    @Override
+    public void serialize(CredentialId value, JsonGenerator gen, SerializationContext ctxt) {
+      gen.writeString(Base64Url.encode(value.value()));
+    }
+  }
+
+  private static final class CredentialIdDeserializer extends ValueDeserializer<CredentialId> {
+    @Override
+    public CredentialId deserialize(JsonParser p, DeserializationContext ctxt) {
+      return new CredentialId(Base64Url.decode(p.getValueAsString()));
     }
   }
 

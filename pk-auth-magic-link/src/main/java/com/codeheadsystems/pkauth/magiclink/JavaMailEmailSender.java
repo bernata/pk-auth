@@ -7,6 +7,8 @@ import java.util.Objects;
  * Skeleton {@link EmailSender} for JavaMail / Jakarta Mail. Per brief §3 the implementation is
  * intentionally a stub — host applications add the Jakarta Mail dependency and complete the
  * delivery path.
+ *
+ * @since 0.9.1
  */
 public final class JavaMailEmailSender implements EmailSender {
 
@@ -20,14 +22,25 @@ public final class JavaMailEmailSender implements EmailSender {
     this.fromAddress = Objects.requireNonNull(fromAddress, "fromAddress");
   }
 
+  /**
+   * {@inheritDoc}
+   *
+   * @since 0.9.1
+   */
   @Override
-  public void sendMagicLink(String to, String subject, String body) {
+  public void send(String to, String subject, String body) {
     throw new UnsupportedOperationException(
         "JavaMailEmailSender is a skeleton; host applications must wire Jakarta Mail. host="
             + smtpHost
             + " port="
             + smtpPort
             + " from="
-            + fromAddress);
+            + fromAddress
+            + " to="
+            + to
+            + " subjectLength="
+            + (subject == null ? 0 : subject.length())
+            + " bodyLength="
+            + (body == null ? 0 : body.length()));
   }
 }

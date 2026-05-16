@@ -63,18 +63,26 @@ class DefaultAdminServiceTest {
     byte[] otpPepper = new byte[32];
     new SecureRandom().nextBytes(otpPepper);
     backupCodeService =
-        new BackupCodeService(backupCodes, CLOCK, new SecureRandom(), argon2, 1, 1024, 1, 5);
+        BackupCodeService.create(
+            BackupCodeService.Dependencies.of(backupCodes, CLOCK),
+            new BackupCodeService.Config(
+                new SecureRandom(),
+                argon2,
+                /* iterations */ 1,
+                /* memory */ 1024,
+                /* parallelism */ 1,
+                /* codeCount */ 5,
+                /* rateLimit */ BackupCodeService.DEFAULT_RATE_LIMIT));
     otpService =
-        new OtpService(
-            otpRepo,
-            new LoggingSmsSender(),
-            CLOCK,
-            new SecureRandom(),
-            otpPepper,
-            Duration.ofMinutes(5),
-            3,
-            3,
-            Duration.ofMinutes(15));
+        OtpService.create(
+            OtpService.Dependencies.of(otpRepo, new LoggingSmsSender(), CLOCK),
+            new OtpService.Config(
+                new SecureRandom(),
+                otpPepper,
+                Duration.ofMinutes(5),
+                3,
+                3,
+                Duration.ofMinutes(15)));
 
     byte[] secret = new byte[32];
     new SecureRandom().nextBytes(secret);
@@ -82,12 +90,13 @@ class DefaultAdminServiceTest {
     JwtConfig jwtConfig =
         JwtConfig.defaults("https://pkauth.example.com", "https://app.example.com");
     magicLink =
-        new MagicLinkService(
-            new PkAuthJwtIssuer(jwtConfig, keyset, CLOCK),
-            new PkAuthJwtValidator(jwtConfig, keyset, CLOCK),
-            new LoggingEmailSender(),
-            users,
-            CLOCK,
+        MagicLinkService.create(
+            MagicLinkService.Dependencies.of(
+                new PkAuthJwtIssuer(jwtConfig, keyset, CLOCK),
+                new PkAuthJwtValidator(jwtConfig, keyset, CLOCK),
+                new LoggingEmailSender(),
+                users,
+                CLOCK),
             "https://app.example.com/auth/magic");
 
     admin =
@@ -193,8 +202,8 @@ class DefaultAdminServiceTest {
         DefaultAdminService.create(
             new DefaultAdminService.Dependencies(
                 credentials, users, backupCodeService, magicLink, otpService),
-            AdminAuthorizer.subjectScoped(),
-            new AdminSafetyConfig(true));
+            new DefaultAdminService.Config(
+                AdminAuthorizer.subjectScoped(), new AdminSafetyConfig(true)));
     saveCredential(alice, new byte[] {1});
     assertThat(unsafe.deleteCredential(alice, alice, CredentialId.of(new byte[] {1})))
         .isInstanceOf(AdminResult.Success.class);
@@ -301,7 +310,9 @@ class DefaultAdminServiceTest {
         DefaultAdminService.create(
             new DefaultAdminService.Dependencies(
                 credentials, users, backupCodeService, magicLink, otpService),
-            (actor, target) -> actor.equals(support) || actor.equals(target));
+            new DefaultAdminService.Config(
+                (actor, target) -> actor.equals(support) || actor.equals(target),
+                AdminSafetyConfig.defaults()));
     assertThat(delegating.getAccount(support, alice)).isInstanceOf(AdminResult.Success.class);
   }
 

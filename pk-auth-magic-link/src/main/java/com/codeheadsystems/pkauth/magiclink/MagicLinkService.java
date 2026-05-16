@@ -9,6 +9,7 @@ import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.ConsumedJtiStore;
+import com.codeheadsystems.pkauth.spi.MessageFormatter;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -43,6 +44,10 @@ import org.slf4j.LoggerFactory;
  * a startup WARN when the in-memory default is wired. Rate limiting (brief §6.4 — N emails per
  * user/purpose per hour) is tracked through {@link MagicLinkRateLimiter}, which follows the same
  * pattern (dev-only in-process default; production replaces with a shared implementation).
+ *
+ * <p>Construct via {@link #create(Dependencies, Config)} (or {@link #create(Dependencies, String)}
+ * for the all-default case). Required collaborators live in {@link Dependencies}; tunables (rate
+ * limit, consumed-JTI TTL, base URL) live in {@link Config}.
  */
 public final class MagicLinkService {
 
@@ -124,116 +129,51 @@ public final class MagicLinkService {
   private final MagicLinkRateLimiter rateLimiter;
   private final ConsumedJtiStore consumedJtiStore;
   private final Duration consumedJtiTtl;
+  private final MessageFormatter<MagicLinkContext, MagicLinkMessage> messageFormatter;
 
-  public MagicLinkService(
-      PkAuthJwtIssuer issuer,
-      PkAuthJwtValidator validator,
-      EmailSender emailSender,
-      UserLookup userLookup,
-      ClockProvider clockProvider,
-      String baseUrl) {
-    this(
-        issuer,
-        validator,
-        emailSender,
-        userLookup,
-        clockProvider,
-        baseUrl,
-        DEFAULT_RATE_LIMIT,
-        new InMemoryRateLimiter(DEFAULT_RATE_WINDOW),
-        DEFAULT_CONSUMED_JTI_TTL);
-  }
-
-  /**
-   * Test seam allowing override of the rate limit and rate limiter. The JWT TTL is controlled by
-   * the {@link PkAuthJwtIssuer}'s {@code JwtConfig.tokenTtl} (caller-supplied), per the brief's
-   * §6.4 default of 15 minutes.
-   */
-  public MagicLinkService(
-      PkAuthJwtIssuer issuer,
-      PkAuthJwtValidator validator,
-      EmailSender emailSender,
-      UserLookup userLookup,
-      ClockProvider clockProvider,
-      String baseUrl,
-      int rateLimit,
-      MagicLinkRateLimiter rateLimiter) {
-    this(
-        issuer,
-        validator,
-        emailSender,
-        userLookup,
-        clockProvider,
-        baseUrl,
-        rateLimit,
-        rateLimiter,
-        DEFAULT_CONSUMED_JTI_TTL);
-  }
-
-  /**
-   * Test seam allowing override of the consumed-JTI cache TTL — important for tests that need to
-   * advance the clock past the cache expiration. Defaults to a {@link InMemoryConsumedJtiStore}
-   * sized to {@code consumedJtiTtl}.
-   */
-  public MagicLinkService(
-      PkAuthJwtIssuer issuer,
-      PkAuthJwtValidator validator,
-      EmailSender emailSender,
-      UserLookup userLookup,
-      ClockProvider clockProvider,
-      String baseUrl,
-      int rateLimit,
-      MagicLinkRateLimiter rateLimiter,
-      Duration consumedJtiTtl) {
-    this(
-        issuer,
-        validator,
-        emailSender,
-        userLookup,
-        clockProvider,
-        baseUrl,
-        rateLimit,
-        rateLimiter,
-        consumedJtiTtl,
-        new InMemoryConsumedJtiStore(Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl")));
-  }
-
-  /**
-   * Full-control constructor accepting a host-supplied {@link ConsumedJtiStore}. Multi-replica
-   * deployments MUST inject a shared (Redis/DB-backed) implementation here; the other constructors
-   * default to {@link InMemoryConsumedJtiStore}, which is dev/single-instance only.
-   *
-   * @since 0.9.1
-   */
-  public MagicLinkService(
-      PkAuthJwtIssuer issuer,
-      PkAuthJwtValidator validator,
-      EmailSender emailSender,
-      UserLookup userLookup,
-      ClockProvider clockProvider,
-      String baseUrl,
-      int rateLimit,
-      MagicLinkRateLimiter rateLimiter,
-      Duration consumedJtiTtl,
-      ConsumedJtiStore consumedJtiStore) {
-    this.issuer = Objects.requireNonNull(issuer, "issuer");
-    this.validator = Objects.requireNonNull(validator, "validator");
-    this.emailSender = Objects.requireNonNull(emailSender, "emailSender");
-    this.userLookup = Objects.requireNonNull(userLookup, "userLookup");
-    this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
-    this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl");
-    this.rateLimit = rateLimit;
-    this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter");
-    this.consumedJtiTtl = Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl");
-    this.consumedJtiStore = Objects.requireNonNull(consumedJtiStore, "consumedJtiStore");
+  private MagicLinkService(Dependencies deps, Config config) {
+    this.issuer = deps.issuer();
+    this.validator = deps.validator();
+    this.emailSender = deps.emailSender();
+    this.userLookup = deps.userLookup();
+    this.clockProvider = deps.clockProvider();
+    this.consumedJtiStore = deps.consumedJtiStore();
+    this.messageFormatter = deps.messageFormatter();
+    this.baseUrl = config.baseUrl();
+    this.rateLimit = config.rateLimit();
+    this.rateLimiter = config.rateLimiter();
+    this.consumedJtiTtl = config.consumedJtiTtl();
     if (consumedJtiStore instanceof InMemoryConsumedJtiStore) {
       LOG.warn(
           "magiclink.consumed-jti-store InMemoryConsumedJtiStore wired — FOR DEV /"
               + " SINGLE-INSTANCE USE ONLY. Production deployments with more than one replica"
               + " MUST inject a shared (Redis/DB-backed) ConsumedJtiStore via the"
-              + " MagicLinkService(... ConsumedJtiStore) constructor, otherwise a captured"
-              + " magic-link can be replayed across replicas within its TTL window.");
+              + " MagicLinkService.Dependencies record, otherwise a captured magic-link can be"
+              + " replayed across replicas within its TTL window.");
     }
+  }
+
+  /**
+   * Canonical factory: required collaborators in {@link Dependencies}, tunables in {@link Config}.
+   *
+   * @since 0.9.1
+   */
+  public static MagicLinkService create(Dependencies deps, Config config) {
+    Objects.requireNonNull(deps, "deps");
+    Objects.requireNonNull(config, "config");
+    return new MagicLinkService(deps, config);
+  }
+
+  /**
+   * Convenience overload that builds a {@link Config} carrying the supplied {@code baseUrl} and the
+   * documented defaults for every other tunable. The {@code baseUrl} has no library default — it is
+   * a host-specific URL prefix.
+   *
+   * @since 0.9.1
+   */
+  public static MagicLinkService create(Dependencies deps, String baseUrl) {
+    Objects.requireNonNull(deps, "deps");
+    return new MagicLinkService(deps, Config.defaults(baseUrl));
   }
 
   /**
@@ -272,7 +212,9 @@ public final class MagicLinkService {
     }
     String token = issue(user, PURPOSE_EMAIL_VERIFY, Map.of(CLAIM_EMAIL, email));
     String url = baseUrl + "?t=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
-    emailSender.sendMagicLink(email, "Verify your email", "Click to verify: " + url);
+    MagicLinkMessage message =
+        messageFormatter.format(new MagicLinkContext(user, email, url, PURPOSE_EMAIL_VERIFY));
+    emailSender.send(email, message.subject(), message.body());
     LOG.info("magiclink.send issued user={} purpose={}", user, PURPOSE_EMAIL_VERIFY);
     return new SendResult.Sent(token);
   }
@@ -305,7 +247,9 @@ public final class MagicLinkService {
     }
     String token = issue(user, PURPOSE_LOGIN, Map.of());
     String url = baseUrl + "?t=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
-    emailSender.sendMagicLink(email, "Sign in", "Click to sign in: " + url);
+    MagicLinkMessage message =
+        messageFormatter.format(new MagicLinkContext(user, email, url, PURPOSE_LOGIN));
+    emailSender.send(email, message.subject(), message.body());
     return new SendResult.Sent(token);
   }
 
@@ -358,6 +302,96 @@ public final class MagicLinkService {
   }
 
   /**
+   * Canonical holder of the required collaborators for {@link MagicLinkService}.
+   *
+   * <p>The {@code consumedJtiStore} enforces single-use; multi-replica deployments MUST supply a
+   * shared (Redis/DB-backed) implementation. The {@code messageFormatter} renders the {@link
+   * MagicLinkContext} (user, recipient, URL, purpose) into a {@link MagicLinkMessage} that is
+   * passed verbatim to {@link EmailSender#send(String, String, String)}; supply a host-specific
+   * formatter to brand or localize the email copy without forking this service.
+   *
+   * @since 0.9.1
+   */
+  public record Dependencies(
+      PkAuthJwtIssuer issuer,
+      PkAuthJwtValidator validator,
+      EmailSender emailSender,
+      UserLookup userLookup,
+      ClockProvider clockProvider,
+      ConsumedJtiStore consumedJtiStore,
+      MessageFormatter<MagicLinkContext, MagicLinkMessage> messageFormatter) {
+    /** Compact constructor — enforces non-null on every collaborator. */
+    public Dependencies {
+      Objects.requireNonNull(issuer, "issuer");
+      Objects.requireNonNull(validator, "validator");
+      Objects.requireNonNull(emailSender, "emailSender");
+      Objects.requireNonNull(userLookup, "userLookup");
+      Objects.requireNonNull(clockProvider, "clockProvider");
+      Objects.requireNonNull(consumedJtiStore, "consumedJtiStore");
+      Objects.requireNonNull(messageFormatter, "messageFormatter");
+    }
+
+    /**
+     * Convenience factory that wires {@link InMemoryConsumedJtiStore} (sized to {@link
+     * #DEFAULT_CONSUMED_JTI_TTL}) and {@link DefaultMagicLinkFormatter}. Suitable only for dev /
+     * single-instance deployments.
+     *
+     * @since 0.9.1
+     */
+    public static Dependencies of(
+        PkAuthJwtIssuer issuer,
+        PkAuthJwtValidator validator,
+        EmailSender emailSender,
+        UserLookup userLookup,
+        ClockProvider clockProvider) {
+      return new Dependencies(
+          issuer,
+          validator,
+          emailSender,
+          userLookup,
+          clockProvider,
+          new InMemoryConsumedJtiStore(DEFAULT_CONSUMED_JTI_TTL),
+          new DefaultMagicLinkFormatter());
+    }
+  }
+
+  /**
+   * Tunable configuration for {@link MagicLinkService}.
+   *
+   * <p>{@code baseUrl} is required (no library default) — it is the host-specific URL prefix
+   * inserted into outbound emails. Every other field has a documented default exposed via {@link
+   * #defaults(String)}.
+   *
+   * <p>The default {@link MagicLinkRateLimiter} is {@link InMemoryRateLimiter} — DEV /
+   * SINGLE-INSTANCE ONLY. Multi-replica deployments MUST replace it with a shared (Redis/DB-backed)
+   * implementation.
+   *
+   * @since 0.9.1
+   */
+  public record Config(
+      String baseUrl, int rateLimit, MagicLinkRateLimiter rateLimiter, Duration consumedJtiTtl) {
+    /** Compact constructor — enforces non-null on every field. */
+    public Config {
+      Objects.requireNonNull(baseUrl, "baseUrl");
+      Objects.requireNonNull(rateLimiter, "rateLimiter");
+      Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl");
+    }
+
+    /**
+     * Returns a {@link Config} with all-default tunables and the supplied {@code baseUrl}.
+     *
+     * @since 0.9.1
+     */
+    public static Config defaults(String baseUrl) {
+      return new Config(
+          baseUrl,
+          DEFAULT_RATE_LIMIT,
+          new InMemoryRateLimiter(DEFAULT_RATE_WINDOW),
+          DEFAULT_CONSUMED_JTI_TTL);
+    }
+  }
+
+  /**
    * Simple Caffeine-backed in-memory rate limiter.
    *
    * <p><strong>FOR DEV / SINGLE-INSTANCE USE ONLY.</strong> Production deployments MUST replace
@@ -365,8 +399,7 @@ public final class MagicLinkService {
    * per-replica rate limits multiply by the cluster size. For example, with a limit of 5 emails per
    * hour and a 3-node cluster, an attacker can send up to 15 emails per hour because each replica
    * tracks its own independent counter. Wire a production-grade implementation via the {@link
-   * MagicLinkService#MagicLinkService(PkAuthJwtIssuer, PkAuthJwtValidator, EmailSender, UserLookup,
-   * ClockProvider, String, int, MagicLinkRateLimiter)} constructor.
+   * Config} record passed to {@link #create(Dependencies, Config)}.
    */
   public static final class InMemoryRateLimiter implements MagicLinkRateLimiter {
     private static final Logger RATE_LOG = LoggerFactory.getLogger(InMemoryRateLimiter.class);

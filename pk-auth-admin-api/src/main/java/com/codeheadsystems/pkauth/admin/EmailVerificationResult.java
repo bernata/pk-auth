@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.admin;
 
+import com.codeheadsystems.pkauth.api.UserHandle;
 import java.util.Objects;
 
 /**
@@ -10,12 +11,18 @@ import java.util.Objects;
  * Map.of(...)} while Dropwizard and Micronaut returned the bare {@code UserHandle} value (which
  * serialises to a string but with no enclosing object).
  *
- * @param userHandle base64url-encoded (RFC 4648 §5, no padding) {@code UserHandle.value()} bytes
+ * <p>The {@code userHandle} component is the type-safe {@link UserHandle} value class (was raw
+ * {@code String} until 0.9.1's byte-array-removal sweep). Wire JSON is unchanged because {@link
+ * UserHandle} has a registered Jackson serializer that emits a base64url-encoded (RFC 4648 §5, no
+ * padding) string of the handle bytes — the same shape adapters previously hand-stitched with
+ * {@code Base64Url.encode(handle.value())}.
+ *
+ * @param userHandle the verified user's handle (serialises as base64url string on the wire)
  * @since 0.9.1
  */
-public record EmailVerificationResult(String userHandle) {
+public record EmailVerificationResult(UserHandle userHandle) {
 
-  /** Defensive copy: the wire field must always be present and non-blank. */
+  /** Defensive null-check: the wire field must always be present. */
   public EmailVerificationResult {
     Objects.requireNonNull(userHandle, "userHandle");
   }

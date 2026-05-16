@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.spring.autoconfigure;
 
 import com.codeheadsystems.pkauth.admin.AdminAuthorizer;
+import com.codeheadsystems.pkauth.admin.AdminSafetyConfig;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.admin.DefaultAdminService;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
@@ -46,7 +47,7 @@ public class PkAuthAdminAutoConfiguration {
     return DefaultAdminService.create(
         new DefaultAdminService.Dependencies(
             credentialRepository, userLookup, backupCodeService, magicLinkService, otpService),
-        authorizer);
+        new DefaultAdminService.Config(authorizer, AdminSafetyConfig.defaults()));
   }
 
   @Bean
