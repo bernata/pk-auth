@@ -157,3 +157,17 @@ for full details.
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
+
+<!-- Claude, do not edit anything below this line -->
+
+# DISCLAIMER from the human
+
+For this project development, I played the role of product manager and architect,
+but let Claude write all of the code. If you do not like AI generated code, then
+you will want to ignore this project. 
+
+I will be verifying this project by using
+it elsewhere in my work. The description of this git repository indicates if I
+feel it is production worthy or not. I will also try to get legitimate security
+folks to review it; but unless there is a note that they have reviewed the project,
+assume it is not.
