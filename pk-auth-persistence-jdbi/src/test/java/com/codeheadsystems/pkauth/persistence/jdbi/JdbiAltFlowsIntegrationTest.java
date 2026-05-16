@@ -53,6 +53,38 @@ class JdbiAltFlowsIntegrationTest {
   }
 
   @Test
+  void incrementAttempts_doesNotExceedMaxAttempts() {
+    UserHandle user = UserHandle.random();
+    Instant t0 = Instant.parse("2026-05-14T12:00:00Z");
+    // max_attempts = 3; save with attempts already at 3 (at cap).
+    otp.save(
+        new OtpRepository.StoredOtp(
+            "o-cap", user, "+15559990000", "hash", 3, 3, false, t0, t0.plusSeconds(300)));
+
+    int result = otp.incrementAttempts("o-cap");
+
+    // Guard must prevent advancing past cap; returned value must remain 3.
+    assertThat(result).isEqualTo(3);
+    var stored = otp.findLatestActive(user, "+15559990000").orElseThrow();
+    assertThat(stored.attempts()).isEqualTo(3);
+  }
+
+  @Test
+  void incrementAttempts_advancesWhenBelowCap() {
+    UserHandle user = UserHandle.random();
+    Instant t0 = Instant.parse("2026-05-14T12:00:00Z");
+    otp.save(
+        new OtpRepository.StoredOtp(
+            "o-inc", user, "+15558880000", "hash", 2, 3, false, t0, t0.plusSeconds(300)));
+
+    int result = otp.incrementAttempts("o-inc");
+
+    assertThat(result).isEqualTo(3);
+    var stored = otp.findLatestActive(user, "+15558880000").orElseThrow();
+    assertThat(stored.attempts()).isEqualTo(3);
+  }
+
+  @Test
   void otpRoundTripAndCountSince() {
     UserHandle user = UserHandle.random();
     Instant t0 = Instant.parse("2026-05-14T12:00:00Z");

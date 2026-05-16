@@ -4,6 +4,7 @@ package com.codeheadsystems.pkauth.dropwizard.resource;
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper.CeremonyResponse;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.StartAuthenticationRequest;
@@ -81,7 +82,7 @@ public class PkAuthCeremonyResource {
       String token = PkAuthCeremonyJwt.mintForAssertion(s, issuer);
       String label =
           credentialRepository
-              .findByCredentialId(s.credentialId())
+              .findByCredentialId(CredentialId.of(s.credentialId()))
               .map(CredentialRecord::label)
               .orElse(null);
       CeremonyResponse wire = CeremonyWireMapper.forAssertionSuccess(s, token, label);

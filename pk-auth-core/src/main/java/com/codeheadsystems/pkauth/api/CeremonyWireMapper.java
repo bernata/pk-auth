@@ -119,7 +119,7 @@ public final class CeremonyWireMapper {
     Map<String, Object> body = new LinkedHashMap<>();
     body.put("outcome", "success");
     body.put("userHandle", Base64Url.encode(credential.userHandle().value()));
-    body.put("credentialId", Base64Url.encode(credential.credentialId()));
+    body.put("credentialId", credential.credentialId().b64url());
     body.put("label", credential.label());
     return body;
   }

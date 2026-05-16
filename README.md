@@ -33,7 +33,10 @@ flowchart LR
 For the full architecture, see [`DESIGN.md`](./DESIGN.md). For decision
 records, see [`docs/adr/`](./docs/adr/). For production operations
 guidance, see [`docs/operator-guide.md`](./docs/operator-guide.md) and
-[`docs/threat-model.md`](./docs/threat-model.md).
+[`docs/threat-model.md`](./docs/threat-model.md). For SPI versioning and
+stability guarantees, see [`docs/stability.md`](./docs/stability.md).
+For transactional behavior across SPIs, see
+[`docs/transactional-semantics.md`](./docs/transactional-semantics.md).
 
 ## Try it
 
@@ -113,10 +116,22 @@ tests and Playwright end-to-end suites:
 
 Phases 0–12 complete (see `pk-auth-build-brief.md` §10 for the phase
 plan). The library is feature-complete against the brief but is still
-labelled **pre-1.0** — APIs may shift before a stable cut. The full
-build and end-to-end suites are green; the test classpath includes the
-testkit's `FakeAuthenticator`, so registration + assertion ceremonies
-exercise the real WebAuthn4J verifier without a browser.
+labelled **pre-1.0** — SPI signatures may change between minor versions
+until 1.0. See [`docs/stability.md`](./docs/stability.md) for the full
+versioning policy and the list of SPI surfaces. The full build and
+end-to-end suites are green; the test classpath includes the testkit's
+`FakeAuthenticator`, so registration + assertion ceremonies exercise the
+real WebAuthn4J verifier without a browser.
+
+**Known property — transactional boundaries:** pk-auth does not require
+host SPIs to share a transactional context. At ceremony finish,
+`ChallengeStore.takeOnce` is consumed before `CredentialRepository.save`.
+If the save fails, the user must restart the ceremony from the beginning
+(a new challenge is issued). This is intentional — challenges are
+short-lived (5-minute default TTL), so a forced restart is acceptable and
+avoids distributed-transaction complexity across heterogeneous SPI
+implementations. See [`docs/transactional-semantics.md`](./docs/transactional-semantics.md)
+for full details.
 
 ## License
 

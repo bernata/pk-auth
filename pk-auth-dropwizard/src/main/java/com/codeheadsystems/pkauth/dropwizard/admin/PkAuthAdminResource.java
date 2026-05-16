@@ -3,9 +3,9 @@ package com.codeheadsystems.pkauth.dropwizard.admin;
 
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthPasskeyPrincipal;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import io.dropwizard.auth.Auth;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
@@ -74,7 +74,7 @@ public class PkAuthAdminResource {
       @PathParam("credentialId") String credentialIdB64Url,
       RenameRequest body) {
     UserHandle user = principal.userHandle();
-    byte[] id = Base64Url.decode(credentialIdB64Url);
+    CredentialId id = CredentialId.fromB64Url(credentialIdB64Url);
     String label = body == null ? null : body.label();
     AdminResult<?> result = adminService.renameCredential(user, user, id, label);
     return PkAuthAdminResultMapper.toResponse(result);
@@ -86,7 +86,7 @@ public class PkAuthAdminResource {
       @Auth PkAuthPasskeyPrincipal principal,
       @PathParam("credentialId") String credentialIdB64Url) {
     UserHandle user = principal.userHandle();
-    byte[] id = Base64Url.decode(credentialIdB64Url);
+    CredentialId id = CredentialId.fromB64Url(credentialIdB64Url);
     return PkAuthAdminResultMapper.toResponse(adminService.deleteCredential(user, user, id));
   }
 

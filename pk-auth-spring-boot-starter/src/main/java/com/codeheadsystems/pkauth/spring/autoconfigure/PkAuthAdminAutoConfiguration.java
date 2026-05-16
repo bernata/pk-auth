@@ -43,14 +43,10 @@ public class PkAuthAdminAutoConfiguration {
       MagicLinkService magicLinkService,
       OtpService otpService,
       AdminAuthorizer authorizer) {
-    return DefaultAdminService.builder()
-        .credentialRepository(credentialRepository)
-        .userLookup(userLookup)
-        .backupCodeService(backupCodeService)
-        .magicLinkService(magicLinkService)
-        .otpService(otpService)
-        .authorizer(authorizer)
-        .build();
+    return DefaultAdminService.create(
+        new DefaultAdminService.Dependencies(
+            credentialRepository, userLookup, backupCodeService, magicLinkService, otpService),
+        authorizer);
   }
 
   @Bean

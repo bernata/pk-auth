@@ -5,17 +5,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.pkauth.api.UserHandle;
+import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.nimbusds.jose.JWSAlgorithm;
+import com.nimbusds.jose.JWSHeader;
+import com.nimbusds.jose.crypto.ECDSASigner;
 import com.nimbusds.jose.jwk.Curve;
 import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.gen.ECKeyGenerator;
+import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Date;
 import java.util.List;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class PkAuthJwtTest {
@@ -264,10 +271,116 @@ class PkAuthJwtTest {
     assertThat(validator.validate(token)).isInstanceOf(JwtVerificationResult.Success.class);
   }
 
+  // -- kid-aware validation tests --
+
+  @Test
+  void tokenWithMatchingKidValidates() throws Exception {
+    ECKey key = generateEcKey("key-1");
+    JwtKeyset keyset = JwtKeyset.es256(key);
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(config, keyset, fixedClock(NOW));
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    String token =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), List.of("user")));
+    assertThat(validator.validate(token)).isInstanceOf(JwtVerificationResult.Success.class);
+  }
+
+  @Test
+  void tokenWithNonExistentKidIsRejectedWithoutFallback() throws Exception {
+    ECKey key = generateEcKey("real-key");
+    JwtKeyset keyset = JwtKeyset.es256(key);
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    // Build a token that claims kid="no-such-key" but is otherwise structurally valid.
+    JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.ES256).keyID("no-such-key").build();
+    JWTClaimsSet claims =
+        new JWTClaimsSet.Builder()
+            .issuer(ISSUER)
+            .audience(AUDIENCE)
+            .subject(Base64Url.encode(new byte[] {1}))
+            .issueTime(Date.from(NOW))
+            .notBeforeTime(Date.from(NOW))
+            .expirationTime(Date.from(NOW.plus(Duration.ofMinutes(15))))
+            .jwtID(UUID.randomUUID().toString())
+            .claim(PkAuthJwtIssuer.CLAIM_METHOD, "backup-code")
+            .claim(PkAuthJwtIssuer.CLAIM_AMR, List.of("user"))
+            .build();
+    SignedJWT jwt = new SignedJWT(header, claims);
+    jwt.sign(new ECDSASigner(key));
+
+    assertThat(validator.validate(jwt.serialize()))
+        .isInstanceOf(JwtVerificationResult.InvalidSignature.class);
+  }
+
+  @Test
+  void tokenWithoutKidStillValidates() throws Exception {
+    ECKey key = generateEcKey(null); // no kid
+    JwtKeyset keyset = JwtKeyset.es256(key);
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    // Build a token with no kid header.
+    JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.ES256).build();
+    JWTClaimsSet claims =
+        new JWTClaimsSet.Builder()
+            .issuer(ISSUER)
+            .audience(AUDIENCE)
+            .subject(Base64Url.encode(new byte[] {1}))
+            .issueTime(Date.from(NOW))
+            .notBeforeTime(Date.from(NOW))
+            .expirationTime(Date.from(NOW.plus(Duration.ofMinutes(15))))
+            .jwtID(UUID.randomUUID().toString())
+            .claim(PkAuthJwtIssuer.CLAIM_METHOD, "backup-code")
+            .claim(PkAuthJwtIssuer.CLAIM_AMR, List.of("user"))
+            .build();
+    SignedJWT jwt = new SignedJWT(header, claims);
+    jwt.sign(new ECDSASigner(key));
+
+    assertThat(validator.validate(jwt.serialize()))
+        .isInstanceOf(JwtVerificationResult.Success.class);
+  }
+
+  @Test
+  void forgedKidClaimIsRejectedWithoutFallingBackToOtherKey() throws Exception {
+    // Two keys in the keyset: keyX (kid="key-x") and keyY (kid="key-y").
+    // A forged token claims kid="key-x" but is signed with keyY.
+    // The validator must NOT fall back to trying keyY — it must reject the token.
+    ECKey keyX = generateEcKey("key-x");
+    ECKey keyY = generateEcKey("key-y");
+    JwtKeyset keyset = JwtKeyset.es256(keyX, keyY);
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    // Token header claims kid="key-x" but is actually signed by keyY.
+    JWSHeader forgedHeader = new JWSHeader.Builder(JWSAlgorithm.ES256).keyID("key-x").build();
+    JWTClaimsSet claims =
+        new JWTClaimsSet.Builder()
+            .issuer(ISSUER)
+            .audience(AUDIENCE)
+            .subject(Base64Url.encode(new byte[] {1}))
+            .issueTime(Date.from(NOW))
+            .notBeforeTime(Date.from(NOW))
+            .expirationTime(Date.from(NOW.plus(Duration.ofMinutes(15))))
+            .jwtID(UUID.randomUUID().toString())
+            .claim(PkAuthJwtIssuer.CLAIM_METHOD, "backup-code")
+            .claim(PkAuthJwtIssuer.CLAIM_AMR, List.of("user"))
+            .build();
+    SignedJWT forgedJwt = new SignedJWT(forgedHeader, claims);
+    forgedJwt.sign(new ECDSASigner(keyY)); // signed with keyY, not keyX
+
+    assertThat(validator.validate(forgedJwt.serialize()))
+        .isInstanceOf(JwtVerificationResult.InvalidSignature.class);
+  }
+
   // -- helpers --
 
   private static ECKey generateEcKey(String kid) throws Exception {
-    return new ECKeyGenerator(Curve.P_256).keyID(kid).generate();
+    if (kid != null) {
+      return new ECKeyGenerator(Curve.P_256).keyID(kid).generate();
+    }
+    return new ECKeyGenerator(Curve.P_256).generate();
   }
 
   private static byte[] randomBytes(int len) {

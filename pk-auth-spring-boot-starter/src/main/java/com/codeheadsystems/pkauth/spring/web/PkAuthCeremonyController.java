@@ -4,6 +4,7 @@ package com.codeheadsystems.pkauth.spring.web;
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper;
 import com.codeheadsystems.pkauth.api.CeremonyWireMapper.CeremonyResponse;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.RegistrationResult;
@@ -74,7 +75,7 @@ public class PkAuthCeremonyController {
       LOG.info(
           "auth.registration.success user={} credentialId={}",
           success.credential().userHandle(),
-          Base64Url.encode(success.credential().credentialId()));
+          success.credential().credentialId().b64url());
     }
     CeremonyResponse wire = CeremonyWireMapper.forRegistration(result);
     return ResponseEntity.status(wire.status()).body(wire.body());
@@ -98,7 +99,7 @@ public class PkAuthCeremonyController {
       // between assertion and now (rare race), we fall back to a null label rather than 500.
       String label =
           credentialRepository
-              .findByCredentialId(success.credentialId())
+              .findByCredentialId(CredentialId.of(success.credentialId()))
               .map(CredentialRecord::label)
               .orElse(null);
       LOG.info(

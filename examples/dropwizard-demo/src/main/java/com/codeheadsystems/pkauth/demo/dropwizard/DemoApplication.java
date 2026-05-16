@@ -119,14 +119,14 @@ public final class DemoApplication extends Application<DemoConfiguration> {
     OtpService otp =
         new OtpService(
             persistence.bindings().otpRepository(), new LoggingSmsSender(), clock, otpPepper);
-    return DefaultAdminService.builder()
-        .credentialRepository(persistence.bindings().credentialRepository())
-        .userLookup(persistence.userLookup())
-        .backupCodeService(backupCodeService)
-        .magicLinkService(magicLink)
-        .otpService(otp)
-        .authorizer(AdminAuthorizer.subjectScoped())
-        .build();
+    return DefaultAdminService.create(
+        new DefaultAdminService.Dependencies(
+            persistence.bindings().credentialRepository(),
+            persistence.userLookup(),
+            backupCodeService,
+            magicLink,
+            otp),
+        AdminAuthorizer.subjectScoped());
   }
 
   /**

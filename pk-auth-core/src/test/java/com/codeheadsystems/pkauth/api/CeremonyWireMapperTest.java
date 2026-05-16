@@ -21,12 +21,13 @@ class CeremonyWireMapperTest {
 
   private static final UserHandle USER = UserHandle.of(new byte[] {1, 2, 3, 4});
   private static final byte[] CRED_ID = new byte[] {9, 9, 9, 9};
+  private static final CredentialId CRED_ID_VALUE = CredentialId.of(CRED_ID);
 
   @Test
   void registrationSuccessShape() {
     CredentialRecord cred =
         new CredentialRecord(
-            CRED_ID,
+            CRED_ID_VALUE,
             USER,
             new byte[] {1, 2},
             0L,

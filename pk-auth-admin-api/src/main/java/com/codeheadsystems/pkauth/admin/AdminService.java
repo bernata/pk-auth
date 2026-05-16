@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.admin;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import java.util.List;
 
@@ -19,13 +20,14 @@ public interface AdminService {
 
   /** Renames a credential's label. Returns NotFound when the credential is not the user's. */
   AdminResult<CredentialSummary> renameCredential(
-      UserHandle actor, UserHandle target, byte[] credentialId, String newLabel);
+      UserHandle actor, UserHandle target, CredentialId credentialId, String newLabel);
 
   /**
    * Deletes a credential. Refuses if it would leave the user with zero credentials and zero
    * remaining backup codes (unless overridden via {@link AdminSafetyConfig}).
    */
-  AdminResult<Void> deleteCredential(UserHandle actor, UserHandle target, byte[] credentialId);
+  AdminResult<Void> deleteCredential(
+      UserHandle actor, UserHandle target, CredentialId credentialId);
 
   /**
    * Regenerates the user's backup codes. The plaintext list is returned exactly once; prior codes

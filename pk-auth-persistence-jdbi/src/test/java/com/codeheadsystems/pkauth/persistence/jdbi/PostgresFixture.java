@@ -39,7 +39,7 @@ public final class PostgresFixture {
     cfg.setPassword(CONTAINER.getPassword());
     cfg.setMaximumPoolSize(4);
     dataSource = new HikariDataSource(cfg);
-    PkAuthJdbiSchema.migrate(dataSource);
+    PkAuthJdbiSchema.migrateForDevelopment(dataSource);
     jdbi = Jdbi.create(dataSource);
     Runtime.getRuntime()
         .addShutdownHook(

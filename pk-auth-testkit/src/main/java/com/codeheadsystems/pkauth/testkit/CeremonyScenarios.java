@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.RegistrationResponseJson;
@@ -65,7 +66,7 @@ public final class CeremonyScenarios {
     Optional<CredentialRecord> stored = singleCredentialFor(handle);
     assertThat(stored).isPresent();
     assertThat(stored.get().signCount()).isZero();
-    byte[] credentialId = stored.get().credentialId();
+    CredentialId credentialId = stored.get().credentialId();
 
     AssertionResult first = assertOnce(handle);
     assertThat(first)

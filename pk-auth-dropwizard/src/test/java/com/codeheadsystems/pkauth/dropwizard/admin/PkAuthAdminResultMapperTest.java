@@ -3,10 +3,10 @@ package com.codeheadsystems.pkauth.dropwizard.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.pkauth.admin.AdminErrorBody;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import jakarta.ws.rs.core.Response;
 import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 final class PkAuthAdminResultMapperTest {
@@ -37,31 +37,47 @@ final class PkAuthAdminResultMapperTest {
   }
 
   @Test
-  void validationFailedIs400WithSharedErrorBody() {
+  @SuppressWarnings("unchecked")
+  void validationFailedIs400WithUnifiedEnvelope() {
     Response r =
         PkAuthAdminResultMapper.toResponse(new AdminResult.ValidationFailed<>("bad input"));
     assertThat(r.getStatus()).isEqualTo(400);
-    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("validation_failed", "bad input"));
+    Map<String, Object> body = (Map<String, Object>) r.getEntity();
+    assertThat(body).containsEntry("outcome", "validation_failed");
+    assertThat(body).containsEntry("error", "validation_failed");
+    assertThat(body).containsEntry("detail", "bad input");
   }
 
   @Test
-  void conflictIs409WithSharedErrorBody() {
+  @SuppressWarnings("unchecked")
+  void conflictIs409WithUnifiedEnvelope() {
     Response r =
         PkAuthAdminResultMapper.toResponse(new AdminResult.Conflict<>("invariant violation"));
     assertThat(r.getStatus()).isEqualTo(409);
-    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("conflict", "invariant violation"));
+    Map<String, Object> body = (Map<String, Object>) r.getEntity();
+    assertThat(body).containsEntry("outcome", "conflict");
+    assertThat(body).containsEntry("error", "conflict");
+    assertThat(body).containsEntry("detail", "invariant violation");
   }
 
   @Test
-  void notFoundCarriesSharedErrorBody() {
+  @SuppressWarnings("unchecked")
+  void notFoundCarriesUnifiedEnvelope() {
     Response r = PkAuthAdminResultMapper.toResponse(new AdminResult.NotFound<>());
-    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("not_found", null));
+    Map<String, Object> body = (Map<String, Object>) r.getEntity();
+    assertThat(body).containsEntry("outcome", "not_found");
+    assertThat(body).containsEntry("error", "not_found");
+    assertThat(body).doesNotContainKey("detail");
   }
 
   @Test
-  void forbiddenCarriesSharedErrorBody() {
+  @SuppressWarnings("unchecked")
+  void forbiddenCarriesUnifiedEnvelope() {
     Response r = PkAuthAdminResultMapper.toResponse(new AdminResult.Forbidden<>());
-    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("forbidden", null));
+    Map<String, Object> body = (Map<String, Object>) r.getEntity();
+    assertThat(body).containsEntry("outcome", "forbidden");
+    assertThat(body).containsEntry("error", "forbidden");
+    assertThat(body).doesNotContainKey("detail");
   }
 
   @Test

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.persistence.dynamodb;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.json.Base64Url;
@@ -54,8 +55,8 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
   }
 
   @Override
-  public Optional<CredentialRecord> findByCredentialId(byte[] credentialId) {
-    String credIdB64 = Base64Url.encode(credentialId);
+  public Optional<CredentialRecord> findByCredentialId(CredentialId credentialId) {
+    String credIdB64 = credentialId.b64url();
     return credentialByIdIndex
         .query(
             QueryConditional.keyEqualTo(
@@ -80,7 +81,7 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
   }
 
   @Override
-  public void updateSignCount(byte[] credentialId, long newCount, Instant lastUsedAt) {
+  public void updateSignCount(CredentialId credentialId, long newCount, Instant lastUsedAt) {
     // Retry loop: @DynamoDbVersionAttribute provides optimistic concurrency — if a concurrent
     // writer (e.g. updateLabel) changes the item between our read and write, the enhanced client
     // throws ConditionalCheckFailedException. We re-fetch and re-apply up to MAX_RETRIES times.
@@ -125,7 +126,7 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
   }
 
   @Override
-  public void updateLabel(byte[] credentialId, String label) {
+  public void updateLabel(CredentialId credentialId, String label) {
     // Retry loop: guards against concurrent field updates clobbering each other via the
     // @DynamoDbVersionAttribute optimistic-lock on CredentialItem.
     for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
@@ -146,7 +147,7 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
   }
 
   @Override
-  public void delete(byte[] credentialId) {
+  public void delete(CredentialId credentialId) {
     lookupItem(credentialId)
         .ifPresent(
             item ->
@@ -154,8 +155,8 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
                     Key.builder().partitionValue(item.getPk()).sortValue(item.getSk()).build()));
   }
 
-  private Optional<CredentialItem> lookupItem(byte[] credentialId) {
-    String credIdB64 = Base64Url.encode(credentialId);
+  private Optional<CredentialItem> lookupItem(CredentialId credentialId) {
+    String credIdB64 = credentialId.b64url();
     return credentialByIdIndex
         .query(
             QueryConditional.keyEqualTo(

@@ -4,6 +4,8 @@ package com.codeheadsystems.pkauth.credential;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import java.time.Instant;
 import java.util.Set;
@@ -14,13 +16,13 @@ class CredentialRecordTest {
 
   private CredentialRecord build() {
     return new CredentialRecord(
-        new byte[] {1, 2},
+        CredentialId.of(new byte[] {1, 2}),
         UserHandle.of(new byte[] {9}),
         new byte[] {3, 4},
         7L,
         "Yubikey",
         UUID.fromString("00000000-0000-0000-0000-000000000001"),
-        Set.of("usb", "nfc"),
+        Set.of(Transport.USB, Transport.NFC),
         true,
         false,
         Instant.parse("2024-01-01T00:00:00Z"),
@@ -29,11 +31,10 @@ class CredentialRecordTest {
 
   @Test
   void defensiveCopies() {
-    byte[] credId = {1, 2, 3};
     byte[] pubKey = {4, 5, 6};
     CredentialRecord cred =
         new CredentialRecord(
-            credId,
+            CredentialId.of(new byte[] {1, 2, 3}),
             UserHandle.random(),
             pubKey,
             0L,
@@ -44,9 +45,11 @@ class CredentialRecordTest {
             false,
             Instant.now(),
             null);
-    credId[0] = 99;
     pubKey[0] = 99;
-    assertThat(cred.credentialId()[0]).isEqualTo((byte) 1);
+    // CredentialId's value() also returns a defensive copy.
+    byte[] credIdValue = cred.credentialId().value();
+    credIdValue[0] = 99;
+    assertThat(cred.credentialId().value()[0]).isEqualTo((byte) 1);
     assertThat(cred.publicKeyCose()[0]).isEqualTo((byte) 4);
   }
 
@@ -55,7 +58,7 @@ class CredentialRecordTest {
     CredentialRecord a = build();
     CredentialRecord b = build();
     assertThat(a).isEqualTo(b).hasSameHashCodeAs(b);
-    assertThat(a.toString()).contains("Yubikey").contains("0102");
+    assertThat(a.toString()).contains("Yubikey").contains("b64url=");
     assertThat(a).isNotEqualTo("nope");
   }
 
@@ -63,32 +66,20 @@ class CredentialRecordTest {
   void toMetadataDropsPublicKey() {
     CredentialMetadata meta = build().toMetadata();
     assertThat(meta.label()).isEqualTo("Yubikey");
-    assertThat(meta.transports()).containsExactlyInAnyOrder("usb", "nfc");
+    assertThat(meta.transports()).containsExactlyInAnyOrder(Transport.USB, Transport.NFC);
     assertThat(meta).isEqualTo(build().toMetadata()).hasSameHashCodeAs(build().toMetadata());
     assertThat(meta.toString()).contains("Yubikey");
   }
 
   @Test
   void rejectsInvalidArgs() {
-    assertThatThrownBy(
-            () ->
-                new CredentialRecord(
-                    new byte[0],
-                    UserHandle.random(),
-                    new byte[] {1},
-                    0L,
-                    "x",
-                    null,
-                    Set.of(),
-                    false,
-                    false,
-                    Instant.now(),
-                    null))
+    // Empty credential-id bytes are rejected by CredentialId itself.
+    assertThatThrownBy(() -> CredentialId.of(new byte[0]))
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(
             () ->
                 new CredentialRecord(
-                    new byte[] {1},
+                    CredentialId.of(new byte[] {1}),
                     UserHandle.random(),
                     new byte[0],
                     0L,
@@ -103,7 +94,7 @@ class CredentialRecordTest {
     assertThatThrownBy(
             () ->
                 new CredentialRecord(
-                    new byte[] {1},
+                    CredentialId.of(new byte[] {1}),
                     UserHandle.random(),
                     new byte[] {1},
                     -1L,

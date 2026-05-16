@@ -3,6 +3,7 @@ package com.codeheadsystems.pkauth.spring.admin;
 
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationToken;
@@ -60,7 +61,7 @@ public class PkAuthAdminController {
   public ResponseEntity<Object> rename(
       @PathVariable("credentialId") String credentialId, @RequestBody RenameBody body) {
     UserHandle user = currentUser();
-    byte[] id = Base64Url.decode(credentialId);
+    CredentialId id = CredentialId.fromB64Url(credentialId);
     return PkAuthAdminResultMapper.toResponse(
         adminService.renameCredential(user, user, id, body == null ? "" : body.label()));
   }
@@ -68,7 +69,7 @@ public class PkAuthAdminController {
   @DeleteMapping("/credentials/{credentialId}")
   public ResponseEntity<Object> delete(@PathVariable("credentialId") String credentialId) {
     UserHandle user = currentUser();
-    byte[] id = Base64Url.decode(credentialId);
+    CredentialId id = CredentialId.fromB64Url(credentialId);
     AdminResult<Void> result = adminService.deleteCredential(user, user, id);
     return PkAuthAdminResultMapper.toEmptyResponse(result);
   }

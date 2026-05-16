@@ -3,6 +3,8 @@ package com.codeheadsystems.pkauth.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
@@ -89,13 +91,9 @@ class DefaultAdminServiceTest {
             "https://app.example.com/auth/magic");
 
     admin =
-        DefaultAdminService.builder()
-            .credentialRepository(credentials)
-            .userLookup(users)
-            .backupCodeService(backupCodeService)
-            .magicLinkService(magicLink)
-            .otpService(otpService)
-            .build();
+        DefaultAdminService.create(
+            new DefaultAdminService.Dependencies(
+                credentials, users, backupCodeService, magicLink, otpService));
   }
 
   // -- Account --
@@ -146,7 +144,7 @@ class DefaultAdminServiceTest {
   void renameCredentialUpdatesLabel() {
     saveCredential(alice, new byte[] {1});
     AdminResult<CredentialSummary> result =
-        admin.renameCredential(alice, alice, new byte[] {1}, "Work key");
+        admin.renameCredential(alice, alice, CredentialId.of(new byte[] {1}), "Work key");
     assertThat(result)
         .isInstanceOfSatisfying(
             AdminResult.Success.class,
@@ -156,7 +154,7 @@ class DefaultAdminServiceTest {
   @Test
   void renameCredentialBlankLabelRejected() {
     saveCredential(alice, new byte[] {1});
-    assertThat(admin.renameCredential(alice, alice, new byte[] {1}, " "))
+    assertThat(admin.renameCredential(alice, alice, CredentialId.of(new byte[] {1}), " "))
         .isInstanceOf(AdminResult.ValidationFailed.class);
   }
 
@@ -165,49 +163,46 @@ class DefaultAdminServiceTest {
     UserHandle bob = users.register("bob", "Bob");
     saveCredential(bob, new byte[] {1});
     AdminResult<CredentialSummary> result =
-        admin.renameCredential(bob, bob, new byte[] {1}, "newlabel");
+        admin.renameCredential(bob, bob, CredentialId.of(new byte[] {1}), "newlabel");
     assertThat(result).isInstanceOf(AdminResult.Success.class);
     // alice tries to rename bob's credential — authorizer denies before NotFound check.
-    assertThat(admin.renameCredential(alice, bob, new byte[] {1}, "x"))
+    assertThat(admin.renameCredential(alice, bob, CredentialId.of(new byte[] {1}), "x"))
         .isInstanceOf(AdminResult.Forbidden.class);
   }
 
   @Test
   void deleteLastCredentialWithoutBackupCodesIsConflict() {
     saveCredential(alice, new byte[] {1});
-    assertThat(admin.deleteCredential(alice, alice, new byte[] {1}))
+    assertThat(admin.deleteCredential(alice, alice, CredentialId.of(new byte[] {1})))
         .isInstanceOf(AdminResult.Conflict.class);
-    assertThat(credentials.findByCredentialId(new byte[] {1})).isPresent();
+    assertThat(credentials.findByCredentialId(CredentialId.of(new byte[] {1}))).isPresent();
   }
 
   @Test
   void deleteLastCredentialWithBackupCodesSucceeds() {
     saveCredential(alice, new byte[] {1});
     backupCodeService.generate(alice);
-    assertThat(admin.deleteCredential(alice, alice, new byte[] {1}))
+    assertThat(admin.deleteCredential(alice, alice, CredentialId.of(new byte[] {1})))
         .isInstanceOf(AdminResult.Success.class);
-    assertThat(credentials.findByCredentialId(new byte[] {1})).isEmpty();
+    assertThat(credentials.findByCredentialId(CredentialId.of(new byte[] {1}))).isEmpty();
   }
 
   @Test
   void deleteLastCredentialAllowedWhenSafetyOff() {
     DefaultAdminService unsafe =
-        DefaultAdminService.builder()
-            .credentialRepository(credentials)
-            .userLookup(users)
-            .backupCodeService(backupCodeService)
-            .magicLinkService(magicLink)
-            .otpService(otpService)
-            .safetyConfig(new AdminSafetyConfig(true))
-            .build();
+        DefaultAdminService.create(
+            new DefaultAdminService.Dependencies(
+                credentials, users, backupCodeService, magicLink, otpService),
+            AdminAuthorizer.subjectScoped(),
+            new AdminSafetyConfig(true));
     saveCredential(alice, new byte[] {1});
-    assertThat(unsafe.deleteCredential(alice, alice, new byte[] {1}))
+    assertThat(unsafe.deleteCredential(alice, alice, CredentialId.of(new byte[] {1})))
         .isInstanceOf(AdminResult.Success.class);
   }
 
   @Test
   void deleteUnknownCredentialNotFound() {
-    assertThat(admin.deleteCredential(alice, alice, new byte[] {99}))
+    assertThat(admin.deleteCredential(alice, alice, CredentialId.of(new byte[] {99})))
         .isInstanceOf(AdminResult.NotFound.class);
   }
 
@@ -303,15 +298,48 @@ class DefaultAdminServiceTest {
   void supportStaffAuthorizerOverride() {
     UserHandle support = users.register("support", "Support");
     DefaultAdminService delegating =
-        DefaultAdminService.builder()
-            .credentialRepository(credentials)
-            .userLookup(users)
-            .backupCodeService(backupCodeService)
-            .magicLinkService(magicLink)
-            .otpService(otpService)
-            .authorizer((actor, target) -> actor.equals(support) || actor.equals(target))
-            .build();
+        DefaultAdminService.create(
+            new DefaultAdminService.Dependencies(
+                credentials, users, backupCodeService, magicLink, otpService),
+            (actor, target) -> actor.equals(support) || actor.equals(target));
     assertThat(delegating.getAccount(support, alice)).isInstanceOf(AdminResult.Success.class);
+  }
+
+  // -- Dependencies record --
+
+  @Test
+  void dependenciesRejectsNullInputs() {
+    org.junit.jupiter.api.Assertions.assertAll(
+        () ->
+            org.junit.jupiter.api.Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                    new DefaultAdminService.Dependencies(
+                        null, users, backupCodeService, magicLink, otpService)),
+        () ->
+            org.junit.jupiter.api.Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                    new DefaultAdminService.Dependencies(
+                        credentials, null, backupCodeService, magicLink, otpService)),
+        () ->
+            org.junit.jupiter.api.Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                    new DefaultAdminService.Dependencies(
+                        credentials, users, null, magicLink, otpService)),
+        () ->
+            org.junit.jupiter.api.Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                    new DefaultAdminService.Dependencies(
+                        credentials, users, backupCodeService, null, otpService)),
+        () ->
+            org.junit.jupiter.api.Assertions.assertThrows(
+                NullPointerException.class,
+                () ->
+                    new DefaultAdminService.Dependencies(
+                        credentials, users, backupCodeService, magicLink, null)));
   }
 
   // -- helpers --
@@ -319,13 +347,13 @@ class DefaultAdminServiceTest {
   private CredentialRecord saveCredential(UserHandle user, byte[] credentialId) {
     CredentialRecord record =
         new CredentialRecord(
-            credentialId,
+            CredentialId.of(credentialId),
             user,
             new byte[] {0x10},
             0L,
             "Test",
             null,
-            Set.of("usb"),
+            Set.of(Transport.USB),
             true,
             true,
             NOW,

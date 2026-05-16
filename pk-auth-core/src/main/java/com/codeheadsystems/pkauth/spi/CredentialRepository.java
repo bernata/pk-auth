@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.spi;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import java.time.Instant;
@@ -16,13 +17,13 @@ public interface CredentialRepository {
   /** Inserts a new credential record. Implementations must reject duplicates on credentialId. */
   void save(CredentialRecord record);
 
-  Optional<CredentialRecord> findByCredentialId(byte[] credentialId);
+  Optional<CredentialRecord> findByCredentialId(CredentialId credentialId);
 
   List<CredentialRecord> findByUserHandle(UserHandle userHandle);
 
-  void updateSignCount(byte[] credentialId, long newCount, Instant lastUsedAt);
+  void updateSignCount(CredentialId credentialId, long newCount, Instant lastUsedAt);
 
-  void updateLabel(byte[] credentialId, String label);
+  void updateLabel(CredentialId credentialId, String label);
 
-  void delete(byte[] credentialId);
+  void delete(CredentialId credentialId);
 }

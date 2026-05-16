@@ -17,13 +17,13 @@ class ResultTypesTest {
     UserHandle uh = UserHandle.random();
     CredentialRecord cred =
         new CredentialRecord(
-            new byte[] {1, 2, 3},
+            CredentialId.of(new byte[] {1, 2, 3}),
             uh,
             new byte[] {4, 5},
             0L,
             "Yubikey",
             null,
-            Set.of("usb"),
+            Set.of(Transport.USB),
             true,
             true,
             Instant.now(),

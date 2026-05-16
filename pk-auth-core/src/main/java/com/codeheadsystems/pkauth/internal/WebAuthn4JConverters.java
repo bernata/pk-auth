@@ -5,6 +5,7 @@ import com.codeheadsystems.pkauth.api.AttestationConveyance;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson;
 import com.codeheadsystems.pkauth.api.RegistrationResponseJson;
 import com.codeheadsystems.pkauth.api.ResidentKeyRequirement;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserVerificationRequirement;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
@@ -96,10 +97,11 @@ public final class WebAuthn4JConverters {
     AAGUID aaguid = new AAGUID(aaguidValue);
     COSEKey coseKey =
         objectConverter.getCborMapper().readValue(record.publicKeyCose(), COSEKey.class);
-    AttestedCredentialData acd = new AttestedCredentialData(aaguid, record.credentialId(), coseKey);
+    AttestedCredentialData acd =
+        new AttestedCredentialData(aaguid, record.credentialId().value(), coseKey);
     Set<AuthenticatorTransport> transports = new LinkedHashSet<>();
-    for (String t : record.transports()) {
-      transports.add(AuthenticatorTransport.create(t));
+    for (Transport t : record.transports()) {
+      transports.add(AuthenticatorTransport.create(t.wireName()));
     }
     return new CredentialRecordImpl(
         new NoneAttestationStatement(),

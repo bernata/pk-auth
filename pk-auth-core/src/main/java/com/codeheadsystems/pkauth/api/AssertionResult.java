@@ -11,16 +11,42 @@ import java.util.Objects;
  */
 public sealed interface AssertionResult {
 
-  /** Assertion succeeded; the credential's sign count and lastUsedAt should be updated. */
-  record Success(UserHandle userHandle, byte[] credentialId, long signCount)
+  /**
+   * Whether the assertion counter advanced normally or was accepted despite regression (WARN
+   * policy).
+   */
+  enum CounterStatus {
+    /** Counter advanced as expected — no anomaly detected. */
+    OK,
+    /**
+     * Counter regressed but was accepted because {@code CounterRegressionPolicy.WARN} is active.
+     * Operators should alert on this status; the stored counter was NOT advanced.
+     */
+    REGRESSED_WARN
+  }
+
+  /**
+   * Assertion succeeded; the credential's sign count and lastUsedAt should be updated.
+   *
+   * <p>Check {@link #counterStatus()} to distinguish a clean success from one accepted despite
+   * counter regression under WARN policy.
+   */
+  record Success(
+      UserHandle userHandle, byte[] credentialId, long signCount, CounterStatus counterStatus)
       implements AssertionResult {
     public Success {
       Objects.requireNonNull(userHandle, "userHandle");
       Objects.requireNonNull(credentialId, "credentialId");
+      Objects.requireNonNull(counterStatus, "counterStatus");
       if (signCount < 0) {
         throw new IllegalArgumentException("signCount must be non-negative");
       }
       credentialId = credentialId.clone();
+    }
+
+    /** Convenience constructor that defaults {@link CounterStatus#OK} for normal success. */
+    public Success(UserHandle userHandle, byte[] credentialId, long signCount) {
+      this(userHandle, credentialId, signCount, CounterStatus.OK);
     }
 
     @Override
@@ -33,12 +59,13 @@ public sealed interface AssertionResult {
       return o instanceof Success other
           && this.userHandle.equals(other.userHandle)
           && Arrays.equals(this.credentialId, other.credentialId)
-          && this.signCount == other.signCount;
+          && this.signCount == other.signCount
+          && this.counterStatus == other.counterStatus;
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(userHandle, Arrays.hashCode(credentialId), signCount);
+      return Objects.hash(userHandle, Arrays.hashCode(credentialId), signCount, counterStatus);
     }
 
     @Override
@@ -49,6 +76,8 @@ public sealed interface AssertionResult {
           + HexFormat.of().formatHex(credentialId)
           + ", signCount="
           + signCount
+          + ", counterStatus="
+          + counterStatus
           + "]";
     }
   }

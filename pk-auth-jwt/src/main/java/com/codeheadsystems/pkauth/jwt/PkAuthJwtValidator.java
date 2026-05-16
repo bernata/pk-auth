@@ -81,7 +81,8 @@ public final class PkAuthJwtValidator {
       return new JwtVerificationResult.InvalidSignature();
     }
 
-    if (!verifyAgainstAnyKey(jwt)) {
+    String kid = jwt.getHeader().getKeyID();
+    if (!verifyAgainstCandidateKeys(jwt, kid)) {
       return new JwtVerificationResult.InvalidSignature();
     }
 
@@ -171,17 +172,50 @@ public final class PkAuthJwtValidator {
             userHandle, method, credentialId, amr, remaining.isEmpty() ? null : remaining));
   }
 
-  private boolean verifyAgainstAnyKey(SignedJWT jwt) {
-    // We already checked alg against the keyset; trust every key in the set and let Nimbus's
-    // verifier reject mismatches. Filtering by `algorithm` here would skip keys whose
-    // `algorithm()` is null (the common case for ECKeyGenerator output).
-    JWKSelector selector = new JWKSelector(new JWKMatcher.Builder().build());
-    List<JWK> candidates;
+  /**
+   * Verifies the JWT signature against candidate keys from the keyset.
+   *
+   * <p>When the token header carries a {@code kid} and at least one key in the keyset also has a
+   * {@code kid} assigned, only the key(s) whose {@code kid} matches the header value are tried.
+   * This prevents a forged token claiming {@code kid=X} from being accepted by a different key Y —
+   * the actual security property being enforced.
+   *
+   * <p>If the keyset contains <em>no</em> keys with an assigned {@code kid} (e.g. legacy HS256
+   * keysets built without explicit key IDs), the filter is skipped and all keys are tried so that
+   * existing deployments continue to work without modification.
+   *
+   * <p>If {@code kid} is absent from the header entirely, all keys are tried (backwards
+   * compatibility with single-key / pre-rotation issuers).
+   */
+  private boolean verifyAgainstCandidateKeys(SignedJWT jwt, @Nullable String kid) {
+    // Fetch the full set of verification keys (no filter yet).
+    JWKSelector allSelector = new JWKSelector(new JWKMatcher.Builder().build());
+    List<JWK> allCandidates;
     try {
-      candidates = keyset.verificationSource().get(selector, (SecurityContext) null);
+      allCandidates = keyset.verificationSource().get(allSelector, (SecurityContext) null);
     } catch (com.nimbusds.jose.KeySourceException | RuntimeException e) {
       return false;
     }
+
+    List<JWK> candidates;
+    if (kid != null && allCandidates.stream().anyMatch(k -> k.getKeyID() != null)) {
+      // The keyset contains at least one key with a real kid, so kid-based filtering is meaningful.
+      // Only try the key(s) whose kid matches the header — do NOT fall back to other keys.
+      JWKSelector kidSelector = new JWKSelector(new JWKMatcher.Builder().keyID(kid).build());
+      try {
+        candidates = keyset.verificationSource().get(kidSelector, (SecurityContext) null);
+      } catch (com.nimbusds.jose.KeySourceException | RuntimeException e) {
+        return false;
+      }
+      if (candidates.isEmpty()) {
+        // kid was specified, keyset has kid-bearing keys, but none matched — reject.
+        return false;
+      }
+    } else {
+      // No kid in header, or keyset has no key with an assigned kid (legacy mode): try all.
+      candidates = allCandidates;
+    }
+
     for (JWK candidate : candidates) {
       JWSVerifier verifier;
       try {

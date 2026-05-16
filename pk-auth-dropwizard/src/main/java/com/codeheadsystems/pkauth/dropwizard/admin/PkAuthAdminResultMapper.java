@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.dropwizard.admin;
 
-import com.codeheadsystems.pkauth.admin.AdminErrorBody;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import jakarta.ws.rs.core.Response;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Maps each {@link AdminResult} variant onto an HTTP response. Centralized so every admin endpoint
- * surfaces the same wire contract — brief §6.9. Non-success bodies are JSON {@link AdminErrorBody}
- * envelopes ({@code {"error": code, "detail": message?}}) to match the Spring and Micronaut
- * adapters byte-for-byte.
+ * surfaces the same wire contract — brief §6.9. Non-success bodies use the unified envelope {@code
+ * {"outcome": "<code>", "error": "<code>", "detail": "<message>"?}} to match the Spring and
+ * Micronaut adapters byte-for-byte and to keep admin and ceremony error shapes consistent.
  *
  * <p>Status codes:
  *
@@ -36,18 +38,41 @@ public final class PkAuthAdminResultMapper {
         yield Response.ok(s.value()).build();
       }
       case AdminResult.NotFound<T> n ->
-          Response.status(Response.Status.NOT_FOUND).entity(AdminErrorBody.of(result)).build();
+          Response.status(Response.Status.NOT_FOUND)
+              .entity(errorEnvelope("not_found", null))
+              .build();
       case AdminResult.Forbidden<T> f ->
-          Response.status(Response.Status.FORBIDDEN).entity(AdminErrorBody.of(result)).build();
+          Response.status(Response.Status.FORBIDDEN)
+              .entity(errorEnvelope("forbidden", null))
+              .build();
       case AdminResult.ValidationFailed<T> v ->
-          Response.status(Response.Status.BAD_REQUEST).entity(AdminErrorBody.of(result)).build();
+          Response.status(Response.Status.BAD_REQUEST)
+              .entity(errorEnvelope("validation_failed", v.detail()))
+              .build();
       case AdminResult.Conflict<T> c ->
-          Response.status(Response.Status.CONFLICT).entity(AdminErrorBody.of(result)).build();
+          Response.status(Response.Status.CONFLICT)
+              .entity(errorEnvelope("conflict", c.detail()))
+              .build();
       case AdminResult.RateLimited<T> rl ->
           Response.status(429)
               .header("Retry-After", Long.toString(Math.max(1, rl.retryAfter().toSeconds())))
-              .entity(AdminErrorBody.of(result))
+              .entity(errorEnvelope("rate_limited", null))
               .build();
     };
+  }
+
+  /**
+   * Builds the unified error envelope: {@code {"outcome": "<code>", "error": "<code>", "detail":
+   * "<message>"?}}. Both {@code outcome} and {@code error} carry the same machine-readable tag so
+   * clients that key off either field keep working; {@code detail} is omitted when {@code null}.
+   */
+  static Map<String, Object> errorEnvelope(String code, @Nullable String detail) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("outcome", code);
+    body.put("error", code);
+    if (detail != null) {
+      body.put("detail", detail);
+    }
+    return body;
   }
 }

@@ -109,6 +109,41 @@ public final class JdbiBackupCodeRepository implements BackupCodeRepository {
                 .execute());
   }
 
+  /**
+   * Atomically replaces all active codes for a user inside a single JDBI transaction: soft-deletes
+   * existing rows and inserts the new set. A failure mid-insert rolls back the entire transaction
+   * so the user is never left with a partial or empty code set.
+   */
+  @Override
+  public void replaceAll(UserHandle userHandle, List<StoredBackupCode> records) {
+    jdbi.useTransaction(
+        h -> {
+          h.createUpdate(
+                  "UPDATE backup_codes"
+                      + " SET revoked_at = NOW(), revoked_reason = 'bulk_delete'"
+                      + " WHERE user_handle = :uh AND revoked_at IS NULL")
+              .bind("uh", userHandle.value())
+              .execute();
+          for (StoredBackupCode code : records) {
+            h.createUpdate(
+                    "INSERT INTO backup_codes (code_id, user_handle, hashed_code, consumed,"
+                        + " consumed_at, created_at)"
+                        + " VALUES (:cid, :uh, :hash, :consumed, :consumedAt, :createdAt)")
+                .bind("cid", code.codeId())
+                .bind("uh", code.userHandle().value())
+                .bind("hash", code.hashedCode())
+                .bind("consumed", code.consumed())
+                .bind(
+                    "consumedAt",
+                    code.consumedAt() == null
+                        ? null
+                        : OffsetDateTime.ofInstant(code.consumedAt(), ZoneOffset.UTC))
+                .bind("createdAt", OffsetDateTime.ofInstant(code.createdAt(), ZoneOffset.UTC))
+                .execute();
+          }
+        });
+  }
+
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------

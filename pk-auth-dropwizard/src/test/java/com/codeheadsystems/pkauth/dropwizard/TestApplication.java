@@ -88,14 +88,14 @@ public final class TestApplication extends Application<TestConfiguration> {
     new java.security.SecureRandom().nextBytes(otpPepper);
     state.otpService = new OtpService(state.otps, new LoggingSmsSender(), state.clock, otpPepper);
     state.adminService =
-        DefaultAdminService.builder()
-            .credentialRepository(state.everything.credentials)
-            .userLookup(state.everything.users)
-            .backupCodeService(state.backupCodeService)
-            .magicLinkService(state.magicLinkService)
-            .otpService(state.otpService)
-            .authorizer(AdminAuthorizer.subjectScoped())
-            .build();
+        DefaultAdminService.create(
+            new DefaultAdminService.Dependencies(
+                state.everything.credentials,
+                state.everything.users,
+                state.backupCodeService,
+                state.magicLinkService,
+                state.otpService),
+            AdminAuthorizer.subjectScoped());
 
     PersistenceBindings persistence =
         PersistenceBindings.builder()

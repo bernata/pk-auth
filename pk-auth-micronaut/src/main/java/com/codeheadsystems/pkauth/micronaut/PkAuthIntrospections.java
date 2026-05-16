@@ -10,6 +10,7 @@ import com.codeheadsystems.pkauth.admin.PhoneVerificationResult;
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson;
 import com.codeheadsystems.pkauth.api.ChallengeId;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson;
@@ -20,6 +21,7 @@ import com.codeheadsystems.pkauth.api.StartAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.StartAuthenticationResponse;
 import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
 import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.AuthenticatorData;
 import com.codeheadsystems.pkauth.credential.CredentialMetadata;
@@ -71,6 +73,8 @@ import io.micronaut.core.annotation.Introspected;
       // value types
       UserHandle.class,
       ChallengeId.class,
+      CredentialId.class,
+      Transport.class,
       CredentialRecord.class,
       CredentialMetadata.class,
       AuthenticatorData.class,

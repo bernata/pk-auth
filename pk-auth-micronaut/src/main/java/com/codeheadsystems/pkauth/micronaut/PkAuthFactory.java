@@ -220,12 +220,8 @@ public class PkAuthFactory {
       BackupCodeService backupCodeService,
       MagicLinkService magicLinkService,
       OtpService otpService) {
-    return DefaultAdminService.builder()
-        .credentialRepository(credentialRepository)
-        .userLookup(userLookup)
-        .backupCodeService(backupCodeService)
-        .magicLinkService(magicLinkService)
-        .otpService(otpService)
-        .build();
+    return DefaultAdminService.create(
+        new DefaultAdminService.Dependencies(
+            credentialRepository, userLookup, backupCodeService, magicLinkService, otpService));
   }
 }

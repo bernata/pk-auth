@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.credential;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.HexFormat;
+import java.util.EnumSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -14,7 +16,7 @@ import org.jspecify.annotations.Nullable;
  * Stored credential associated with a user handle. Persisted by {@code CredentialRepository}
  * implementations.
  *
- * @param credentialId WebAuthn credential id bytes (defensively copied)
+ * @param credentialId WebAuthn credential id (opaque value type)
  * @param userHandle the user this credential authenticates
  * @param publicKeyCose the COSE-encoded public key (defensively copied)
  * @param signCount the latest known authenticator signature counter
@@ -28,13 +30,13 @@ import org.jspecify.annotations.Nullable;
  * @param lastUsedAt when the credential was last used in a successful assertion; null if never
  */
 public record CredentialRecord(
-    byte[] credentialId,
+    CredentialId credentialId,
     UserHandle userHandle,
     byte[] publicKeyCose,
     long signCount,
     String label,
     @Nullable UUID aaguid,
-    Set<String> transports,
+    Set<Transport> transports,
     boolean backupEligible,
     boolean backupState,
     Instant createdAt,
@@ -42,9 +44,6 @@ public record CredentialRecord(
 
   public CredentialRecord {
     Objects.requireNonNull(credentialId, "credentialId");
-    if (credentialId.length == 0) {
-      throw new IllegalArgumentException("credentialId must be non-empty");
-    }
     Objects.requireNonNull(userHandle, "userHandle");
     Objects.requireNonNull(publicKeyCose, "publicKeyCose");
     if (publicKeyCose.length == 0) {
@@ -56,14 +55,9 @@ public record CredentialRecord(
     Objects.requireNonNull(label, "label");
     Objects.requireNonNull(transports, "transports");
     Objects.requireNonNull(createdAt, "createdAt");
-    credentialId = credentialId.clone();
     publicKeyCose = publicKeyCose.clone();
-    transports = Set.copyOf(transports);
-  }
-
-  @Override
-  public byte[] credentialId() {
-    return credentialId.clone();
+    transports =
+        transports.isEmpty() ? EnumSet.noneOf(Transport.class) : EnumSet.copyOf(transports);
   }
 
   @Override
@@ -87,7 +81,7 @@ public record CredentialRecord(
   @Override
   public boolean equals(Object o) {
     return o instanceof CredentialRecord other
-        && Arrays.equals(this.credentialId, other.credentialId)
+        && this.credentialId.equals(other.credentialId)
         && this.userHandle.equals(other.userHandle)
         && Arrays.equals(this.publicKeyCose, other.publicKeyCose)
         && this.signCount == other.signCount
@@ -102,7 +96,7 @@ public record CredentialRecord(
 
   @Override
   public int hashCode() {
-    int result = Arrays.hashCode(credentialId);
+    int result = credentialId.hashCode();
     result =
         31 * result
             + Objects.hash(
@@ -122,7 +116,7 @@ public record CredentialRecord(
   @Override
   public String toString() {
     return "CredentialRecord[credentialId="
-        + HexFormat.of().formatHex(credentialId)
+        + credentialId
         + ", userHandle="
         + userHandle
         + ", signCount="

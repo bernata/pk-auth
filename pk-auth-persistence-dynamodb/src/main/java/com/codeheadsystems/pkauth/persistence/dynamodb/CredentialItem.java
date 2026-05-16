@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.persistence.dynamodb;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -191,7 +194,7 @@ public final class CredentialItem {
 
   /** Translates one of our {@link CredentialRecord} values into a DynamoDB item. */
   public static CredentialItem fromRecord(CredentialRecord r) {
-    String credIdB64 = Base64Url.encode(r.credentialId());
+    String credIdB64 = r.credentialId().b64url();
     String userB64 = Base64Url.encode(r.userHandle().value());
     CredentialItem item = new CredentialItem();
     item.setPk("USER#" + userB64);
@@ -205,7 +208,15 @@ public final class CredentialItem {
     item.setSignCount(r.signCount());
     item.setLabel(r.label());
     item.setAaguid(r.aaguid() == null ? null : r.aaguid().toString());
-    item.setTransports(r.transports().isEmpty() ? null : new LinkedHashSet<>(r.transports()));
+    if (r.transports().isEmpty()) {
+      item.setTransports(null);
+    } else {
+      Set<String> wire = new LinkedHashSet<>();
+      for (Transport t : r.transports()) {
+        wire.add(t.wireName());
+      }
+      item.setTransports(wire);
+    }
     item.setBackupEligible(r.backupEligible());
     item.setBackupState(r.backupState());
     item.setCreatedAt(r.createdAt().toString());
@@ -215,9 +226,14 @@ public final class CredentialItem {
 
   /** Translates a DynamoDB item back into a {@link CredentialRecord}. */
   public CredentialRecord toRecord() {
-    Set<String> tx = transports == null ? Set.of() : Set.copyOf(transports);
+    Set<Transport> tx = EnumSet.noneOf(Transport.class);
+    if (transports != null) {
+      for (String t : transports) {
+        Transport.fromWire(t).ifPresent(tx::add);
+      }
+    }
     return new CredentialRecord(
-        Base64Url.decode(credentialId),
+        CredentialId.fromB64Url(credentialId),
         UserHandle.of(Base64Url.decode(userHandle)),
         Base64Url.decode(publicKeyCose),
         signCount,

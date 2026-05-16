@@ -2,15 +2,14 @@
 package com.codeheadsystems.pkauth.micronaut;
 
 import com.codeheadsystems.pkauth.admin.AccountSummary;
-import com.codeheadsystems.pkauth.admin.AdminErrorBody;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.admin.BackupCodesGenerated;
 import com.codeheadsystems.pkauth.admin.CredentialSummary;
 import com.codeheadsystems.pkauth.admin.OtpDispatchResult;
 import com.codeheadsystems.pkauth.admin.PhoneVerificationResult;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -25,7 +24,10 @@ import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.Produces;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Admin controller mounting the brief §6.9 endpoints under {@code /auth/admin/**}. All
@@ -66,7 +68,7 @@ public class PkAuthAdminController {
       HttpRequest<?> request, @PathVariable String credentialIdB64, @Body RenameRequest body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    byte[] credentialId = Base64Url.decode(credentialIdB64);
+    CredentialId credentialId = CredentialId.fromB64Url(credentialIdB64);
     return map(adminService.renameCredential(actor, actor, credentialId, body.label()));
   }
 
@@ -75,7 +77,7 @@ public class PkAuthAdminController {
       HttpRequest<?> request, @PathVariable String credentialIdB64) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    byte[] credentialId = Base64Url.decode(credentialIdB64);
+    CredentialId credentialId = CredentialId.fromB64Url(credentialIdB64);
     return map(adminService.deleteCredential(actor, actor, credentialId));
   }
 
@@ -122,9 +124,9 @@ public class PkAuthAdminController {
   }
 
   /**
-   * Maps an {@link AdminResult} to an HTTP response. Non-success bodies use the shared {@link
-   * AdminErrorBody} envelope so the wire shape matches the Spring and Dropwizard adapters
-   * byte-for-byte.
+   * Maps an {@link AdminResult} to an HTTP response. Non-success bodies use the unified envelope
+   * {@code {"outcome": "<code>", "error": "<code>", "detail": "<message>"?}} so the wire shape is
+   * consistent with ceremony errors and identical across Spring, Dropwizard, and Micronaut.
    */
   static HttpResponse<?> map(AdminResult<?> result) {
     return switch (result) {
@@ -133,17 +135,34 @@ public class PkAuthAdminController {
       // become a 500. 204 No Content matches the semantic and serializes trivially.
       case AdminResult.Success<?> s when s.value() == null -> HttpResponse.noContent();
       case AdminResult.Success<?> s -> HttpResponse.ok(s.value());
-      case AdminResult.NotFound<?> n -> HttpResponse.notFound().body(AdminErrorBody.of(result));
+      case AdminResult.NotFound<?> n ->
+          HttpResponse.notFound().body(errorEnvelope("not_found", null));
       case AdminResult.Forbidden<?> f ->
-          HttpResponse.status(HttpStatus.FORBIDDEN).body(AdminErrorBody.of(result));
-      case AdminResult.ValidationFailed<?> v -> HttpResponse.badRequest(AdminErrorBody.of(result));
+          HttpResponse.status(HttpStatus.FORBIDDEN).body(errorEnvelope("forbidden", null));
+      case AdminResult.ValidationFailed<?> v ->
+          HttpResponse.badRequest(errorEnvelope("validation_failed", v.detail()));
       case AdminResult.Conflict<?> c ->
-          HttpResponse.status(HttpStatus.CONFLICT).body(AdminErrorBody.of(result));
+          HttpResponse.status(HttpStatus.CONFLICT).body(errorEnvelope("conflict", c.detail()));
       case AdminResult.RateLimited<?> r ->
           HttpResponse.status(HttpStatus.TOO_MANY_REQUESTS)
               .header("Retry-After", Long.toString(r.retryAfter().toSeconds()))
-              .body(AdminErrorBody.of(result));
+              .body(errorEnvelope("rate_limited", null));
     };
+  }
+
+  /**
+   * Builds the unified error envelope: {@code {"outcome": "<code>", "error": "<code>", "detail":
+   * "<message>"?}}. Both {@code outcome} and {@code error} carry the same machine-readable tag so
+   * clients that key off either field keep working; {@code detail} is omitted when {@code null}.
+   */
+  static Map<String, Object> errorEnvelope(String code, @Nullable String detail) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("outcome", code);
+    body.put("error", code);
+    if (detail != null) {
+      body.put("detail", detail);
+    }
+    return body;
   }
 
   // -- request / response bodies --

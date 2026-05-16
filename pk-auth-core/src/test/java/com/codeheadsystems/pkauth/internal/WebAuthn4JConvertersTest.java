@@ -6,9 +6,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.codeheadsystems.pkauth.api.AttestationConveyance;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson.AuthenticatorAssertionResponseJson;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.RegistrationResponseJson;
 import com.codeheadsystems.pkauth.api.RegistrationResponseJson.AuthenticatorAttestationResponseJson;
 import com.codeheadsystems.pkauth.api.ResidentKeyRequirement;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.api.UserVerificationRequirement;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
@@ -113,13 +115,13 @@ class WebAuthn4JConvertersTest {
     byte[] coseBytes = WebAuthn4JConverters.serializeCoseKey(key, objectConverter);
     CredentialRecord cred =
         new CredentialRecord(
-            new byte[] {1, 2, 3},
+            CredentialId.of(new byte[] {1, 2, 3}),
             UserHandle.random(),
             coseBytes,
             7L,
             "Test",
             null,
-            Set.of("usb"),
+            Set.of(Transport.USB),
             true,
             true,
             Instant.now(),

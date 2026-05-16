@@ -3,6 +3,7 @@ package com.codeheadsystems.pkauth.internal;
 
 import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.ChallengeId;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.PublicKeyCredentialCreationOptionsJson;
@@ -17,6 +18,7 @@ import com.codeheadsystems.pkauth.api.StartAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.StartAuthenticationResponse;
 import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
 import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.api.UserVerificationRequirement;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
@@ -58,8 +60,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HexFormat;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -214,6 +216,8 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
               /* userPresenceRequired */ true);
 
       RegistrationData data;
+      // Attestation signature verification is intentionally non-strict in the default manager;
+      // BadSignatureException is not thrown here (see finding #41 / #3 for strict-mode opt-in).
       try {
         data = webAuthnManager.verify(w4jRequest, w4jParams);
       } catch (DataConversionException ex) {
@@ -243,7 +247,8 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
             "registration", new RegistrationResult.AttestationRejected(rej.reason()), start);
       }
 
-      if (credentialRepository.findByCredentialId(acd.getCredentialId()).isPresent()) {
+      CredentialId acdCredentialId = CredentialId.of(acd.getCredentialId());
+      if (credentialRepository.findByCredentialId(acdCredentialId).isPresent()) {
         return outcome(
             "registration",
             new RegistrationResult.DuplicateCredential(acd.getCredentialId()),
@@ -254,15 +259,16 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       byte[] coseBytes = WebAuthn4JConverters.serializeCoseKey(acd.getCOSEKey(), objectConverter);
       UUID aaguidUuid = AAGUID.ZERO.equals(acd.getAaguid()) ? null : acd.getAaguid().getValue();
 
-      Set<String> transportStrings = new LinkedHashSet<>();
+      Set<Transport> transports = EnumSet.noneOf(Transport.class);
       if (data.getTransports() != null) {
-        data.getTransports().forEach(t -> transportStrings.add(t.getValue()));
+        data.getTransports()
+            .forEach(t -> Transport.fromWire(t.getValue()).ifPresent(transports::add));
       }
 
       Instant now = clockProvider.now();
       CredentialRecord stored2 =
           new CredentialRecord(
-              acd.getCredentialId(),
+              acdCredentialId,
               challengeRecord.userHandle() != null
                   ? challengeRecord.userHandle()
                   : userLookup.createOrGetUserHandle("__usernameless__"),
@@ -270,7 +276,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
               authData.getSignCount(),
               labelOrDefault(req.label()),
               aaguidUuid,
-              transportStrings,
+              transports,
               authData.isFlagBE(),
               authData.isFlagBS(),
               now,
@@ -361,7 +367,15 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       ClientDataJsonParser.ClientData clientData = valid.clientData();
 
       byte[] credentialId = req.response().rawId();
-      Optional<CredentialRecord> credOpt = credentialRepository.findByCredentialId(credentialId);
+      CredentialId credentialIdValue;
+      try {
+        credentialIdValue = CredentialId.of(credentialId);
+      } catch (IllegalArgumentException ex) {
+        // Empty rawId — treat as an unknown credential rather than crash.
+        return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
+      }
+      Optional<CredentialRecord> credOpt =
+          credentialRepository.findByCredentialId(credentialIdValue);
       if (credOpt.isEmpty()) {
         return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
       }
@@ -436,7 +450,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       }
 
       long newSignCount = data.getAuthenticatorData().getSignCount();
-      credentialRepository.updateSignCount(credentialId, newSignCount, clockProvider.now());
+      credentialRepository.updateSignCount(credentialIdValue, newSignCount, clockProvider.now());
 
       return outcomeAssertion(
           new AssertionResult.Success(cred.userHandle(), credentialId, newSignCount), start);
@@ -512,10 +526,20 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
           "authentication.counter-regression accepted stored={} received={} credId={}",
           cred.signCount(),
           received,
-          shortCredId(cred.credentialId()));
-      return outcomeAssertion(
-          new AssertionResult.Success(cred.userHandle(), cred.credentialId(), cred.signCount()),
-          start);
+          shortCredId(cred.credentialId().value()));
+      Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+      metrics.incrementCounter(
+          "pkauth.authentication.outcome", "result", "success_counter_regressed");
+      metrics.recordTimer(
+          "pkauth.authentication.duration", elapsed, "result", "success_counter_regressed");
+      LOG.info(
+          "authentication.finish outcome=success_counter_regressed latencyMs={}",
+          elapsed.toMillis());
+      return new AssertionResult.Success(
+          cred.userHandle(),
+          cred.credentialId().value(),
+          cred.signCount(),
+          AssertionResult.CounterStatus.REGRESSED_WARN);
     }
     return outcomeAssertion(
         new AssertionResult.CounterRegression(cred.signCount(), received), start);
@@ -530,20 +554,26 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     if (ex instanceof BadChallengeException || ex instanceof MissingChallengeException) {
       return new RegistrationResult.InvalidChallenge(messageOf(ex));
     }
-    if (ex instanceof BadSignatureException) {
-      return new RegistrationResult.AttestationRejected("signature failed");
-    }
+    // BadSignatureException omitted: the non-strict default manager does not throw it (#41 / #3).
     return new RegistrationResult.InvalidPayload(messageOf(ex));
   }
 
   private PublicKeyCredentialDescriptor toExcludeDescriptor(CredentialRecord cred) {
     return new PublicKeyCredentialDescriptor(
-        "public-key", cred.credentialId(), new ArrayList<>(cred.transports()));
+        "public-key", cred.credentialId().value(), transportWireNames(cred));
   }
 
   private PublicKeyCredentialDescriptor toAllowDescriptor(CredentialRecord cred) {
     return new PublicKeyCredentialDescriptor(
-        "public-key", cred.credentialId(), new ArrayList<>(cred.transports()));
+        "public-key", cred.credentialId().value(), transportWireNames(cred));
+  }
+
+  private static List<String> transportWireNames(CredentialRecord cred) {
+    List<String> wire = new ArrayList<>(cred.transports().size());
+    for (Transport t : cred.transports()) {
+      wire.add(t.wireName());
+    }
+    return wire;
   }
 
   private String labelOrDefault(@Nullable String supplied) {

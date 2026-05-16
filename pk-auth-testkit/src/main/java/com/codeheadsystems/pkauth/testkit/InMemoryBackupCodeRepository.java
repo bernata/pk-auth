@@ -43,4 +43,16 @@ public final class InMemoryBackupCodeRepository implements BackupCodeRepository 
   public void deleteByUserHandle(UserHandle userHandle) {
     byId.values().removeIf(s -> s.userHandle().equals(userHandle));
   }
+
+  /**
+   * Atomically replaces all codes for a user inside a synchronized block so that concurrent readers
+   * never observe a partially-replaced set.
+   */
+  @Override
+  public synchronized void replaceAll(UserHandle userHandle, List<StoredBackupCode> records) {
+    byId.values().removeIf(s -> s.userHandle().equals(userHandle));
+    for (StoredBackupCode record : records) {
+      byId.put(record.codeId(), record);
+    }
+  }
 }

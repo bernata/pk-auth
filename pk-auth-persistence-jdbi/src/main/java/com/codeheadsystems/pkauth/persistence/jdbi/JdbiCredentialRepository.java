@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.persistence.jdbi;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
+import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -11,7 +13,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.util.LinkedHashSet;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,6 +41,11 @@ public final class JdbiCredentialRepository implements CredentialRepository {
 
   @Override
   public void save(CredentialRecord record) {
+    String[] transportWire = new String[record.transports().size()];
+    int i = 0;
+    for (Transport t : record.transports()) {
+      transportWire[i++] = t.wireName();
+    }
     int inserted =
         jdbi.withHandle(
             h ->
@@ -49,16 +56,13 @@ public final class JdbiCredentialRepository implements CredentialRepository {
                             + " VALUES (:cid, :uh, :pk, :sc, :label, :aaguid, :transports,"
                             + " :be, :bs, :createdAt, :lastUsedAt)"
                             + " ON CONFLICT (credential_id) DO NOTHING")
-                    .bind("cid", record.credentialId())
+                    .bind("cid", record.credentialId().value())
                     .bind("uh", record.userHandle().value())
                     .bind("pk", record.publicKeyCose())
                     .bind("sc", record.signCount())
                     .bind("label", record.label())
                     .bind("aaguid", record.aaguid())
-                    .bindArray(
-                        "transports",
-                        String.class,
-                        (Object[]) record.transports().toArray(new String[0]))
+                    .bindArray("transports", String.class, (Object[]) transportWire)
                     .bind("be", record.backupEligible())
                     .bind("bs", record.backupState())
                     .bind("createdAt", OffsetDateTime.ofInstant(record.createdAt(), ZoneOffset.UTC))
@@ -76,13 +80,13 @@ public final class JdbiCredentialRepository implements CredentialRepository {
 
   /** Finds an active (not revoked) credential by id. */
   @Override
-  public Optional<CredentialRecord> findByCredentialId(byte[] credentialId) {
+  public Optional<CredentialRecord> findByCredentialId(CredentialId credentialId) {
     return jdbi.withHandle(
         h ->
             h.createQuery(
                     "SELECT * FROM credentials"
                         + " WHERE credential_id = :cid AND revoked_at IS NULL")
-                .bind("cid", credentialId)
+                .bind("cid", credentialId.value())
                 .map(MAPPER)
                 .findFirst());
   }
@@ -102,7 +106,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
   }
 
   @Override
-  public void updateSignCount(byte[] credentialId, long newCount, Instant lastUsedAt) {
+  public void updateSignCount(CredentialId credentialId, long newCount, Instant lastUsedAt) {
     // Guard against concurrent racing assertions overwriting a higher stored counter with a
     // lower one — that would silently defeat WebAuthn's clone-detection invariant. Only advance
     // the counter when the new value strictly exceeds the stored one.
@@ -114,19 +118,19 @@ public final class JdbiCredentialRepository implements CredentialRepository {
                         + "   AND revoked_at IS NULL")
                 .bind("sc", newCount)
                 .bind("lua", OffsetDateTime.ofInstant(lastUsedAt, ZoneOffset.UTC))
-                .bind("cid", credentialId)
+                .bind("cid", credentialId.value())
                 .execute());
   }
 
   @Override
-  public void updateLabel(byte[] credentialId, String label) {
+  public void updateLabel(CredentialId credentialId, String label) {
     jdbi.useHandle(
         h ->
             h.createUpdate(
                     "UPDATE credentials SET label = :label"
                         + " WHERE credential_id = :cid AND revoked_at IS NULL")
                 .bind("label", label)
-                .bind("cid", credentialId)
+                .bind("cid", credentialId.value())
                 .execute());
   }
 
@@ -135,7 +139,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
    * audit-event row.
    */
   @Override
-  public void delete(byte[] credentialId) {
+  public void delete(CredentialId credentialId) {
     delete(credentialId, DEFAULT_REVOKE_REASON);
   }
 
@@ -143,8 +147,9 @@ public final class JdbiCredentialRepository implements CredentialRepository {
    * Soft-deletes the credential with the supplied {@code reason} (max 64 chars) and writes an
    * audit-event row.
    */
-  public void delete(byte[] credentialId, String reason) {
+  public void delete(CredentialId credentialId, String reason) {
     String safeReason = reason == null ? DEFAULT_REVOKE_REASON : reason;
+    byte[] credIdBytes = credentialId.value();
     jdbi.useHandle(
         h -> {
           // Lookup user_handle before revoking so we can populate the audit event.
@@ -152,7 +157,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
               h.createQuery(
                       "SELECT user_handle FROM credentials"
                           + " WHERE credential_id = :cid AND revoked_at IS NULL")
-                  .bind("cid", credentialId)
+                  .bind("cid", credIdBytes)
                   .mapTo(byte[].class)
                   .findFirst()
                   .orElse(null);
@@ -162,7 +167,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
                       + " SET revoked_at = NOW(), revoked_reason = :reason"
                       + " WHERE credential_id = :cid AND revoked_at IS NULL")
               .bind("reason", safeReason)
-              .bind("cid", credentialId)
+              .bind("cid", credIdBytes)
               .execute();
 
           h.createUpdate(
@@ -170,7 +175,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
                       + " (event_type, user_handle, subject_id, detail)"
                       + " VALUES ('credential_revoked', :uh, :subjectId, :detail)")
               .bind("uh", userHandle)
-              .bind("subjectId", credentialIdHex(credentialId))
+              .bind("subjectId", credentialIdHex(credIdBytes))
               .bind("detail", "reason=" + safeReason)
               .execute();
         });
@@ -203,13 +208,13 @@ public final class JdbiCredentialRepository implements CredentialRepository {
     long sc = rs.getLong("sign_count");
     String label = rs.getString("label");
     UUID aaguid = (UUID) rs.getObject("aaguid");
-    Set<String> transports = readTextArray(rs, "transports");
+    Set<Transport> transports = readTransports(rs, "transports");
     boolean be = rs.getBoolean("backup_eligible");
     boolean bs = rs.getBoolean("backup_state");
     Instant createdAt = rs.getObject("created_at", OffsetDateTime.class).toInstant();
     OffsetDateTime lua = rs.getObject("last_used_at", OffsetDateTime.class);
     return new CredentialRecord(
-        credentialId,
+        CredentialId.of(credentialId),
         UserHandle.of(userHandle),
         pk,
         sc,
@@ -222,19 +227,19 @@ public final class JdbiCredentialRepository implements CredentialRepository {
         lua == null ? null : lua.toInstant());
   }
 
-  private static Set<String> readTextArray(ResultSet rs, String column) throws SQLException {
+  private static Set<Transport> readTransports(ResultSet rs, String column) throws SQLException {
     Array array = rs.getArray(column);
     if (array == null) {
-      return Set.of();
+      return EnumSet.noneOf(Transport.class);
     }
     Object raw = array.getArray();
     if (!(raw instanceof Object[] elements)) {
-      return Set.of();
+      return EnumSet.noneOf(Transport.class);
     }
-    Set<String> out = new LinkedHashSet<>(elements.length);
+    Set<Transport> out = EnumSet.noneOf(Transport.class);
     for (Object e : elements) {
       if (e != null) {
-        out.add(e.toString());
+        Transport.fromWire(e.toString()).ifPresent(out::add);
       }
     }
     return out;

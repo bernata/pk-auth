@@ -15,6 +15,7 @@ import com.codeheadsystems.pkauth.api.AttestationConveyance;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson.AuthenticatorAssertionResponseJson;
 import com.codeheadsystems.pkauth.api.ChallengeId;
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.RegistrationResponseJson;
@@ -72,6 +73,7 @@ class DefaultPasskeyAuthenticationServiceTest {
   private static final ChallengeId CHALLENGE_ID = new ChallengeId(Base64Url.encode(CHALLENGE));
   private static final UserHandle USER_HANDLE = UserHandle.of(filled(16, (byte) 9));
   private static final byte[] CRED_ID = filled(20, (byte) 2);
+  private static final CredentialId CRED_ID_VALUE = CredentialId.of(CRED_ID);
 
   private final JsonMapper jsonMapper =
       JsonMapper.builder()
@@ -275,13 +277,16 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void finishRegistrationMapsBadSignatureVerificationException() throws Exception {
+    // Fix #41: BadSignatureException is now treated as a generic InvalidPayload because the
+    // non-strict default WebAuthnManager does not throw it; the dead AttestationRejected branch
+    // was removed. If the strict manager is wired (#3), this test should be revisited.
     primeStoredChallenge(ChallengeRecord.Purpose.REGISTRATION);
     when(webAuthnManager.verify(
             any(com.webauthn4j.data.RegistrationRequest.class), any(RegistrationParameters.class)))
         .thenThrow(new BadSignatureException("bad"));
     byte[] cd = clientData("webauthn.create", Base64Url.encode(CHALLENGE), "https://example.com");
     RegistrationResult result = service.finishRegistration(finishReg(cd));
-    assertThat(result).isInstanceOf(RegistrationResult.AttestationRejected.class);
+    assertThat(result).isInstanceOf(RegistrationResult.InvalidPayload.class);
   }
 
   @Test
@@ -300,7 +305,7 @@ class DefaultPasskeyAuthenticationServiceTest {
   @Test
   void finishAuthenticationRejectsUnknownCredential() {
     primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
-    when(credentialRepository.findByCredentialId(CRED_ID)).thenReturn(Optional.empty());
+    when(credentialRepository.findByCredentialId(CRED_ID_VALUE)).thenReturn(Optional.empty());
     byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
     AssertionResult result = service.finishAuthentication(finishAuth(cd));
     assertThat(result).isInstanceOf(AssertionResult.UnknownCredential.class);
@@ -378,6 +383,32 @@ class DefaultPasskeyAuthenticationServiceTest {
   }
 
   @Test
+  void finishAuthenticationCounterRegressionWarnModeCarriesRegressedStatus() throws Exception {
+    // Fix #42: WARN-mode success must be distinguishable from clean success via CounterStatus.
+    service = newService(CounterRegressionPolicy.WARN);
+    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredCredentialForAssertion();
+    when(webAuthnManager.verify(
+            any(com.webauthn4j.data.AuthenticationRequest.class),
+            any(AuthenticationParameters.class)))
+        .thenThrow(new MaliciousCounterValueException("counter went down", 0L, 0L));
+    byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
+    AssertionResult result = service.finishAuthentication(finishAuth(cd));
+    assertThat(result)
+        .isInstanceOfSatisfying(
+            AssertionResult.Success.class,
+            s -> {
+              assertThat(s.counterStatus()).isEqualTo(AssertionResult.CounterStatus.REGRESSED_WARN);
+              assertThat(s.userHandle()).isEqualTo(USER_HANDLE);
+            });
+    // Distinct metric tag emitted for the regressed case.
+    verify(metrics)
+        .incrementCounter("pkauth.authentication.outcome", "result", "success_counter_regressed");
+    // WARN mode does NOT bump the stored count.
+    verify(credentialRepository, never()).updateSignCount(any(), anyLongValue(), any());
+  }
+
+  @Test
   void finishAuthenticationRejectsCredentialOwnedByDifferentUser() {
     // Fix #18a: start with username "alice" → finish with a credential whose userHandle is "bob".
     // The challenge record carries USER_HANDLE (alice). The credential we return belongs to BOB.
@@ -390,11 +421,11 @@ class DefaultPasskeyAuthenticationServiceTest {
                     ChallengeRecord.Purpose.ASSERTION,
                     USER_HANDLE,
                     NOW.plusSeconds(300))));
-    when(credentialRepository.findByCredentialId(CRED_ID))
+    when(credentialRepository.findByCredentialId(CRED_ID_VALUE))
         .thenReturn(
             Optional.of(
                 new CredentialRecord(
-                    CRED_ID,
+                    CRED_ID_VALUE,
                     bob,
                     stubCoseKeyBytes(),
                     0L,
@@ -465,8 +496,9 @@ class DefaultPasskeyAuthenticationServiceTest {
             s -> {
               assertThat(s.userHandle()).isEqualTo(USER_HANDLE);
               assertThat(s.signCount()).isEqualTo(42L);
+              assertThat(s.counterStatus()).isEqualTo(AssertionResult.CounterStatus.OK);
             });
-    verify(credentialRepository).updateSignCount(eq(CRED_ID), eq(42L), eq(NOW));
+    verify(credentialRepository).updateSignCount(eq(CRED_ID_VALUE), eq(42L), eq(NOW));
     verify(metrics).incrementCounter("pkauth.authentication.outcome", "result", "Success");
   }
 
@@ -516,13 +548,13 @@ class DefaultPasskeyAuthenticationServiceTest {
   }
 
   private void primeStoredCredentialForAssertion() {
-    when(credentialRepository.findByCredentialId(CRED_ID))
+    when(credentialRepository.findByCredentialId(CRED_ID_VALUE))
         .thenReturn(Optional.of(stubStoredCredential()));
   }
 
   private CredentialRecord stubStoredCredential() {
     return new CredentialRecord(
-        CRED_ID,
+        CRED_ID_VALUE,
         USER_HANDLE,
         stubCoseKeyBytes(),
         0L,

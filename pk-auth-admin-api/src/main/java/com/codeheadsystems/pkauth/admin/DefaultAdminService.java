@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.admin;
 
+import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
@@ -11,7 +12,6 @@ import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -31,19 +31,41 @@ public final class DefaultAdminService implements AdminService {
   private final AdminAuthorizer authorizer;
   private final AdminSafetyConfig safetyConfig;
 
-  private DefaultAdminService(Builder b) {
-    this.credentialRepository =
-        Objects.requireNonNull(b.credentialRepository, "credentialRepository");
-    this.userLookup = Objects.requireNonNull(b.userLookup, "userLookup");
-    this.backupCodeService = Objects.requireNonNull(b.backupCodeService, "backupCodeService");
-    this.magicLinkService = Objects.requireNonNull(b.magicLinkService, "magicLinkService");
-    this.otpService = Objects.requireNonNull(b.otpService, "otpService");
-    this.authorizer = b.authorizer == null ? AdminAuthorizer.subjectScoped() : b.authorizer;
-    this.safetyConfig = b.safetyConfig == null ? AdminSafetyConfig.defaults() : b.safetyConfig;
+  private DefaultAdminService(
+      Dependencies deps, AdminAuthorizer authorizer, AdminSafetyConfig safetyConfig) {
+    this.credentialRepository = deps.credentialRepository();
+    this.userLookup = deps.userLookup();
+    this.backupCodeService = deps.backupCodeService();
+    this.magicLinkService = deps.magicLinkService();
+    this.otpService = deps.otpService();
+    this.authorizer = authorizer;
+    this.safetyConfig = safetyConfig;
   }
 
-  public static Builder builder() {
-    return new Builder();
+  /**
+   * Creates a {@link DefaultAdminService} with default {@link AdminAuthorizer} and {@link
+   * AdminSafetyConfig}.
+   */
+  public static DefaultAdminService create(Dependencies deps) {
+    return new DefaultAdminService(
+        deps, AdminAuthorizer.subjectScoped(), AdminSafetyConfig.defaults());
+  }
+
+  /**
+   * Creates a {@link DefaultAdminService} with a custom authorizer and default {@link
+   * AdminSafetyConfig}.
+   */
+  public static DefaultAdminService create(Dependencies deps, AdminAuthorizer authorizer) {
+    return new DefaultAdminService(deps, authorizer, AdminSafetyConfig.defaults());
+  }
+
+  /**
+   * Creates a {@link DefaultAdminService} with a custom authorizer and custom {@link
+   * AdminSafetyConfig}.
+   */
+  public static DefaultAdminService create(
+      Dependencies deps, AdminAuthorizer authorizer, AdminSafetyConfig safetyConfig) {
+    return new DefaultAdminService(deps, authorizer, safetyConfig);
   }
 
   // -- Account --
@@ -79,7 +101,7 @@ public final class DefaultAdminService implements AdminService {
 
   @Override
   public AdminResult<CredentialSummary> renameCredential(
-      UserHandle actor, UserHandle target, byte[] credentialId, String newLabel) {
+      UserHandle actor, UserHandle target, CredentialId credentialId, String newLabel) {
     if (!authorize(actor, target)) return new AdminResult.Forbidden<>();
     if (newLabel == null || newLabel.isBlank()) {
       return new AdminResult.ValidationFailed<>("label must be non-blank");
@@ -95,7 +117,7 @@ public final class DefaultAdminService implements AdminService {
 
   @Override
   public AdminResult<Void> deleteCredential(
-      UserHandle actor, UserHandle target, byte[] credentialId) {
+      UserHandle actor, UserHandle target, CredentialId credentialId) {
     if (!authorize(actor, target)) return new AdminResult.Forbidden<>();
     Optional<CredentialRecord> cred = credentialRepository.findByCredentialId(credentialId);
     if (cred.isEmpty() || !cred.get().userHandle().equals(target)) {
@@ -103,7 +125,7 @@ public final class DefaultAdminService implements AdminService {
     }
     if (!safetyConfig.allowDeleteWithoutBackupCodes()) {
       List<CredentialRecord> all = credentialRepository.findByUserHandle(target);
-      boolean lastOne = all.size() == 1 && Arrays.equals(all.get(0).credentialId(), credentialId);
+      boolean lastOne = all.size() == 1 && all.get(0).credentialId().equals(credentialId);
       if (lastOne && backupCodeService.remainingCount(target) == 0) {
         return new AdminResult.Conflict<>(
             "Cannot delete the last credential while no backup codes remain.");
@@ -212,55 +234,26 @@ public final class DefaultAdminService implements AdminService {
     return authorizer.canAct(actor, target);
   }
 
-  /** Builder for {@link DefaultAdminService}. */
-  public static final class Builder {
-    private CredentialRepository credentialRepository;
-    private UserLookup userLookup;
-    private BackupCodeService backupCodeService;
-    private MagicLinkService magicLinkService;
-    private OtpService otpService;
-    private AdminAuthorizer authorizer;
-    private AdminSafetyConfig safetyConfig;
-
-    private Builder() {}
-
-    public Builder credentialRepository(CredentialRepository v) {
-      this.credentialRepository = v;
-      return this;
-    }
-
-    public Builder userLookup(UserLookup v) {
-      this.userLookup = v;
-      return this;
-    }
-
-    public Builder backupCodeService(BackupCodeService v) {
-      this.backupCodeService = v;
-      return this;
-    }
-
-    public Builder magicLinkService(MagicLinkService v) {
-      this.magicLinkService = v;
-      return this;
-    }
-
-    public Builder otpService(OtpService v) {
-      this.otpService = v;
-      return this;
-    }
-
-    public Builder authorizer(AdminAuthorizer v) {
-      this.authorizer = v;
-      return this;
-    }
-
-    public Builder safetyConfig(AdminSafetyConfig v) {
-      this.safetyConfig = v;
-      return this;
-    }
-
-    public DefaultAdminService build() {
-      return new DefaultAdminService(this);
+  /**
+   * Canonical holder of the five required collaborators for {@link DefaultAdminService}.
+   *
+   * <p>Pass an instance to {@link #create(Dependencies)} (or the overloads that accept an optional
+   * {@link AdminAuthorizer} / {@link AdminSafetyConfig}) to construct a service. Using a record
+   * keeps construction sites concise and self-documenting through Java's named component syntax.
+   */
+  public record Dependencies(
+      CredentialRepository credentialRepository,
+      UserLookup userLookup,
+      BackupCodeService backupCodeService,
+      MagicLinkService magicLinkService,
+      OtpService otpService) {
+    /** Compact constructor — enforces non-null on all required collaborators. */
+    public Dependencies {
+      Objects.requireNonNull(credentialRepository, "credentialRepository");
+      Objects.requireNonNull(userLookup, "userLookup");
+      Objects.requireNonNull(backupCodeService, "backupCodeService");
+      Objects.requireNonNull(magicLinkService, "magicLinkService");
+      Objects.requireNonNull(otpService, "otpService");
     }
   }
 }

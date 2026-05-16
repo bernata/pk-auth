@@ -39,4 +39,20 @@ public interface BackupCodeRepository {
 
   /** Deletes every backup code for a user — used by {@code regenerateAll}. */
   void deleteByUserHandle(UserHandle userHandle);
+
+  /**
+   * Atomically replaces all backup codes for a user: deletes every existing code and inserts the
+   * supplied records in a single logical unit of work.
+   *
+   * <p>The default implementation calls {@link #deleteByUserHandle} followed by individual {@link
+   * #save} calls, which is NOT transactional. Production implementations SHOULD override this
+   * method to execute inside a database transaction so that a mid-loop failure cannot leave the
+   * user with a partial or empty set of codes.
+   */
+  default void replaceAll(UserHandle userHandle, List<StoredBackupCode> records) {
+    deleteByUserHandle(userHandle);
+    for (StoredBackupCode record : records) {
+      save(record);
+    }
+  }
 }
