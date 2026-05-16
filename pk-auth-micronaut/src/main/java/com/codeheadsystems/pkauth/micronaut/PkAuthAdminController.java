@@ -2,14 +2,22 @@
 package com.codeheadsystems.pkauth.micronaut;
 
 import com.codeheadsystems.pkauth.admin.AccountSummary;
+import com.codeheadsystems.pkauth.admin.AdminRequests.FinishEmailVerification;
+import com.codeheadsystems.pkauth.admin.AdminRequests.FinishPhoneVerification;
+import com.codeheadsystems.pkauth.admin.AdminRequests.RenameCredential;
+import com.codeheadsystems.pkauth.admin.AdminRequests.StartEmailVerification;
+import com.codeheadsystems.pkauth.admin.AdminRequests.StartPhoneVerification;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
+import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
 import com.codeheadsystems.pkauth.admin.BackupCodesGenerated;
 import com.codeheadsystems.pkauth.admin.CredentialSummary;
+import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
 import com.codeheadsystems.pkauth.admin.OtpDispatchResult;
 import com.codeheadsystems.pkauth.admin.PhoneVerificationResult;
 import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
+import com.codeheadsystems.pkauth.json.Base64Url;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -34,9 +42,16 @@ import org.jspecify.annotations.Nullable;
  * authenticated endpoints require the {@link PkAuthJwtAuthenticationFilter} to have attached a user
  * handle to the request; {@code complete-email-verification} is intentionally unauthenticated.
  *
+ * <p>Request bodies are the shared records on {@link
+ * com.codeheadsystems.pkauth.admin.AdminRequests} and responses use the shared {@link
+ * BackupCodesCountResponse} and {@link EmailVerificationResult} records so every adapter emits
+ * byte-for-byte identical JSON.
+ *
  * <p><b>Threading.</b> pk-auth's SPI is blocking (TODO #29); this adapter dispatches every endpoint
  * to {@link TaskExecutors#BLOCKING} so Micronaut's Netty event loop is never parked on a
  * synchronous repository call. Hosts running on Netty event loops should keep this default.
+ *
+ * @since 0.9.1
  */
 @Controller("/auth/admin")
 @Produces(MediaType.APPLICATION_JSON)
@@ -63,22 +78,32 @@ public class PkAuthAdminController {
     return map(adminService.listCredentials(actor, actor));
   }
 
-  @Patch("/credentials/{credentialIdB64}")
+  /**
+   * Renames the credential identified by its base64url-encoded id.
+   *
+   * @since 0.9.1
+   */
+  @Patch("/credentials/{credentialId}")
   public HttpResponse<?> renameCredential(
-      HttpRequest<?> request, @PathVariable String credentialIdB64, @Body RenameRequest body) {
+      HttpRequest<?> request, @PathVariable String credentialId, @Body RenameCredential body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    CredentialId credentialId = CredentialId.fromB64Url(credentialIdB64);
-    return map(adminService.renameCredential(actor, actor, credentialId, body.label()));
+    CredentialId id = CredentialId.fromB64Url(credentialId);
+    return map(adminService.renameCredential(actor, actor, id, body.label()));
   }
 
-  @Delete("/credentials/{credentialIdB64}")
+  /**
+   * Deletes the credential identified by its base64url-encoded id.
+   *
+   * @since 0.9.1
+   */
+  @Delete("/credentials/{credentialId}")
   public HttpResponse<?> deleteCredential(
-      HttpRequest<?> request, @PathVariable String credentialIdB64) {
+      HttpRequest<?> request, @PathVariable String credentialId) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    CredentialId credentialId = CredentialId.fromB64Url(credentialIdB64);
-    return map(adminService.deleteCredential(actor, actor, credentialId));
+    CredentialId id = CredentialId.fromB64Url(credentialId);
+    return map(adminService.deleteCredential(actor, actor, id));
   }
 
   @Post("/backup-codes/regenerate")
@@ -92,11 +117,17 @@ public class PkAuthAdminController {
   public HttpResponse<?> remainingBackupCodes(HttpRequest<?> request) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    return map(adminService.remainingBackupCodes(actor, actor));
+    AdminResult<Integer> result = adminService.remainingBackupCodes(actor, actor);
+    return switch (result) {
+      case AdminResult.Success<Integer> s ->
+          HttpResponse.ok(new BackupCodesCountResponse(s.value()));
+      default -> map(result);
+    };
   }
 
   @Post("/email/start-verification")
-  public HttpResponse<?> startEmailVerification(HttpRequest<?> request, @Body EmailRequest body) {
+  public HttpResponse<?> startEmailVerification(
+      HttpRequest<?> request, @Body StartEmailVerification body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.startEmailVerification(actor, actor, body.email()));
@@ -104,12 +135,18 @@ public class PkAuthAdminController {
 
   /** Unauthenticated. */
   @Post("/email/complete-verification")
-  public HttpResponse<?> completeEmailVerification(@Body TokenRequest body) {
-    return map(adminService.completeEmailVerification(body.token()));
+  public HttpResponse<?> completeEmailVerification(@Body FinishEmailVerification body) {
+    AdminResult<UserHandle> result = adminService.completeEmailVerification(body.token());
+    return switch (result) {
+      case AdminResult.Success<UserHandle> s ->
+          HttpResponse.ok(new EmailVerificationResult(Base64Url.encode(s.value().value())));
+      default -> map(result);
+    };
   }
 
   @Post("/phone/start-verification")
-  public HttpResponse<?> startPhoneVerification(HttpRequest<?> request, @Body PhoneRequest body) {
+  public HttpResponse<?> startPhoneVerification(
+      HttpRequest<?> request, @Body StartPhoneVerification body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.startPhoneVerification(actor, actor, body.phone()));
@@ -117,7 +154,7 @@ public class PkAuthAdminController {
 
   @Post("/phone/complete-verification")
   public HttpResponse<?> completePhoneVerification(
-      HttpRequest<?> request, @Body PhoneCompleteRequest body) {
+      HttpRequest<?> request, @Body FinishPhoneVerification body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.completePhoneVerification(actor, actor, body.phone(), body.code()));
@@ -165,18 +202,6 @@ public class PkAuthAdminController {
     return body;
   }
 
-  // -- request / response bodies --
-
-  public record RenameRequest(String label) {}
-
-  public record EmailRequest(String email) {}
-
-  public record TokenRequest(String token) {}
-
-  public record PhoneRequest(String phone) {}
-
-  public record PhoneCompleteRequest(String phone, String code) {}
-
   /** Compile-time assertion that the AdminResult payload types are visible — no logic. */
   @SuppressWarnings("unused")
   private static List<Class<?>> payloadTypes() {
@@ -185,6 +210,8 @@ public class PkAuthAdminController {
         CredentialSummary.class,
         BackupCodesGenerated.class,
         OtpDispatchResult.class,
-        PhoneVerificationResult.class);
+        PhoneVerificationResult.class,
+        BackupCodesCountResponse.class,
+        EmailVerificationResult.class);
   }
 }

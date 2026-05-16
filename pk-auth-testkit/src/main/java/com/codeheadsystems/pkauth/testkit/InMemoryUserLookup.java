@@ -18,18 +18,18 @@ public final class InMemoryUserLookup implements UserLookup {
   public InMemoryUserLookup() {}
 
   @Override
-  public Optional<UserHandle> findUserHandleByUsername(String username) {
+  public Optional<UserHandle> findHandleByUsername(String username) {
     UserView u = byUsername.get(username);
     return u == null ? Optional.empty() : Optional.of(u.handle());
   }
 
   @Override
-  public Optional<UserView> findUserByHandle(UserHandle handle) {
+  public Optional<UserView> findViewByHandle(UserHandle handle) {
     return Optional.ofNullable(byHandle.get(handle));
   }
 
   @Override
-  public UserHandle createOrGetUserHandle(String username) {
+  public UserHandle getOrCreateHandle(String username) {
     UserView existing = byUsername.get(username);
     if (existing != null) {
       return existing.handle();

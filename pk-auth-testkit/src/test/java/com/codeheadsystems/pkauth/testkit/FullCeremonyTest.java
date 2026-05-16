@@ -43,7 +43,7 @@ class FullCeremonyTest {
     CredentialRecord existing =
         env.credentials
             .findByUserHandle(
-                env.users.findUserHandleByUsername(CeremonyScenarios.USERNAME).orElseThrow())
+                env.users.findHandleByUsername(CeremonyScenarios.USERNAME).orElseThrow())
             .get(0);
     assertThatThrownBy(() -> env.credentials.save(existing))
         .isInstanceOf(com.codeheadsystems.pkauth.spi.DuplicateCredentialException.class)

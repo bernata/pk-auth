@@ -6,9 +6,13 @@ import com.codeheadsystems.pkauth.dropwizard.admin.PkAuthAdminResource;
 import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthFilter;
 import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
 import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthPasskeyPrincipal;
+import com.codeheadsystems.pkauth.dropwizard.dagger.AltFlowsModule;
+import com.codeheadsystems.pkauth.dropwizard.dagger.AltFlowsModule.AltFlowOptions;
 import com.codeheadsystems.pkauth.dropwizard.dagger.DaggerPkAuthComponent;
+import com.codeheadsystems.pkauth.dropwizard.dagger.DaggerPkAuthFullComponent;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PersistenceBindings;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PkAuthComponent;
+import com.codeheadsystems.pkauth.dropwizard.dagger.PkAuthFullComponent;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PkAuthModule;
 import com.codeheadsystems.pkauth.dropwizard.json.PkAuthJacksonBridge;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
@@ -33,8 +37,12 @@ import org.slf4j.LoggerFactory;
  *   <li>A {@code Configuration} class implementing {@link HasPkAuthConfig}.
  *   <li>A {@link PersistenceBindings} describing the SPI implementations (JDBI, DynamoDB, or the
  *       testkit's in-memory variant).
- *   <li>An optional {@link AdminService} — when present, the bundle registers {@link
- *       PkAuthAdminResource} at {@code /auth/admin}.
+ *   <li>Optional: either a pre-built {@link AdminService} (legacy constructor), or an {@link
+ *       AltFlowOptions} bag that lets the bundle build {@link AdminService} internally from the OTP
+ *       / magic-link / backup-code blocks of {@link
+ *       com.codeheadsystems.pkauth.dropwizard.config.PkAuthConfig}. When the alt-flow constructor
+ *       is used the bundle additionally mounts {@link PkAuthAdminResource} at {@code /auth/admin}
+ *       without further wiring from the host — matching the Spring and Micronaut adapters.
  * </ol>
  *
  * <p><b>Jackson coexistence.</b> Dropwizard 5 still wires Jackson 2 internally; pk-auth-core uses
@@ -43,15 +51,18 @@ import org.slf4j.LoggerFactory;
  * compatibility is verified end-to-end by the integration tests.
  *
  * @param <C> the host application's Configuration type.
+ * @since 0.9.1 — alt-flow auto-wiring constructor added; legacy two-arg constructor preserved.
  */
 public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle<C> {
 
   private static final Logger LOG = LoggerFactory.getLogger(PkAuthBundle.class);
 
   private final PersistenceBindings persistence;
-  private final @Nullable AdminService adminService;
+  private final @Nullable AdminService preBuiltAdminService;
+  private final @Nullable AltFlowOptions altFlowOptions;
 
   private @Nullable PkAuthComponent component;
+  private @Nullable PkAuthFullComponent fullComponent;
 
   /**
    * Constructs a bundle without admin support. Only the four ceremony endpoints are mounted.
@@ -59,19 +70,44 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
    * @param persistence the SPI implementations used by the ceremony service.
    */
   public PkAuthBundle(PersistenceBindings persistence) {
-    this(persistence, null);
+    this(persistence, (AdminService) null);
   }
 
   /**
-   * Constructs a bundle with optional admin support. When {@code adminService} is non-null the
-   * bundle additionally registers {@link PkAuthAdminResource}.
+   * Legacy constructor: the host has already hand-built an {@link AdminService} and hands it to the
+   * bundle. The bundle mounts the admin resource but does not auto-wire backup-code / magic-link /
+   * OTP services itself. Prefer the {@link AltFlowOptions} constructor for new applications.
    *
    * @param persistence the SPI implementations used by the ceremony service.
    * @param adminService the admin service, or null to skip admin endpoint registration.
    */
   public PkAuthBundle(PersistenceBindings persistence, @Nullable AdminService adminService) {
     this.persistence = Objects.requireNonNull(persistence, "persistence");
-    this.adminService = adminService;
+    this.preBuiltAdminService = adminService;
+    this.altFlowOptions = null;
+  }
+
+  /**
+   * Auto-wiring constructor (mirrors Spring / Micronaut). The bundle builds {@link
+   * com.codeheadsystems.pkauth.backupcodes.BackupCodeService}, {@link
+   * com.codeheadsystems.pkauth.magiclink.MagicLinkService}, {@link
+   * com.codeheadsystems.pkauth.otp.OtpService}, and an {@link AdminService} from the OTP /
+   * magic-link / backup-code blocks of {@link
+   * com.codeheadsystems.pkauth.dropwizard.config.PkAuthConfig} and the sender beans handed in via
+   * {@code altFlowOptions}. The admin resource is mounted at {@code /auth/admin}.
+   *
+   * <p>The supplied {@link PersistenceBindings} must include {@link
+   * PersistenceBindings#backupCodeRepository()} and {@link PersistenceBindings#otpRepository()};
+   * construction throws otherwise.
+   *
+   * @param persistence the SPI implementations used by the ceremony service and alt-flows.
+   * @param altFlowOptions host-supplied senders, authorizer, and dev-mode toggles.
+   * @since 0.9.1
+   */
+  public PkAuthBundle(PersistenceBindings persistence, AltFlowOptions altFlowOptions) {
+    this.persistence = Objects.requireNonNull(persistence, "persistence");
+    this.altFlowOptions = Objects.requireNonNull(altFlowOptions, "altFlowOptions");
+    this.preBuiltAdminService = null;
   }
 
   @Override
@@ -84,32 +120,68 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
 
   @Override
   public void run(C configuration, Environment environment) {
-    this.component =
-        DaggerPkAuthComponent.builder()
-            .pkAuthModule(new PkAuthModule(configuration.pkAuth(), persistence))
-            .build();
+    PkAuthModule pkAuthModule = new PkAuthModule(configuration.pkAuth(), persistence);
+    PkAuthCeremonyWiring wiring;
+    if (altFlowOptions != null) {
+      // Auto-wire alt-flows + admin via Dagger. The SPIs that back them must be present.
+      if (persistence.backupCodeRepository() == null) {
+        throw new IllegalStateException(
+            "PkAuthBundle alt-flow auto-wiring requires PersistenceBindings.backupCodeRepository"
+                + " to be non-null.");
+      }
+      if (persistence.otpRepository() == null) {
+        throw new IllegalStateException(
+            "PkAuthBundle alt-flow auto-wiring requires PersistenceBindings.otpRepository to be"
+                + " non-null.");
+      }
+      this.fullComponent =
+          DaggerPkAuthFullComponent.builder()
+              .pkAuthModule(pkAuthModule)
+              .altFlowsModule(
+                  new AltFlowsModule(
+                      altFlowOptions,
+                      persistence.backupCodeRepository(),
+                      persistence.otpRepository()))
+              .build();
+      wiring =
+          new PkAuthCeremonyWiring(
+              fullComponent.ceremonyResource(),
+              fullComponent.passkeyAuthenticator(),
+              fullComponent.jwtIssuer(),
+              fullComponent.jwtValidator());
+    } else {
+      this.component = DaggerPkAuthComponent.builder().pkAuthModule(pkAuthModule).build();
+      wiring =
+          new PkAuthCeremonyWiring(
+              component.ceremonyResource(),
+              component.passkeyAuthenticator(),
+              component.jwtIssuer(),
+              component.jwtValidator());
+    }
 
     // Ensure the runtime ObjectMapper has the bridge too (the environment may build its own copy
     // distinct from the bootstrap's).
     PkAuthJacksonBridge.register(environment.getObjectMapper());
 
-    environment.jersey().register(component.ceremonyResource());
+    environment.jersey().register(wiring.ceremonyResource());
     environment
         .jersey()
         .register(
             new com.codeheadsystems.pkauth.dropwizard.resource.PkAuthPersistenceExceptionMapper());
 
-    PkAuthDropwizardAuthenticator authenticator = component.passkeyAuthenticator();
     environment
         .jersey()
-        .register(new AuthDynamicFeature(PkAuthDropwizardAuthFilter.build(authenticator)));
+        .register(new AuthDynamicFeature(PkAuthDropwizardAuthFilter.build(wiring.authenticator())));
     environment
         .jersey()
         .register(new AuthValueFactoryProvider.Binder<>(PkAuthPasskeyPrincipal.class));
 
-    if (adminService != null) {
-      environment.jersey().register(new PkAuthAdminResource(adminService));
-      LOG.info("pkauth.admin.endpoints.registered path=/auth/admin");
+    if (fullComponent != null) {
+      environment.jersey().register(fullComponent.adminResource());
+      LOG.info("pkauth.admin.endpoints.registered path=/auth/admin (auto-wired alt-flows + admin)");
+    } else if (preBuiltAdminService != null) {
+      environment.jersey().register(new PkAuthAdminResource(preBuiltAdminService));
+      LOG.info("pkauth.admin.endpoints.registered path=/auth/admin (host-built AdminService)");
     }
 
     LOG.info(
@@ -119,23 +191,52 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
   }
 
   /**
-   * Returns the constructed Dagger component. Available after {@link #run} has executed; useful for
-   * tests that want to peek at the JWT issuer / validator wired into the running app.
+   * Returns the constructed slim Dagger component. Available after {@link #run} has executed when
+   * the bundle was built without {@link AltFlowOptions}. When the alt-flow constructor was used,
+   * call {@link #fullComponent()} instead.
    */
   public PkAuthComponent component() {
     if (component == null) {
+      if (fullComponent != null) {
+        throw new IllegalStateException(
+            "PkAuthBundle is running with alt-flow auto-wiring; call fullComponent() instead of"
+                + " component().");
+      }
       throw new IllegalStateException("PkAuthBundle.run has not been invoked yet");
     }
     return component;
   }
 
+  /**
+   * Returns the constructed full Dagger component (ceremony + alt-flows + admin). Available after
+   * {@link #run} has executed when the bundle was built with the {@link AltFlowOptions}
+   * constructor.
+   *
+   * @since 0.9.1
+   */
+  public PkAuthFullComponent fullComponent() {
+    if (fullComponent == null) {
+      throw new IllegalStateException(
+          "PkAuthBundle was not registered with alt-flow auto-wiring (AltFlowOptions). Use"
+              + " component() or register the bundle with the alt-flow constructor.");
+    }
+    return fullComponent;
+  }
+
   /** Convenience for tests / integrators that need the JWT issuer after the app has started. */
   public PkAuthJwtIssuer jwtIssuer() {
-    return component().jwtIssuer();
+    return component != null ? component.jwtIssuer() : fullComponent().jwtIssuer();
   }
 
   /** Convenience for tests / integrators that need the JWT validator after the app has started. */
   public PkAuthJwtValidator jwtValidator() {
-    return component().jwtValidator();
+    return component != null ? component.jwtValidator() : fullComponent().jwtValidator();
   }
+
+  /** Internal carrier so the two component variants share the same registration path. */
+  private record PkAuthCeremonyWiring(
+      com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource ceremonyResource,
+      PkAuthDropwizardAuthenticator authenticator,
+      PkAuthJwtIssuer jwtIssuer,
+      PkAuthJwtValidator jwtValidator) {}
 }

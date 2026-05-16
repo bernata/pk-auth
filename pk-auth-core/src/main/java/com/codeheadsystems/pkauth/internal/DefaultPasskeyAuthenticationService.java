@@ -222,7 +222,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       StartRegistrationRequest req, @Nullable String clientIp) {
     Objects.requireNonNull(req, "req");
     enforceRateLimit("registration.start", clientIp, req.username());
-    UserHandle userHandle = userLookup.createOrGetUserHandle(req.username());
+    UserHandle userHandle = userLookup.getOrCreateHandle(req.username());
 
     byte[] challenge = challengeGenerator.generate();
     ChallengeId challengeId = ChallengeGenerator.idOf(challenge);
@@ -360,7 +360,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
               acdCredentialId,
               challengeRecord.userHandle() != null
                   ? challengeRecord.userHandle()
-                  : userLookup.createOrGetUserHandle("__usernameless__"),
+                  : userLookup.getOrCreateHandle(UserLookup.USERNAMELESS_KEY),
               coseBytes,
               authData.getSignCount(),
               labelOrDefault(req.label()),
@@ -415,7 +415,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     // credentials. Prevents account enumeration on the public start-authentication endpoint.
     List<PublicKeyCredentialDescriptor> allowCredentials = List.of();
     if (req.username() != null) {
-      Optional<UserHandle> handle = userLookup.findUserHandleByUsername(req.username());
+      Optional<UserHandle> handle = userLookup.findHandleByUsername(req.username());
       if (handle.isPresent()) {
         resolvedHandle = handle.get();
         allowCredentials =
@@ -558,7 +558,9 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       credentialRepository.updateSignCount(credentialIdValue, newSignCount, clockProvider.now());
 
       return outcomeAssertion(
-          new AssertionResult.Success(cred.userHandle(), credentialId, newSignCount), start);
+          new AssertionResult.Success(
+              cred.userHandle(), credentialId, newSignCount, AssertionResult.CounterStatus.OK),
+          start);
     } catch (RuntimeException ex) {
       LOG.warn("authentication.finish unexpected error", ex);
       return outcomeAssertion(new AssertionResult.InvalidSignature(), start);

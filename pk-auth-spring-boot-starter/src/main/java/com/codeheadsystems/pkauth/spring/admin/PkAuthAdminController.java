@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.spring.admin;
 
+import com.codeheadsystems.pkauth.admin.AdminRequests.FinishEmailVerification;
+import com.codeheadsystems.pkauth.admin.AdminRequests.FinishPhoneVerification;
+import com.codeheadsystems.pkauth.admin.AdminRequests.RenameCredential;
+import com.codeheadsystems.pkauth.admin.AdminRequests.StartEmailVerification;
+import com.codeheadsystems.pkauth.admin.AdminRequests.StartPhoneVerification;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
+import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
+import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
 import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationToken;
-import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
@@ -30,6 +36,13 @@ import org.springframework.web.bind.annotation.RestController;
  * is subject-scoped: the actor must equal the target. The actor passes themselves as the target on
  * every call — host apps wanting staff-impersonation flows wire a non-default {@code
  * AdminAuthorizer} bean and add their own {@code target} route segment.
+ *
+ * <p>Request bodies are the shared records on {@link
+ * com.codeheadsystems.pkauth.admin.AdminRequests} and responses use the shared {@link
+ * BackupCodesCountResponse} and {@link EmailVerificationResult} records so every adapter emits
+ * byte-for-byte identical JSON.
+ *
+ * @since 0.9.1
  */
 @RestController
 @RequestMapping("/auth/admin")
@@ -59,7 +72,7 @@ public class PkAuthAdminController {
 
   @PatchMapping("/credentials/{credentialId}")
   public ResponseEntity<Object> rename(
-      @PathVariable("credentialId") String credentialId, @RequestBody RenameBody body) {
+      @PathVariable("credentialId") String credentialId, @RequestBody RenameCredential body) {
     UserHandle user = currentUser();
     CredentialId id = CredentialId.fromB64Url(credentialId);
     return PkAuthAdminResultMapper.toResponse(
@@ -70,8 +83,7 @@ public class PkAuthAdminController {
   public ResponseEntity<Object> delete(@PathVariable("credentialId") String credentialId) {
     UserHandle user = currentUser();
     CredentialId id = CredentialId.fromB64Url(credentialId);
-    AdminResult<Void> result = adminService.deleteCredential(user, user, id);
-    return PkAuthAdminResultMapper.toEmptyResponse(result);
+    return PkAuthAdminResultMapper.toResponse(adminService.deleteCredential(user, user, id));
   }
 
   // -- Backup codes ----------------------------------------------------------------------------
@@ -87,7 +99,8 @@ public class PkAuthAdminController {
     UserHandle user = currentUser();
     AdminResult<Integer> result = adminService.remainingBackupCodes(user, user);
     return switch (result) {
-      case AdminResult.Success<Integer> s -> ResponseEntity.ok(Map.of("remaining", s.value()));
+      case AdminResult.Success<Integer> s ->
+          ResponseEntity.ok(new BackupCodesCountResponse(s.value()));
       default -> PkAuthAdminResultMapper.toResponse(result);
     };
   }
@@ -95,21 +108,21 @@ public class PkAuthAdminController {
   // -- Email -----------------------------------------------------------------------------------
 
   @PostMapping("/email/start-verification")
-  public ResponseEntity<Object> startEmailVerification(@RequestBody EmailBody body) {
+  public ResponseEntity<Object> startEmailVerification(@RequestBody StartEmailVerification body) {
     UserHandle user = currentUser();
-    AdminResult<Void> result =
-        adminService.startEmailVerification(user, user, body == null ? "" : body.email());
-    return PkAuthAdminResultMapper.toEmptyResponse(result);
+    return PkAuthAdminResultMapper.toResponse(
+        adminService.startEmailVerification(user, user, body == null ? "" : body.email()));
   }
 
   /** Unauthenticated per brief §6.9 ("token identifies the user"). */
   @PostMapping("/email/complete-verification")
-  public ResponseEntity<Object> completeEmailVerification(@RequestBody TokenBody body) {
+  public ResponseEntity<Object> completeEmailVerification(
+      @RequestBody FinishEmailVerification body) {
     AdminResult<UserHandle> result =
         adminService.completeEmailVerification(body == null ? "" : body.token());
     return switch (result) {
       case AdminResult.Success<UserHandle> s ->
-          ResponseEntity.ok(Map.of("userHandle", Base64Url.encode(s.value().value())));
+          ResponseEntity.ok(new EmailVerificationResult(Base64Url.encode(s.value().value())));
       default -> PkAuthAdminResultMapper.toResponse(result);
     };
   }
@@ -117,14 +130,15 @@ public class PkAuthAdminController {
   // -- Phone -----------------------------------------------------------------------------------
 
   @PostMapping("/phone/start-verification")
-  public ResponseEntity<Object> startPhoneVerification(@RequestBody PhoneBody body) {
+  public ResponseEntity<Object> startPhoneVerification(@RequestBody StartPhoneVerification body) {
     UserHandle user = currentUser();
     return PkAuthAdminResultMapper.toResponse(
         adminService.startPhoneVerification(user, user, body == null ? "" : body.phone()));
   }
 
   @PostMapping("/phone/complete-verification")
-  public ResponseEntity<Object> completePhoneVerification(@RequestBody PhoneVerifyBody body) {
+  public ResponseEntity<Object> completePhoneVerification(
+      @RequestBody FinishPhoneVerification body) {
     UserHandle user = currentUser();
     return PkAuthAdminResultMapper.toResponse(
         adminService.completePhoneVerification(
@@ -140,19 +154,4 @@ public class PkAuthAdminController {
     }
     throw new AccessDeniedException("Authenticated pk-auth JWT required");
   }
-
-  /** Body for credential rename. */
-  public record RenameBody(String label) {}
-
-  /** Body for email verification start. */
-  public record EmailBody(String email) {}
-
-  /** Body for email verification complete. */
-  public record TokenBody(String token) {}
-
-  /** Body for phone verification start. */
-  public record PhoneBody(String phone) {}
-
-  /** Body for phone verification complete. */
-  public record PhoneVerifyBody(String phone, String code) {}
 }

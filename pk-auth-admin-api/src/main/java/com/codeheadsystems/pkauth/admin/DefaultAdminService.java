@@ -73,7 +73,7 @@ public final class DefaultAdminService implements AdminService {
   @Override
   public AdminResult<AccountSummary> getAccount(UserHandle actor, UserHandle target) {
     if (!authorize(actor, target)) return new AdminResult.Forbidden<>();
-    Optional<UserLookup.UserView> view = userLookup.findUserByHandle(target);
+    Optional<UserLookup.UserView> view = userLookup.findViewByHandle(target);
     if (view.isEmpty()) return new AdminResult.NotFound<>();
     int credentialCount = credentialRepository.findByUserHandle(target).size();
     int remaining = backupCodeService.remainingCount(target);

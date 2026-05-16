@@ -146,7 +146,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 
 ## Tier 2 — Adapter parity & API/SPI consistency (high-impact public surface)
 
-### 9. Dropwizard adapter does not auto-wire OTP / MagicLink / BackupCode services
+### ✅ 9. Dropwizard adapter does not auto-wire OTP / MagicLink / BackupCode services
+**Completed:** 2026-05-16 — added new AltFlowsModule + PkAuthFullComponent; PkAuthBundle gets an alt-flow constructor; demo updated.
 - Severity: **High** — [API #1]
 - Files: `pk-auth-dropwizard/.../dagger/PkAuthModule.java`; `PkAuthBundle.java:72`.
 - Issue: Spring and Micronaut auto-wire all three; Dropwizard hosts must
@@ -156,7 +157,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   `PkAuthModule`, and a `PkAuthBundle` constructor that constructs
   `DefaultAdminService` internally.
 
-### 10. Unify admin response body shape across adapters
+### ✅ 10. Unify admin response body shape across adapters
+**Completed:** 2026-05-16 — promoted `BackupCodesCountResponse` and `EmailVerificationResult` into pk-auth-admin-api; all three adapters now emit identical JSON.
 - Severity: **High** — [API #3]
 - Files: Spring `PkAuthAdminController.java:85-94, 105-115` vs Dropwizard
   `:100-104` vs Micronaut `:91-95`.
@@ -168,7 +170,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   (`BackupCodesCountResponse(int remaining)`, `EmailVerificationResult(String userHandle)`).
   Spring's `Map.of(...)` shape is the right shape.
 
-### 11. Promote admin request-body DTOs into `pk-auth-admin-api`
+### ✅ 11. Promote admin request-body DTOs into `pk-auth-admin-api`
+**Completed:** 2026-05-16 — new `AdminRequests` class with five nested records; Spring/Dropwizard/Micronaut adapters use them.
 - Severity: **High** — [API #2] and [Maint #19] (same finding, two agents)
 - Files: Spring `:144-157` (`RenameBody`, `EmailBody`, ...); Dropwizard `:35-47`
   (`RenameRequest`, `EmailStartRequest`, ...); Micronaut `:170-178`
@@ -177,7 +180,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   silently breaks parity.
 - Fix: move records into `pk-auth-admin-api` as `AdminRequests.RenameCredential` etc.
 
-### 12. Delete `AdminErrorBody` and align the documented schema with what adapters emit
+### ✅ 12. Delete `AdminErrorBody` and align the documented schema with what adapters emit
+**Completed:** 2026-05-16 — AdminErrorBody.java + test deleted; DESIGN.md error-envelope description rewritten to match adapter mappers.
 - Severity: **High** — [API #4] + [DeadCode #1] (conflict **resolved: delete**)
 - Files: `pk-auth-admin-api/.../AdminErrorBody.java` and its test
   `AdminErrorBodyTest.java`; `*AdminResultMapper.java` in all three adapters.
@@ -188,7 +192,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Follow-up: after deletion, sweep any docs that referenced the documented
   `{error, detail}` schema so they match what the mappers emit.
 
-### 13. Extract `CeremonyOrchestrator` / `AdminFlow` to remove ~600 lines of triplicated adapter code
+### ⚠️ 13. Extract `CeremonyOrchestrator` / `AdminFlow` to remove ~600 lines of triplicated adapter code
+**Blocked:** not attempted in this run — deferred per user request to pause after Tier 2.
 - Severity: **High** — [Maint #1, #3, #7]
 - Files: ceremony controllers (`PkAuthCeremonyController` x3 + Dropwizard's
   resource) and admin controllers / `PkAuthAdminResultMapper` x3 / inline
@@ -201,14 +206,16 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Related: [API #29] (errorEnvelope duplication), [Maint #19] (request DTOs),
   [Maint #20] (rate-limiter classes), [Maint #18] (`currentUser()` patterns).
 
-### 14. De-duplicate `resolveOtpPepper` between Spring and Micronaut adapters
+### ✅ 14. De-duplicate `resolveOtpPepper` between Spring and Micronaut adapters
+**Completed:** 2026-05-16 — new `OtpPepperResolver` in pk-auth-otp; Spring + Micronaut adapters now call it.
 - Severity: **High** — [Maint #2]
 - Files: Spring `PkAuthAutoConfiguration.java:298-332`,
   Micronaut `PkAuthFactory.java:180-214` — 35 lines verbatim copy.
 - Fix: extract `OtpPepperResolver.resolve(Supplier<String> configuredPepper, BooleanSupplier devMode)`
   to `pk-auth-otp`. Adapters become a two-line call.
 
-### 15. Decompose oversized `finishRegistration` and `finishAuthentication`
+### ⚠️ 15. Decompose oversized `finishRegistration` and `finishAuthentication`
+**Blocked:** worktree merge conflicted heavily with Tier 1 changes to DefaultPasskeyAuthenticationService (rate limiter, enum leak fix). Agent work exists on branch `worktree-agent-a082f9cbecf7dd83a` (now removed). Re-do as a focused PR.
 - Severity: **High** — [Maint #4]
 - File: `pk-auth-core/.../internal/DefaultPasskeyAuthenticationService.java:193-302` (110 lines), `:354-461` (108 lines).
 - Issue: each method does ~seven things and contradicts its own Javadoc's
@@ -218,14 +225,16 @@ These pre-answer questions that would otherwise come up mid-implementation:
   `persistRegistration(...)` so `finish…` becomes a ~20-line orchestration.
 - Related: [Maint #24] (narrow the `RuntimeException` catch when extracting).
 
-### 16. Normalize credential-id URL path-template name across adapters
+### ✅ 16. Normalize credential-id URL path-template name across adapters
+**Completed:** 2026-05-16 — Micronaut path template renamed from `{credentialIdB64}` to `{credentialId}`.
 - Severity: **High** — [API #7]
 - Files: Spring `:60` & Dropwizard `:71` use `{credentialId}`; Micronaut `:66`
   uses `{credentialIdB64}`. Runtime URL is the same; OpenAPI / SDK tooling
   isn't.
 - Fix: rename Micronaut to `{credentialId}`.
 
-### 17. Eliminate the Spring `toEmptyResponse` foot-gun
+### ✅ 17. Eliminate the Spring `toEmptyResponse` foot-gun
+**Completed:** 2026-05-16 — collapsed into single `toResponse` that auto-detects null value → 204.
 - Severity: **High** — [API #8]
 - File: `pk-auth-spring-boot-starter/.../PkAuthAdminResultMapper.java:25-60`.
 - Issue: caller has to choose `toResponse` vs `toEmptyResponse` for
@@ -241,7 +250,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: declare `DuplicateCredentialException extends PkAuthPersistenceException`
   (combines naturally with #8) and update all three impls.
 
-### 19. Drop RelyingParty defaults in Spring and Micronaut — adopt Dropwizard's fail-fast
+### ✅ 19. Drop RelyingParty defaults in Spring and Micronaut — adopt Dropwizard's fail-fast
+**Completed:** 2026-05-16 — Spring `localhost` and Micronaut `example.com` defaults removed; missing values now fail fast.
 - Severity: **Med** — [API #18]
 - Files: Spring `PkAuthProperties.java:48-51` (`localhost`), Dropwizard
   `PkAuthConfig.java:23-29` (required), Micronaut `PkAuthConfiguration.java:75-77`
@@ -250,7 +260,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   framework binding fail fast when `pkauth.relying-party.{id,name,origins}`
   is missing.
 
-### 20. Drop JWT defaults; throw on missing secret in all three adapters
+### ✅ 20. Drop JWT defaults; throw on missing secret in all three adapters
+**Completed:** 2026-05-16 — Spring's silent random-key fallback gone; new `JwtSecretResolver` in pk-auth-jwt centralizes fail-fast policy.
 - Severity: **Med** — [API #19] and [Maint #23]
 - Files: Spring `PkAuthProperties.java:66-69` (`issuer="pk-auth"`,
   `audience="pk-auth-clients"`), Dropwizard required, Micronaut
@@ -261,14 +272,16 @@ These pre-answer questions that would otherwise come up mid-implementation:
   defaults. Centralise the resolver in `pk-auth-jwt` so all three adapters
   share one fail-fast policy.
 
-### 21. Add typed `dev-mode` property to Spring and Micronaut configs
+### ✅ 21. Add typed `dev-mode` property to Spring and Micronaut configs
+**Completed:** 2026-05-16 — `boolean devMode` field added and bound on both adapters; string-property reads removed.
 - Severity: **Med** — [API #20]
 - Issue: `dev-mode` is consumed via `@ConditionalOnProperty` / `Environment.getProperty`
   but never bound on `PkAuthProperties` / `PkAuthConfiguration`. IDE / metadata
   tooling can't help hosts find it.
 - Fix: add `boolean devMode` field and bind it; remove string-property reads.
 
-### 22. Stop using `byte[]` in result records — use `CredentialId` / `UserHandle`
+### ⚠️ 22. Stop using `byte[]` in result records — use `CredentialId` / `UserHandle`
+**Blocked:** not attempted in this run — deferred per user pause.
 - Severity: **Med** — [API #10], [API #11], [API #17]
 - Files: `AssertionResult.java:34, 86`; `RegistrationResult.java:48`;
   `CredentialSummary.java:25-27`; `UserHandle.java`; `CeremonyWireMapper.java:75, 121`.
@@ -281,7 +294,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   (base64url string) in `PkAuthObjectMappers`; switch the record fields to the
   value classes; delete the manual encodings.
 
-### 23. Standardize on `start*/finish*` across every feature service
+### ⚠️ 23. Standardize on `start*/finish*` across every feature service
+**Blocked:** not attempted in this run — deferred per user pause.
 - Severity: **Med** — [API #9], [API #13]
 - Files: ceremony (already `start*`/`finish*`), OTP (`send`/`verify`),
   magic-link (`send*`/`consume`), admin (`start*`/`complete*`),
@@ -301,14 +315,16 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Result-type names align too: `*Result.Success` / `Invalid` /
   `AlreadyFinished` across the board.
 
-### 24. Unify service-construction patterns (single `create(Dependencies, Config)` factory)
+### ⚠️ 24. Unify service-construction patterns (single `create(Dependencies, Config)` factory)
+**Blocked:** worktree branch off c7064d1 conflicts heavily with Tier 1 SPI changes (MagicLinkService gained ConsumedJtiStore, BackupCodeRepository `consume` returns boolean, etc.). Agent work exists on branch `worktree-agent-a40954b7fe3a473f2`. Re-do as a focused PR after Tier 1 baseline settles.
 - Severity: **Med** — [API #12] and [Maint #6]
 - Files: `OtpService` (2 ctors), `MagicLinkService` (3), `BackupCodeService` (4),
   `DefaultAdminService` (3 statics + `Dependencies`), `PasskeyAuthenticationServices`
   (Builder).
 - Fix: adopt `DefaultAdminService`'s "deps + optional config" idiom uniformly.
 
-### 25. Generalize `EmailSender` and `SmsSender` SPIs
+### ⚠️ 25. Generalize `EmailSender` and `SmsSender` SPIs
+**Blocked:** worktree branch off c7064d1 conflicts with Tier 1. Agent work exists on branch `worktree-agent-a54b3074c291a9d8f`. Re-do as a focused PR.
 - Severity: **Med** — [API #14]
 - Files: `EmailSender.java:11` (`sendMagicLink(to, subject, body)`),
   `SmsSender.java:12` (`sendOtp(to, message)`).
@@ -316,14 +332,16 @@ These pre-answer questions that would otherwise come up mid-implementation:
   `send(String to, String body)`; move message construction (including the
   hard-coded OTP body string in `OtpService.send`) into a `MessageFormatter` SPI.
 
-### 26. Document and constrain `ChallengeStore.put` semantics
+### ✅ 26. Document and constrain `ChallengeStore.put` semantics
+**Completed:** 2026-05-16 — Javadoc specifies overwrite-on-duplicate-key and rejects zero/negative TTL; all three impls validate.
 - Severity: **Med** — [API #15]
 - File: `pk-auth-core/.../spi/ChallengeStore.java:15`
 - Issue: `put` has no Javadoc; `takeOnce` does. Overwrite-on-retry behaviour is
   unspecified — replay-protection-relevant.
 - Fix: document overwrite vs reject; specify zero/negative TTL behaviour.
 
-### 27. Tighten `BackupCodeRepository.replaceAll` — make it abstract
+### ✅ 27. Tighten `BackupCodeRepository.replaceAll` — make it abstract
+**Completed:** 2026-05-16 — default removed; method is abstract; DynamoDB impl now uses TransactWriteItems for atomicity.
 - Severity: **Med** — [API #16]
 - Issue: default does non-transactional delete-then-loop-save with "implementers
   SHOULD override" — silent foot-gun for new SPI implementers.
@@ -337,17 +355,20 @@ These pre-answer questions that would otherwise come up mid-implementation:
   the `>` comparator (#1) this is the same bug at the SPI level.
 - Fix: change to `OptionalInt` and require the caller to handle "no row".
 
-### 29. Rename `UserLookup` methods for parallelism and intent
+### ✅ 29. Rename `UserLookup` methods for parallelism and intent
+**Completed:** 2026-05-16 — renamed to `findHandleByUsername`/`findViewByHandle`/`getOrCreateHandle`; promoted `__usernameless__` to `USERNAMELESS_KEY` constant (item #36 bundled).
 - Severity: **Med** — [API #22]
 - Fix: `findHandleByUsername`, `findViewByHandle`, `getOrCreateHandle`. Also
   promote the magic string `"__usernameless__"` to a constant (see #36).
 
-### 30. Drop `AssertionResult.Success` convenience constructor (or move to static)
+### ✅ 30. Drop `AssertionResult.Success` convenience constructor (or move to static)
+**Completed:** 2026-05-16 — convenience 3-arg constructor removed; callers must supply `counterStatus` explicitly.
 - Severity: **Med** — [API #24]
 - Fix: force callers to supply `counterStatus` explicitly, or expose
   `Success.ok(...)` as a static factory.
 
-### 31. Stamp `@since 0.9.1` on every new/modified public element this sweep
+### ⚠️ 31. Stamp `@since 0.9.1` on every new/modified public element this sweep
+**Blocked:** stamps were applied to every element each prior agent touched, but a final sweep + CONTRIBUTING.md update was not run. Deferred per user pause.
 - Severity: **Med** — [API #21]
 - Issue: zero `@since` tags across `pk-auth-core`, `pk-auth-admin-api`, `pk-auth-jwt`,
   `pk-auth-otp`, `pk-auth-magic-link`, `pk-auth-backup-codes`.
@@ -377,7 +398,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Severity: **Med** — [Maint #12]
 - Files: `MagicLinkService.java:310-316`, `FakeAuthenticator.java:225`.
 
-### 36. Promote the `"__usernameless__"` magic string to a constant; rename `stored2`
+### ✅ 36. Promote the `"__usernameless__"` magic string to a constant; rename `stored2`
+**Completed:** 2026-05-16 — bundled with #29; magic string is now `UserLookup.USERNAMELESS_KEY`. (`stored2` rename not done — defer.)
 - Severity: **Med** — [Maint #10]
 
 ### 37. Replace metric-tag string concatenation with a `Ceremony` enum

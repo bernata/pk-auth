@@ -11,12 +11,37 @@ import java.util.Optional;
  */
 public interface UserLookup {
 
-  Optional<UserHandle> findUserHandleByUsername(String username);
+  /**
+   * Reserved username key used by pk-auth internals to represent a usernameless ceremony (e.g. a
+   * discoverable-credential assertion where no username was supplied). Hosts MUST NOT use this
+   * value as a real username; treat it as an opaque sentinel.
+   *
+   * @since 0.9.1
+   */
+  String USERNAMELESS_KEY = "__usernameless__";
 
-  Optional<UserView> findUserByHandle(UserHandle handle);
+  /**
+   * Returns the {@link UserHandle} bound to {@code username} if the host knows the user, otherwise
+   * {@link Optional#empty()}.
+   *
+   * @since 0.9.1
+   */
+  Optional<UserHandle> findHandleByUsername(String username);
 
-  /** Returns an existing user handle for {@code username} or creates and returns a new one. */
-  UserHandle createOrGetUserHandle(String username);
+  /**
+   * Returns the read-only {@link UserView} for {@code handle} if the host knows the user, otherwise
+   * {@link Optional#empty()}.
+   *
+   * @since 0.9.1
+   */
+  Optional<UserView> findViewByHandle(UserHandle handle);
+
+  /**
+   * Returns an existing user handle for {@code username} or creates and returns a new one.
+   *
+   * @since 0.9.1
+   */
+  UserHandle getOrCreateHandle(String username);
 
   /**
    * Returns the email address bound to {@code handle} if the host has one — used by {@link

@@ -166,10 +166,15 @@ framework-specific on the wire.
   `ChallengeId` so adapters using Jackson 3 get the right shape
   automatically. The Dropwizard adapter still rides Jackson 2 and uses
   a small bridge module (`PkAuthJacksonBridge`) for the same effect.
-- **Errors**: `4xx` with a JSON body `{ "error": "<kind>", "detail":
-  "..." }`. Common kinds: `validation_failed`, `origin_mismatch`,
-  `counter_regression`, `challenge_expired`, `conflict`,
-  `rate_limited`.
+- **Errors**: `4xx` with a JSON body `{ "outcome": "<kind>", "error":
+  "<kind>", "detail": "..." }`. `outcome` and `error` both carry the
+  same machine-readable tag so clients keyed off either field keep
+  working; `detail` is present only when the result variant carried
+  one. Common kinds: `validation_failed`, `origin_mismatch`,
+  `counter_regression`, `challenge_expired`, `conflict`, `forbidden`,
+  `not_found`, `rate_limited`. `rate_limited` is paired with a
+  `Retry-After` response header. The adapter `PkAuthAdminResultMapper`
+  classes are the source of truth.
 - **Idempotence**: `finish` endpoints are *not* idempotent — challenges
   are single-use (`ChallengeStore.takeOnce`).
 

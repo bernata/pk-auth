@@ -27,9 +27,9 @@ public final class JdbiUserLookup implements UserLookup {
   }
 
   @Override
-  public Optional<UserHandle> findUserHandleByUsername(String username) {
+  public Optional<UserHandle> findHandleByUsername(String username) {
     return wrap(
-        "users.findUserHandleByUsername",
+        "users.findHandleByUsername",
         () ->
             jdbi.withHandle(
                 h ->
@@ -41,9 +41,9 @@ public final class JdbiUserLookup implements UserLookup {
   }
 
   @Override
-  public Optional<UserView> findUserByHandle(UserHandle handle) {
+  public Optional<UserView> findViewByHandle(UserHandle handle) {
     return wrap(
-        "users.findUserByHandle",
+        "users.findViewByHandle",
         () ->
             jdbi.withHandle(
                 h ->
@@ -54,11 +54,11 @@ public final class JdbiUserLookup implements UserLookup {
   }
 
   @Override
-  public UserHandle createOrGetUserHandle(String username) {
+  public UserHandle getOrCreateHandle(String username) {
     Objects.requireNonNull(username, "username");
     UserHandle candidate = UserHandle.random();
     return wrap(
-        "users.createOrGetUserHandle",
+        "users.getOrCreateHandle",
         () ->
             jdbi.withHandle(
                 h -> {

@@ -32,6 +32,12 @@ public final class JdbiChallengeStore implements ChallengeStore {
 
   @Override
   public void put(ChallengeId id, ChallengeRecord record, Duration ttl) {
+    Objects.requireNonNull(id, "id");
+    Objects.requireNonNull(record, "record");
+    Objects.requireNonNull(ttl, "ttl");
+    if (ttl.isZero() || ttl.isNegative()) {
+      throw new IllegalArgumentException("ttl must be strictly positive, got " + ttl);
+    }
     wrap(
         "challenges.put",
         () -> {

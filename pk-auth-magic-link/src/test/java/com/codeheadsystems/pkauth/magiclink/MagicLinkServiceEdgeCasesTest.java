@@ -45,18 +45,18 @@ class MagicLinkServiceEdgeCasesTest {
     }
 
     @Override
-    public Optional<UserHandle> findUserHandleByUsername(String username) {
-      return delegate.findUserHandleByUsername(username);
+    public Optional<UserHandle> findHandleByUsername(String username) {
+      return delegate.findHandleByUsername(username);
     }
 
     @Override
-    public Optional<UserView> findUserByHandle(UserHandle handle) {
-      return delegate.findUserByHandle(handle);
+    public Optional<UserView> findViewByHandle(UserHandle handle) {
+      return delegate.findViewByHandle(handle);
     }
 
     @Override
-    public UserHandle createOrGetUserHandle(String username) {
-      return delegate.createOrGetUserHandle(username);
+    public UserHandle getOrCreateHandle(String username) {
+      return delegate.getOrCreateHandle(username);
     }
 
     @Override

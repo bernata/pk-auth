@@ -13,12 +13,14 @@ import com.codeheadsystems.pkauth.config.CounterRegressionPolicy;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
+import com.codeheadsystems.pkauth.jwt.JwtSecretResolver;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.magiclink.EmailSender;
 import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
 import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
+import com.codeheadsystems.pkauth.otp.OtpPepperResolver;
 import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.otp.SmsSender;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
@@ -34,7 +36,6 @@ import com.codeheadsystems.pkauth.testkit.InMemoryChallengeStore;
 import com.codeheadsystems.pkauth.testkit.InMemoryCredentialRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryOtpRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryUserLookup;
-import java.security.SecureRandom;
 import java.time.Duration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,9 +59,9 @@ import org.springframework.context.annotation.Bean;
  *       will fail to start — preventing accidental production deploys backed by single-JVM,
  *       non-persistent storage. Host apps that want JDBI or DynamoDB declare those beans themselves
  *       (typically in their own {@code @Configuration}).
- *   <li>JWT issuer + validator backed by {@link JwtKeyset#hs256(byte[])} when {@link
- *       PkAuthProperties.Jwt#secret()} is set, otherwise a freshly-minted random secret per startup
- *       (dev-only — host apps that care about token portability set the secret explicitly).
+ *   <li>JWT issuer + validator backed by {@link JwtKeyset#hs256(byte[])}. {@code pkauth.jwt.secret}
+ *       is required — there is no random-key fallback. Hosts that need ES256 supply a {@code
+ *       JwtKeyset} bean themselves.
  *   <li>Default sender beans ({@link LoggingEmailSender}, {@link LoggingSmsSender}) so the alt-flow
  *       services compose. Per brief §12 #7, "Don't write production-quality email/SMS senders" —
  *       the logging shims are deliberate.
@@ -91,6 +92,11 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   public RelyingPartyConfig pkAuthRelyingPartyConfig(PkAuthProperties props) {
     PkAuthProperties.RelyingParty rp = props.relyingParty();
+    if (rp == null) {
+      throw new IllegalStateException(
+          "pkauth.relying-party.{id,name,origins} are required. Set them explicitly in"
+              + " configuration — there are no defaults.");
+    }
     return new RelyingPartyConfig(rp.id(), rp.name(), rp.origins());
   }
 
@@ -192,11 +198,12 @@ public class PkAuthAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public JwtConfig pkAuthJwtConfig(PkAuthProperties props) {
-    Duration ttl = props.jwt().tokenTtl();
+    PkAuthProperties.Jwt jwt = requireJwt(props);
+    Duration ttl = jwt.tokenTtl();
     return new JwtConfig(
-        props.jwt().issuer(),
-        props.jwt().audience(),
-        ttl,
+        jwt.issuer(),
+        jwt.audience(),
+        ttl == null ? JwtConfig.DEFAULT_TOKEN_TTL : ttl,
         JwtConfig.DEFAULT_NBF_SKEW,
         JwtConfig.DEFAULT_CLOCK_SKEW);
   }
@@ -204,23 +211,18 @@ public class PkAuthAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public JwtKeyset pkAuthJwtKeyset(PkAuthProperties props) {
-    String secret = props.jwt().secret();
-    if (secret != null && !secret.isBlank()) {
-      byte[] keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-      if (keyBytes.length < 32) {
-        throw new IllegalArgumentException(
-            "pkauth.jwt.secret must be at least 32 bytes for HS256 (got "
-                + keyBytes.length
-                + "). Configure a ≥ 32-byte random value or supply a JwtKeyset bean.");
-      }
-      return JwtKeyset.hs256(keyBytes);
+    PkAuthProperties.Jwt jwt = requireJwt(props);
+    return JwtSecretResolver.resolveHs256Keyset(jwt.secret());
+  }
+
+  private static PkAuthProperties.Jwt requireJwt(PkAuthProperties props) {
+    PkAuthProperties.Jwt jwt = props.jwt();
+    if (jwt == null) {
+      throw new IllegalStateException(
+          "pkauth.jwt.{issuer,audience,secret} are required. Set them explicitly in configuration"
+              + " — there are no defaults.");
     }
-    byte[] random = new byte[32];
-    new SecureRandom().nextBytes(random);
-    LOG.warn(
-        "pkauth.jwt.secret not configured; generating a one-shot random HS256 key. Tokens "
-            + "issued on this instance will not validate on other instances or restarts.");
-    return JwtKeyset.hs256(random);
+    return jwt;
   }
 
   @Bean
@@ -296,55 +298,8 @@ public class PkAuthAutoConfiguration {
       OtpRepository repo,
       SmsSender smsSender,
       ClockProvider clockProvider,
-      PkAuthProperties props,
-      org.springframework.core.env.Environment env) {
-    byte[] pepper = resolveOtpPepper(props, env);
+      PkAuthProperties props) {
+    byte[] pepper = OtpPepperResolver.resolve(() -> props.otp().pepper(), props::devMode);
     return new OtpService(repo, smsSender, clockProvider, pepper);
-  }
-
-  /**
-   * Resolves the OTP pepper according to the configured policy:
-   *
-   * <ul>
-   *   <li>{@code pkauth.otp.pepper} set → decode as Base64 and use (≥ 16 bytes required).
-   *   <li>Unset AND {@code pkauth.dev-mode=true} → generate a per-startup random pepper and log a
-   *       loud warning. A per-startup pepper invalidates OTPs across restarts / instances.
-   *   <li>Unset AND {@code pkauth.dev-mode} false/unset → fail fast at startup.
-   * </ul>
-   */
-  private static byte[] resolveOtpPepper(
-      PkAuthProperties props, org.springframework.core.env.Environment env) {
-    String configured = props.otp().pepper();
-    if (configured != null && !configured.isBlank()) {
-      byte[] decoded;
-      try {
-        decoded = java.util.Base64.getDecoder().decode(configured.trim());
-      } catch (IllegalArgumentException e) {
-        throw new IllegalStateException(
-            "pkauth.otp.pepper must be a valid Base64 string (≥ 16 decoded bytes).", e);
-      }
-      if (decoded.length < 16) {
-        throw new IllegalStateException(
-            "pkauth.otp.pepper decoded to "
-                + decoded.length
-                + " bytes; at least 16 bytes required (32+ recommended).");
-      }
-      return decoded;
-    }
-    boolean devMode = Boolean.parseBoolean(env.getProperty("pkauth.dev-mode", "false"));
-    if (!devMode) {
-      throw new IllegalStateException(
-          "pkauth.otp.pepper is not configured. Set a Base64-encoded ≥32-byte secret in"
-              + " configuration, or enable pkauth.dev-mode=true to auto-generate a per-startup"
-              + " random pepper (dev only — invalidates OTPs across restarts / cluster"
-              + " instances).");
-    }
-    byte[] random = new byte[32];
-    new SecureRandom().nextBytes(random);
-    LOG.warn(
-        "pkauth.dev-mode=true and pkauth.otp.pepper not set: generated a one-shot random OTP"
-            + " pepper. Outstanding OTPs will not survive a restart and will not validate on"
-            + " other instances. DO NOT use this configuration in production.");
-    return random;
   }
 }

@@ -57,51 +57,50 @@ class PkAuthAdminResultMapperTest {
     assertThat(r.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("30");
   }
 
+  /** Unified method auto-detects null payload and returns 204 No Content. */
   @Test
-  void emptyResponseSuccessIs204() {
-    ResponseEntity<Object> r =
-        PkAuthAdminResultMapper.toEmptyResponse(new AdminResult.Success<>(null));
+  void nullPayloadSuccessIs204() {
+    ResponseEntity<Object> r = PkAuthAdminResultMapper.toResponse(new AdminResult.Success<>(null));
     assertThat(r.getStatusCode().value()).isEqualTo(204);
   }
 
   @Test
-  void emptyResponseNotFoundIs404() {
-    ResponseEntity<Object> r =
-        PkAuthAdminResultMapper.toEmptyResponse(new AdminResult.NotFound<Void>());
+  void voidSuccessNotFoundIs404() {
+    ResponseEntity<Object> r = PkAuthAdminResultMapper.toResponse(new AdminResult.NotFound<Void>());
     assertThat(r.getStatusCode().value()).isEqualTo(404);
   }
 
   @Test
-  void emptyResponseForbidden() {
+  void voidSuccessForbiddenIs403() {
     assertThat(
-            PkAuthAdminResultMapper.toEmptyResponse(new AdminResult.Forbidden<Void>())
+            PkAuthAdminResultMapper.toResponse(new AdminResult.Forbidden<Void>())
                 .getStatusCode()
                 .value())
         .isEqualTo(403);
   }
 
   @Test
-  void emptyResponseValidation() {
+  void voidSuccessValidationFailedIs400() {
     assertThat(
-            PkAuthAdminResultMapper.toEmptyResponse(new AdminResult.ValidationFailed<Void>("bad"))
+            PkAuthAdminResultMapper.toResponse(new AdminResult.ValidationFailed<Void>("bad"))
                 .getStatusCode()
                 .value())
         .isEqualTo(400);
   }
 
   @Test
-  void emptyResponseConflict() {
+  void voidSuccessConflictIs409() {
     assertThat(
-            PkAuthAdminResultMapper.toEmptyResponse(new AdminResult.Conflict<Void>("nope"))
+            PkAuthAdminResultMapper.toResponse(new AdminResult.Conflict<Void>("nope"))
                 .getStatusCode()
                 .value())
         .isEqualTo(409);
   }
 
   @Test
-  void emptyResponseRateLimited() {
+  void voidSuccessRateLimitedIs429() {
     ResponseEntity<Object> r =
-        PkAuthAdminResultMapper.toEmptyResponse(
+        PkAuthAdminResultMapper.toResponse(
             new AdminResult.RateLimited<Void>(Duration.ofSeconds(15)));
     assertThat(r.getStatusCode().value()).isEqualTo(429);
     assertThat(r.getHeaders().getFirst(HttpHeaders.RETRY_AFTER)).isEqualTo("15");

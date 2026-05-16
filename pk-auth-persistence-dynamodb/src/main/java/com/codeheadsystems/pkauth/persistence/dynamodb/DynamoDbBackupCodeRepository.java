@@ -6,6 +6,8 @@ import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
 import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -19,6 +21,10 @@ import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
+import software.amazon.awssdk.services.dynamodb.model.Delete;
+import software.amazon.awssdk.services.dynamodb.model.Put;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItem;
+import software.amazon.awssdk.services.dynamodb.model.TransactWriteItemsRequest;
 import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
 
 /** {@link BackupCodeRepository} backed by the single-table per ADR 0008. */
@@ -139,5 +145,80 @@ public final class DynamoDbBackupCodeRepository implements BackupCodeRepository 
     } catch (SdkException e) {
       throw new PkAuthPersistenceException(op, e.getMessage(), e);
     }
+  }
+
+  /**
+   * Atomically replaces all backup codes for a user using a single {@code TransactWriteItems} call.
+   * Existing rows are deleted and the new rows are inserted in one transaction; if the combined
+   * item count exceeds DynamoDB's 100-item transaction limit an {@link IllegalArgumentException} is
+   * thrown rather than degrading to a non-atomic fallback.
+   *
+   * @since 0.9.1
+   */
+  @Override
+  public void replaceAll(UserHandle userHandle, List<StoredBackupCode> records) {
+    Objects.requireNonNull(userHandle, "userHandle");
+    Objects.requireNonNull(records, "records");
+    String userB64 = Base64Url.encode(userHandle.value());
+    String pk = "USER#" + userB64;
+
+    List<BackupCodeItem> existing =
+        table
+            .query(
+                QueryConditional.sortBeginsWith(
+                    Key.builder().partitionValue(pk).sortValue("BACKUP#").build()))
+            .stream()
+            .flatMap(page -> page.items().stream())
+            .toList();
+
+    if (existing.isEmpty() && records.isEmpty()) {
+      return;
+    }
+
+    int total = existing.size() + records.size();
+    if (total > 100) {
+      throw new IllegalArgumentException(
+          "replaceAll would exceed DynamoDB TransactWriteItems limit of 100 items (existing="
+              + existing.size()
+              + ", new="
+              + records.size()
+              + ")");
+    }
+
+    List<TransactWriteItem> ops = new ArrayList<>(total);
+    for (BackupCodeItem item : existing) {
+      ops.add(
+          TransactWriteItem.builder()
+              .delete(
+                  Delete.builder()
+                      .tableName(tableName)
+                      .key(
+                          Map.of(
+                              "pk", AttributeValue.fromS(item.getPk()),
+                              "sk", AttributeValue.fromS(item.getSk())))
+                      .build())
+              .build());
+    }
+    for (StoredBackupCode code : records) {
+      BackupCodeItem item = BackupCodeItem.fromRecord(code);
+      Map<String, AttributeValue> values = new HashMap<>();
+      values.put("pk", AttributeValue.fromS(item.getPk()));
+      values.put("sk", AttributeValue.fromS(item.getSk()));
+      values.put("entityType", AttributeValue.fromS(item.getEntityType()));
+      values.put("codeId", AttributeValue.fromS(item.getCodeId()));
+      values.put("userHandle", AttributeValue.fromS(item.getUserHandle()));
+      values.put("hashedCode", AttributeValue.fromS(item.getHashedCode()));
+      values.put("consumed", AttributeValue.fromBool(item.isConsumed()));
+      if (item.getConsumedAt() != null) {
+        values.put("consumedAt", AttributeValue.fromS(item.getConsumedAt()));
+      }
+      values.put("createdAt", AttributeValue.fromS(item.getCreatedAt()));
+      ops.add(
+          TransactWriteItem.builder()
+              .put(Put.builder().tableName(tableName).item(values).build())
+              .build());
+    }
+
+    client.transactWriteItems(TransactWriteItemsRequest.builder().transactItems(ops).build());
   }
 }

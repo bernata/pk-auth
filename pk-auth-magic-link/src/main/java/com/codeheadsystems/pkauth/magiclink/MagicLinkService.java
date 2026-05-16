@@ -291,7 +291,7 @@ public final class MagicLinkService {
   public SendResult sendLoginEmail(String username, String email) {
     Objects.requireNonNull(username, "username");
     Objects.requireNonNull(email, "email");
-    Optional<UserHandle> resolved = userLookup.findUserHandleByUsername(username);
+    Optional<UserHandle> resolved = userLookup.findHandleByUsername(username);
     if (resolved.isEmpty()) {
       // Do NOT surface UserNotFound to callers — that would enable account enumeration.
       // Skip JWT issuance and email dispatch silently and return Sent.

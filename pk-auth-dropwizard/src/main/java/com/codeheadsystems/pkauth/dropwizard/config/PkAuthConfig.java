@@ -16,16 +16,41 @@ import org.jspecify.annotations.Nullable;
  * <p>Defaults are intentionally not provided here — every field is required so misconfiguration
  * fails at start-up rather than silently using a dev-only value in production.
  *
+ * <p>The alt-flow blocks ({@link Otp}, {@link MagicLink}, {@link BackupCode}) are optional at the
+ * record level so a host that only ships passkey ceremony endpoints does not have to provide them.
+ * When the host registers the bundle with admin / alt-flow auto-wiring enabled the bundle requires
+ * the relevant blocks to be present and fails fast at start-up otherwise.
+ *
  * @param relyingParty RP identity (id, name, origins) used for WebAuthn ceremonies.
  * @param jwt JWT issuer, audience, and signing-key material.
  * @param ceremony Ceremony policy knobs (challenge TTL, etc.).
+ * @param otp OTP tunables; required when alt-flow auto-wiring is enabled, else null.
+ * @param magicLink Magic-link tunables; required when alt-flow auto-wiring is enabled, else null.
+ * @param backupCode Backup-code tunables; required when alt-flow auto-wiring is enabled, else null.
+ * @since 0.9.1
  */
-public record PkAuthConfig(RelyingParty relyingParty, Jwt jwt, Ceremony ceremony) {
+public record PkAuthConfig(
+    RelyingParty relyingParty,
+    Jwt jwt,
+    Ceremony ceremony,
+    @Nullable Otp otp,
+    @Nullable MagicLink magicLink,
+    @Nullable BackupCode backupCode) {
 
   public PkAuthConfig {
     Objects.requireNonNull(relyingParty, "relyingParty");
     Objects.requireNonNull(jwt, "jwt");
     Objects.requireNonNull(ceremony, "ceremony");
+  }
+
+  /**
+   * Backwards-compatible four-arg constructor for hosts that do not configure alt-flow services.
+   * Equivalent to {@code new PkAuthConfig(relyingParty, jwt, ceremony, null, null, null)}.
+   *
+   * @since 0.9.1
+   */
+  public PkAuthConfig(RelyingParty relyingParty, Jwt jwt, Ceremony ceremony) {
+    this(relyingParty, jwt, ceremony, null, null, null);
   }
 
   /**
@@ -89,4 +114,59 @@ public record PkAuthConfig(RelyingParty relyingParty, Jwt jwt, Ceremony ceremony
       this(null);
     }
   }
+
+  /**
+   * OTP service tunables. Mirrors Spring's {@code pkauth.otp} and Micronaut's {@code pkauth.otp}.
+   *
+   * <p>{@code pepper} is the server-side HMAC pepper for OTP-code hashing — required in production,
+   * no default. Decoded bytes must be at least 16 (32+ recommended). A captured DB dump without
+   * this value cannot brute-force outstanding codes.
+   *
+   * @param pepper raw pepper bytes; ≥ 16 bytes required.
+   * @since 0.9.1
+   */
+  public record Otp(byte[] pepper) {
+    public Otp {
+      Objects.requireNonNull(pepper, "pepper");
+      if (pepper.length < 16) {
+        throw new IllegalArgumentException(
+            "OTP pepper must be >= 16 bytes (got " + pepper.length + ")");
+      }
+      pepper = pepper.clone();
+    }
+
+    /** Returns a fresh defensive copy of the underlying pepper. */
+    @Override
+    public byte[] pepper() {
+      return pepper.clone();
+    }
+  }
+
+  /**
+   * Magic-link service tunables. Mirrors Spring's {@code pkauth.magicLink} (which derives baseUrl
+   * from the first RP origin) and Micronaut's hard-coded {@code http://localhost:8080/auth/magic} —
+   * the Dropwizard adapter requires hosts to spell baseUrl out so production deploys cannot fall
+   * through to a development default.
+   *
+   * @param baseUrl the URL prefix the magic-link will be assembled against — required, no default.
+   * @since 0.9.1
+   */
+  public record MagicLink(String baseUrl) {
+    public MagicLink {
+      Objects.requireNonNull(baseUrl, "baseUrl");
+      if (baseUrl.isBlank()) {
+        throw new IllegalArgumentException("magicLink.baseUrl must be non-blank");
+      }
+    }
+  }
+
+  /**
+   * Backup-code service tunables. The current {@code BackupCodeService} surface has no required
+   * configuration beyond its SPI collaborators, so this block exists purely as a future seam
+   * (matching Spring / Micronaut's symmetric block shape). Pass an empty record if you want the
+   * service auto-wired with library defaults.
+   *
+   * @since 0.9.1
+   */
+  public record BackupCode() {}
 }

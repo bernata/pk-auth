@@ -68,16 +68,25 @@ class ResultTypesTest {
   @Test
   void assertionResultSuccessConstructionAndAccessors() {
     UserHandle uh = UserHandle.random();
-    AssertionResult.Success success = new AssertionResult.Success(uh, new byte[] {10, 11}, 42L);
+    AssertionResult.Success success =
+        new AssertionResult.Success(uh, new byte[] {10, 11}, 42L, AssertionResult.CounterStatus.OK);
 
     assertThat(success.userHandle()).isEqualTo(uh);
     assertThat(success.credentialId()).containsExactly(10, 11);
     assertThat(success.signCount()).isEqualTo(42L);
+    assertThat(success.counterStatus()).isEqualTo(AssertionResult.CounterStatus.OK);
     assertThat(success)
-        .isEqualTo(new AssertionResult.Success(uh, new byte[] {10, 11}, 42L))
-        .hasSameHashCodeAs(new AssertionResult.Success(uh, new byte[] {10, 11}, 42L));
+        .isEqualTo(
+            new AssertionResult.Success(
+                uh, new byte[] {10, 11}, 42L, AssertionResult.CounterStatus.OK))
+        .hasSameHashCodeAs(
+            new AssertionResult.Success(
+                uh, new byte[] {10, 11}, 42L, AssertionResult.CounterStatus.OK));
     assertThat(success.toString()).contains("0a0b").contains("42");
-    assertThatThrownBy(() -> new AssertionResult.Success(uh, new byte[] {0}, -1))
+    assertThatThrownBy(
+            () ->
+                new AssertionResult.Success(
+                    uh, new byte[] {0}, -1, AssertionResult.CounterStatus.OK))
         .isInstanceOf(IllegalArgumentException.class);
   }
 

@@ -61,6 +61,8 @@ public final class InMemoryBackupCodeRepository implements BackupCodeRepository 
   /**
    * Atomically replaces all codes for a user inside a synchronized block so that concurrent readers
    * never observe a partially-replaced set.
+   *
+   * @since 0.9.1
    */
   @Override
   public synchronized void replaceAll(UserHandle userHandle, List<StoredBackupCode> records) {

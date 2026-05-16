@@ -33,18 +33,18 @@ public final class DynamoDbUserLookup implements UserLookup {
   }
 
   @Override
-  public Optional<UserHandle> findUserHandleByUsername(String username) {
+  public Optional<UserHandle> findHandleByUsername(String username) {
     return wrap(
-        "users.findUserHandleByUsername",
+        "users.findHandleByUsername",
         () ->
             lookupByUsername(username)
                 .map(item -> UserHandle.of(Base64Url.decode(item.getUserHandle()))));
   }
 
   @Override
-  public Optional<UserView> findUserByHandle(UserHandle handle) {
+  public Optional<UserView> findViewByHandle(UserHandle handle) {
     return wrap(
-        "users.findUserByHandle",
+        "users.findViewByHandle",
         () -> {
           String h = Base64Url.encode(handle.value());
           UserItem item =
@@ -54,9 +54,9 @@ public final class DynamoDbUserLookup implements UserLookup {
   }
 
   @Override
-  public UserHandle createOrGetUserHandle(String username) {
+  public UserHandle getOrCreateHandle(String username) {
     return wrap(
-        "users.createOrGetUserHandle",
+        "users.getOrCreateHandle",
         () -> {
           Optional<UserItem> existing = lookupByUsername(username);
           if (existing.isPresent()) {

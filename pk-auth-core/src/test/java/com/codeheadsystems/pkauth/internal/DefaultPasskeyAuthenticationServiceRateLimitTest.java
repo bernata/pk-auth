@@ -84,7 +84,7 @@ class DefaultPasskeyAuthenticationServiceRateLimitTest {
     lenient()
         .when(attestationTrustPolicy.evaluate(any()))
         .thenReturn(new AttestationTrustPolicy.Decision.Trusted());
-    lenient().when(userLookup.createOrGetUserHandle(any())).thenReturn(USER_HANDLE);
+    lenient().when(userLookup.getOrCreateHandle(any())).thenReturn(USER_HANDLE);
     lenient().when(credentialRepository.findByUserHandle(any())).thenReturn(java.util.List.of());
 
     limiter = new RecordingLimiter();

@@ -151,13 +151,13 @@ class JdbiRepositoryExceptionWrappingTest {
   void userLookupWrapsConnectionFailure() {
     JdbiUserLookup lookup = new JdbiUserLookup(badJdbi());
     UserHandle user = UserHandle.random();
-    assertThatThrownBy(() -> lookup.findUserHandleByUsername("alice"))
+    assertThatThrownBy(() -> lookup.findHandleByUsername("alice"))
         .isInstanceOf(PkAuthPersistenceException.class)
         .extracting("operation")
-        .isEqualTo("users.findUserHandleByUsername");
-    assertThatThrownBy(() -> lookup.findUserByHandle(user))
+        .isEqualTo("users.findHandleByUsername");
+    assertThatThrownBy(() -> lookup.findViewByHandle(user))
         .isInstanceOf(PkAuthPersistenceException.class);
-    assertThatThrownBy(() -> lookup.createOrGetUserHandle("alice"))
+    assertThatThrownBy(() -> lookup.getOrCreateHandle("alice"))
         .isInstanceOf(PkAuthPersistenceException.class);
     assertThatThrownBy(() -> lookup.register("alice", "Alice"))
         .isInstanceOf(PkAuthPersistenceException.class);

@@ -21,9 +21,22 @@ public final class PkAuthAdminResultMapper {
 
   private PkAuthAdminResultMapper() {}
 
-  /** Converts a non-void result. Success returns its payload; non-success maps to an error body. */
+  /**
+   * Converts any {@link AdminResult} to a {@link ResponseEntity}. {@code Success} with a non-null
+   * payload returns 200 with the payload as the body; {@code Success} with a {@code null} payload
+   * (i.e. void-shaped operations such as delete and start-verification) returns 204 No Content. All
+   * non-success variants return the unified error envelope.
+   *
+   * <p>Callers no longer need to choose between {@code toResponse} and {@code toEmptyResponse} —
+   * the null-check here matches the auto-detection already used by the Dropwizard and Micronaut
+   * adapters.
+   *
+   * @since 0.9.1
+   */
   public static <T> ResponseEntity<Object> toResponse(AdminResult<T> result) {
     return switch (result) {
+      case AdminResult.Success<T> success when success.value() == null ->
+          ResponseEntity.noContent().build();
       case AdminResult.Success<T> success -> ResponseEntity.ok(success.value());
       case AdminResult.NotFound<T> nf ->
           ResponseEntity.status(404).body(errorEnvelope("not_found", null));
@@ -34,25 +47,6 @@ public final class PkAuthAdminResultMapper {
       case AdminResult.Conflict<T> c ->
           ResponseEntity.status(409).body(errorEnvelope("conflict", c.detail()));
       case AdminResult.RateLimited<T> r ->
-          ResponseEntity.status(429)
-              .header(HttpHeaders.RETRY_AFTER, Long.toString(r.retryAfter().toSeconds()))
-              .body(errorEnvelope("rate_limited", null));
-    };
-  }
-
-  /** Same as {@link #toResponse} but used for void-shaped successes (returns 204 No Content). */
-  public static ResponseEntity<Object> toEmptyResponse(AdminResult<Void> result) {
-    return switch (result) {
-      case AdminResult.Success<Void> success -> ResponseEntity.noContent().build();
-      case AdminResult.NotFound<Void> nf ->
-          ResponseEntity.status(404).body(errorEnvelope("not_found", null));
-      case AdminResult.Forbidden<Void> f ->
-          ResponseEntity.status(403).body(errorEnvelope("forbidden", null));
-      case AdminResult.ValidationFailed<Void> v ->
-          ResponseEntity.badRequest().body(errorEnvelope("validation_failed", v.detail()));
-      case AdminResult.Conflict<Void> c ->
-          ResponseEntity.status(409).body(errorEnvelope("conflict", c.detail()));
-      case AdminResult.RateLimited<Void> r ->
           ResponseEntity.status(429)
               .header(HttpHeaders.RETRY_AFTER, Long.toString(r.retryAfter().toSeconds()))
               .body(errorEnvelope("rate_limited", null));

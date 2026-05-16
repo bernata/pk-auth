@@ -8,6 +8,7 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
@@ -47,6 +48,12 @@ public final class InMemoryChallengeStore implements ChallengeStore {
 
   @Override
   public void put(ChallengeId id, ChallengeRecord record, Duration ttl) {
+    Objects.requireNonNull(id, "id");
+    Objects.requireNonNull(record, "record");
+    Objects.requireNonNull(ttl, "ttl");
+    if (ttl.isZero() || ttl.isNegative()) {
+      throw new IllegalArgumentException("ttl must be strictly positive, got " + ttl);
+    }
     cache.put(id, new Entry(record, ttl));
   }
 

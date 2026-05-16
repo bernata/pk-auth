@@ -2,21 +2,10 @@
 package com.codeheadsystems.pkauth.demo.dropwizard;
 
 import com.codeheadsystems.pkauth.admin.AdminAuthorizer;
-import com.codeheadsystems.pkauth.admin.AdminService;
-import com.codeheadsystems.pkauth.admin.DefaultAdminService;
-import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
 import com.codeheadsystems.pkauth.dropwizard.PkAuthBundle;
+import com.codeheadsystems.pkauth.dropwizard.dagger.AltFlowsModule.AltFlowOptions;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PersistenceBindings;
-import com.codeheadsystems.pkauth.jwt.JwtConfig;
-import com.codeheadsystems.pkauth.jwt.JwtKeyset;
-import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
-import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
-import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
-import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
-import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
-import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
-import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.OtpRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryBackupCodeRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryChallengeStore;
@@ -36,6 +25,11 @@ import org.slf4j.LoggerFactory;
  * both are stubbed below; the JDBI variant routes to the in-memory SPIs in v0.x so the demo runs
  * without external Postgres. A real JDBI / DynamoDB wiring lands when the JDBI and DynamoDB modules
  * surface a higher-level {@code build()} factory (Phase 12 polish).
+ *
+ * <p>As of pk-auth 0.9.1 the demo uses {@link PkAuthBundle}'s alt-flow auto-wiring constructor —
+ * the bundle internally builds the backup-code, magic-link, OTP, and admin services from the YAML
+ * config plus the senders handed in via {@link AltFlowOptions}. The previous hand-wiring done by
+ * the demo (~30 lines) is now done once inside the bundle and shared across the three adapters.
  */
 public final class DemoApplication extends Application<DemoConfiguration> {
 
@@ -58,9 +52,15 @@ public final class DemoApplication extends Application<DemoConfiguration> {
     bootstrap.addBundle(new AssetsBundle("/assets", "/ui", "index.html", "assets"));
 
     DemoPersistence persistence = DemoPersistence.create(persistenceFlavor());
-    AdminService adminService = buildAdminService(persistence);
+    AltFlowOptions altFlowOptions =
+        AltFlowOptions.builder()
+            // No senders supplied — the demo runs in dev-mode so the bundle drops in the
+            // LoggingEmailSender / LoggingSmsSender shims and yells about it in the log.
+            .devMode(true)
+            .adminAuthorizer(AdminAuthorizer.subjectScoped())
+            .build();
     PkAuthBundle<DemoConfiguration> pkAuth =
-        new PkAuthBundle<>(persistence.bindings(), adminService);
+        new PkAuthBundle<>(persistence.bindings(), altFlowOptions);
     bootstrap.addBundle(pkAuth);
   }
 
@@ -98,40 +98,9 @@ public final class DemoApplication extends Application<DemoConfiguration> {
     return prop == null ? "memory" : prop;
   }
 
-  private AdminService buildAdminService(DemoPersistence persistence) {
-    ClockProvider clock = ClockProvider.system();
-    BackupCodeService backupCodeService =
-        new BackupCodeService(persistence.bindings().backupCodeRepository(), clock);
-    JwtKeyset keyset = JwtKeyset.hs256(DemoConfiguration.defaultDevSecret());
-    JwtConfig jwtConfig = JwtConfig.defaults("issuer-magic-demo", "magic-demo");
-    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(jwtConfig, keyset, clock);
-    PkAuthJwtValidator validator = new PkAuthJwtValidator(jwtConfig, keyset, clock);
-    MagicLinkService magicLink =
-        new MagicLinkService(
-            issuer,
-            validator,
-            new LoggingEmailSender(),
-            persistence.userLookup(),
-            clock,
-            "http://localhost:8080");
-    byte[] otpPepper = new byte[32];
-    new java.security.SecureRandom().nextBytes(otpPepper);
-    OtpService otp =
-        new OtpService(
-            persistence.bindings().otpRepository(), new LoggingSmsSender(), clock, otpPepper);
-    return DefaultAdminService.create(
-        new DefaultAdminService.Dependencies(
-            persistence.bindings().credentialRepository(),
-            persistence.userLookup(),
-            backupCodeService,
-            magicLink,
-            otp),
-        AdminAuthorizer.subjectScoped());
-  }
-
   /**
-   * Small holder bundling the bound SPIs so the demo can hand them to both the bundle and the admin
-   * service without re-instantiating in-memory state.
+   * Small holder bundling the bound SPIs so the demo can hand them to the bundle without
+   * re-instantiating in-memory state.
    */
   static final class DemoPersistence {
     private final PersistenceBindings bindings;

@@ -11,12 +11,14 @@ import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
+import com.codeheadsystems.pkauth.jwt.JwtSecretResolver;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.magiclink.EmailSender;
 import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
 import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
+import com.codeheadsystems.pkauth.otp.OtpPepperResolver;
 import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.otp.SmsSender;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
@@ -29,7 +31,7 @@ import com.codeheadsystems.pkauth.spi.UserLookup;
 import io.micronaut.context.annotation.Factory;
 import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
-import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +50,20 @@ public class PkAuthFactory {
   @Singleton
   RelyingPartyConfig relyingPartyConfig(PkAuthConfiguration config) {
     PkAuthConfiguration.RelyingParty rp = config.getRelyingParty();
-    return new RelyingPartyConfig(rp.getId(), rp.getName(), Set.copyOf(rp.getOrigins()));
+    String id = rp.getId();
+    String name = rp.getName();
+    List<String> origins = rp.getOrigins();
+    if (id == null
+        || id.isBlank()
+        || name == null
+        || name.isBlank()
+        || origins == null
+        || origins.isEmpty()) {
+      throw new IllegalStateException(
+          "pkauth.relying-party.{id,name,origins} are required. Set them explicitly in"
+              + " configuration — there are no defaults.");
+    }
+    return new RelyingPartyConfig(id, name, Set.copyOf(origins));
   }
 
   @Singleton
@@ -69,26 +84,20 @@ public class PkAuthFactory {
 
   @Singleton
   JwtConfig jwtConfig(PkAuthConfiguration config) {
-    return JwtConfig.defaults(config.getJwt().getIssuer(), config.getJwt().getAudience());
+    PkAuthConfiguration.Jwt jwt = config.getJwt();
+    String issuer = jwt.getIssuer();
+    String audience = jwt.getAudience();
+    if (issuer == null || issuer.isBlank() || audience == null || audience.isBlank()) {
+      throw new IllegalStateException(
+          "pkauth.jwt.{issuer,audience} are required. Set them explicitly in configuration —"
+              + " there are no defaults.");
+    }
+    return JwtConfig.defaults(issuer, audience);
   }
 
   @Singleton
   JwtKeyset jwtKeyset(PkAuthConfiguration config) {
-    String secret = config.getJwt().getSecret();
-    if (secret == null || secret.isBlank()) {
-      throw new IllegalArgumentException(
-          "pkauth.jwt.secret must be configured (≥ 32 bytes for HS256), or supply a JwtKeyset"
-              + " bean. Silent fallback to a random one-shot key was removed because it breaks"
-              + " multi-instance deployments and masks misconfiguration.");
-    }
-    byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
-    if (bytes.length < 32) {
-      throw new IllegalArgumentException(
-          "pkauth.jwt.secret must be at least 32 bytes for HS256 (got "
-              + bytes.length
-              + "). Configure a ≥ 32-byte random value or supply a JwtKeyset bean.");
-    }
-    return JwtKeyset.hs256(bytes);
+    return JwtSecretResolver.resolveHs256Keyset(config.getJwt().getSecret());
   }
 
   @Singleton
@@ -174,59 +183,9 @@ public class PkAuthFactory {
 
   @Singleton
   OtpService otpService(
-      OtpRepository repo,
-      SmsSender sms,
-      ClockProvider clock,
-      PkAuthConfiguration config,
-      io.micronaut.context.env.Environment env) {
-    byte[] pepper = resolveOtpPepper(config, env);
+      OtpRepository repo, SmsSender sms, ClockProvider clock, PkAuthConfiguration config) {
+    byte[] pepper = OtpPepperResolver.resolve(() -> config.getOtp().getPepper(), config::isDevMode);
     return new OtpService(repo, sms, clock, pepper);
-  }
-
-  /**
-   * Resolves the OTP pepper according to the configured policy:
-   *
-   * <ul>
-   *   <li>{@code pkauth.otp.pepper} set → decode as Base64 and use (≥ 16 bytes required).
-   *   <li>Unset AND {@code pkauth.dev-mode=true} → generate a per-startup random pepper and log a
-   *       loud warning. A per-startup pepper invalidates OTPs across restarts / instances.
-   *   <li>Unset AND {@code pkauth.dev-mode} false/unset → fail fast at startup.
-   * </ul>
-   */
-  private static byte[] resolveOtpPepper(
-      PkAuthConfiguration config, io.micronaut.context.env.Environment env) {
-    String configured = config.getOtp().getPepper();
-    if (configured != null && !configured.isBlank()) {
-      byte[] decoded;
-      try {
-        decoded = java.util.Base64.getDecoder().decode(configured.trim());
-      } catch (IllegalArgumentException e) {
-        throw new IllegalStateException(
-            "pkauth.otp.pepper must be a valid Base64 string (≥ 16 decoded bytes).", e);
-      }
-      if (decoded.length < 16) {
-        throw new IllegalStateException(
-            "pkauth.otp.pepper decoded to "
-                + decoded.length
-                + " bytes; at least 16 bytes required (32+ recommended).");
-      }
-      return decoded;
-    }
-    boolean devMode = env.getProperty("pkauth.dev-mode", Boolean.class).orElse(false);
-    if (!devMode) {
-      throw new IllegalStateException(
-          "pkauth.otp.pepper is not configured. Set a Base64-encoded ≥32-byte secret in"
-              + " configuration, or enable pkauth.dev-mode=true to auto-generate a per-startup"
-              + " random pepper (dev only — invalidates OTPs across restarts / cluster"
-              + " instances).");
-    }
-    byte[] random = new byte[32];
-    new java.security.SecureRandom().nextBytes(random);
-    LOG.warn(
-        "pkauth.dev-mode=true and pkauth.otp.pepper not set: generated a one-shot random OTP"
-            + " pepper. Outstanding OTPs will not survive a restart and will not validate on"
-            + " other instances. DO NOT use this configuration in production.");
-    return random;
   }
 
   @Singleton

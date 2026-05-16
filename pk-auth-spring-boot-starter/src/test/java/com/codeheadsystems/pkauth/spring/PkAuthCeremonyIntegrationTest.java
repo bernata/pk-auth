@@ -109,7 +109,7 @@ class PkAuthCeremonyIntegrationTest {
             startAuthResult.getResponse().getContentAsString(), StartAuthenticationResponse.class);
 
     // -- 4. Finish authentication; verify the minted JWT --------------------------------------
-    UserHandle handle = userLookup.findUserHandleByUsername("alice").orElseThrow();
+    UserHandle handle = userLookup.findHandleByUsername("alice").orElseThrow();
     AuthenticationResponseJson authResponse =
         authenticator.createAssertionResponse(startAuthResp, handle);
     FinishAuthenticationRequest finishAuth =

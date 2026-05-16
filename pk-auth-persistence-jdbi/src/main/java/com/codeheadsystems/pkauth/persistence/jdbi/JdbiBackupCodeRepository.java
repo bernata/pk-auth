@@ -147,6 +147,8 @@ public final class JdbiBackupCodeRepository implements BackupCodeRepository {
    * Atomically replaces all active codes for a user inside a single JDBI transaction: soft-deletes
    * existing rows and inserts the new set. A failure mid-insert rolls back the entire transaction
    * so the user is never left with a partial or empty code set.
+   *
+   * @since 0.9.1
    */
   @Override
   public void replaceAll(UserHandle userHandle, List<StoredBackupCode> records) {

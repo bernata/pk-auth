@@ -197,7 +197,7 @@ class PkAuthAdminIntegrationTest {
     StartAuthenticationResponse startAuthResp =
         objectMapper.readValue(
             startAuth.getResponse().getContentAsString(), StartAuthenticationResponse.class);
-    UserHandle handle = userLookup.findUserHandleByUsername(username).orElseThrow();
+    UserHandle handle = userLookup.findHandleByUsername(username).orElseThrow();
     AuthenticationResponseJson authResponse =
         authenticator.createAssertionResponse(startAuthResp, handle);
     FinishAuthenticationRequest fa =

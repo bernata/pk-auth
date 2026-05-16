@@ -65,8 +65,7 @@ class JdbiCeremonyIntegrationTest {
   void registrationThenAssertionAgainstPostgres() {
     new CeremonyScenarios(service, authenticator, credentialRepository, userLookup)
         .registrationThenAssertionBumpsSignCount();
-    UserHandle handle =
-        userLookup.findUserHandleByUsername(CeremonyScenarios.USERNAME).orElseThrow();
+    UserHandle handle = userLookup.findHandleByUsername(CeremonyScenarios.USERNAME).orElseThrow();
     assertThat(credentialRepository.findByUserHandle(handle)).hasSize(1);
   }
 

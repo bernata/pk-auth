@@ -51,4 +51,41 @@ final class PkAuthConfigTest {
     assertThatThrownBy(() -> new PkAuthConfig(null, null, null))
         .isInstanceOf(NullPointerException.class);
   }
+
+  @Test
+  void otpRejectsShortPepper() {
+    assertThatThrownBy(() -> new PkAuthConfig.Otp(new byte[8]))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("16 bytes");
+  }
+
+  @Test
+  void otpPepperIsDefensivelyCopied() {
+    byte[] pepper = new byte[16];
+    pepper[0] = 1;
+    PkAuthConfig.Otp otp = new PkAuthConfig.Otp(pepper);
+    pepper[0] = 99;
+    assertThat(otp.pepper()[0]).isEqualTo((byte) 1);
+  }
+
+  @Test
+  void magicLinkRequiresNonBlankBaseUrl() {
+    assertThatThrownBy(() -> new PkAuthConfig.MagicLink(""))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("non-blank");
+    assertThatThrownBy(() -> new PkAuthConfig.MagicLink(null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void legacyThreeArgConstructorLeavesAltFlowBlocksNull() {
+    PkAuthConfig cfg =
+        new PkAuthConfig(
+            new PkAuthConfig.RelyingParty("example.com", "Example", Set.of("https://example.com")),
+            new PkAuthConfig.Jwt("iss", "aud", new byte[32], null),
+            new PkAuthConfig.Ceremony());
+    assertThat(cfg.otp()).isNull();
+    assertThat(cfg.magicLink()).isNull();
+    assertThat(cfg.backupCode()).isNull();
+  }
 }

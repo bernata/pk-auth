@@ -23,6 +23,8 @@ import org.junit.jupiter.api.Test;
 @Property(name = "pkauth.relying-party.id", value = "example.com")
 @Property(name = "pkauth.relying-party.name", value = "test")
 @Property(name = "pkauth.relying-party.origins[0]", value = "https://example.com")
+@Property(name = "pkauth.jwt.issuer", value = "https://pkauth.example.com")
+@Property(name = "pkauth.jwt.audience", value = "https://app.example.com")
 @Property(name = "pkauth.jwt.secret", value = "pk-auth-micronaut-test-secret-32b!")
 @Property(name = "pkauth.dev-mode", value = "true")
 class PkAuthAdminAuthenticatedTest {
@@ -36,7 +38,7 @@ class PkAuthAdminAuthenticatedTest {
 
   @Test
   void getAccountWithValidJwt() {
-    UserHandle uh = users.createOrGetUserHandle("alice");
+    UserHandle uh = users.getOrCreateHandle("alice");
     String token = issuer.issue(JwtClaims.forBackupCode(uh, List.of("test")));
 
     HttpResponse<String> response =
@@ -49,7 +51,7 @@ class PkAuthAdminAuthenticatedTest {
 
   @Test
   void regenerateBackupCodesIssuesPlaintext() {
-    UserHandle uh = users.createOrGetUserHandle("bob");
+    UserHandle uh = users.getOrCreateHandle("bob");
     String token = issuer.issue(JwtClaims.forBackupCode(uh, List.of("test")));
 
     HttpResponse<String> response =
@@ -66,7 +68,7 @@ class PkAuthAdminAuthenticatedTest {
 
   @Test
   void startPhoneVerificationDispatches() {
-    UserHandle uh = users.createOrGetUserHandle("carol");
+    UserHandle uh = users.getOrCreateHandle("carol");
     String token = issuer.issue(JwtClaims.forBackupCode(uh, List.of("test")));
 
     HttpResponse<String> response =

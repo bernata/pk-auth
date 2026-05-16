@@ -146,7 +146,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void startRegistrationPersistsChallengeAndReturnsEnvelope() {
-    when(userLookup.createOrGetUserHandle("alice")).thenReturn(USER_HANDLE);
+    when(userLookup.getOrCreateHandle("alice")).thenReturn(USER_HANDLE);
     when(credentialRepository.findByUserHandle(USER_HANDLE)).thenReturn(List.of());
 
     StartRegistrationResponse resp =
@@ -171,7 +171,7 @@ class DefaultPasskeyAuthenticationServiceTest {
     // Belt-and-braces wire check (TODO #6): even with NON_NULL inclusion, an empty list must
     // serialize as [] and the excludeCredentials key must be present so an unknown / brand-new
     // username's response is byte-indistinguishable from a known user's response.
-    when(userLookup.createOrGetUserHandle("brand-new")).thenReturn(USER_HANDLE);
+    when(userLookup.getOrCreateHandle("brand-new")).thenReturn(USER_HANDLE);
     when(credentialRepository.findByUserHandle(USER_HANDLE)).thenReturn(List.of());
 
     StartRegistrationResponse resp =
@@ -182,7 +182,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void startAuthenticationIncludesAllowCredentialsForKnownUser() {
-    when(userLookup.findUserHandleByUsername("alice")).thenReturn(Optional.of(USER_HANDLE));
+    when(userLookup.findHandleByUsername("alice")).thenReturn(Optional.of(USER_HANDLE));
     when(credentialRepository.findByUserHandle(USER_HANDLE))
         .thenReturn(List.of(stubStoredCredential()));
 
@@ -210,7 +210,7 @@ class DefaultPasskeyAuthenticationServiceTest {
     // Privacy invariant (TODO #6): an unknown username must produce the same empty-list shape
     // as a known user with no credentials registered. Emitting null here was the
     // account-enumeration leak fixed in this change.
-    when(userLookup.findUserHandleByUsername("ghost")).thenReturn(Optional.empty());
+    when(userLookup.findHandleByUsername("ghost")).thenReturn(Optional.empty());
 
     StartAuthenticationResponse resp =
         service.startAuthentication(new StartAuthenticationRequest("ghost", null));
@@ -222,7 +222,7 @@ class DefaultPasskeyAuthenticationServiceTest {
   void startAuthenticationSerializesEmptyAllowCredentialsAsJsonArray() {
     // Belt-and-braces wire check (TODO #6): an unknown user must produce an
     // "allowCredentials":[] field present in the JSON, not an omitted field.
-    when(userLookup.findUserHandleByUsername("ghost")).thenReturn(Optional.empty());
+    when(userLookup.findHandleByUsername("ghost")).thenReturn(Optional.empty());
     StartAuthenticationResponse resp =
         service.startAuthentication(new StartAuthenticationRequest("ghost", null));
     String json = jsonMapper.writeValueAsString(resp.publicKey());

@@ -29,7 +29,11 @@ public sealed interface AssertionResult {
    * Assertion succeeded; the credential's sign count and lastUsedAt should be updated.
    *
    * <p>Check {@link #counterStatus()} to distinguish a clean success from one accepted despite
-   * counter regression under WARN policy.
+   * counter regression under WARN policy. Callers MUST supply {@code counterStatus} explicitly —
+   * the prior convenience constructor that defaulted to {@link CounterStatus#OK} was removed in
+   * 0.9.1 to force the counter-status decision to be visible at every call site.
+   *
+   * @since 0.9.1
    */
   record Success(
       UserHandle userHandle, byte[] credentialId, long signCount, CounterStatus counterStatus)
@@ -42,11 +46,6 @@ public sealed interface AssertionResult {
         throw new IllegalArgumentException("signCount must be non-negative");
       }
       credentialId = credentialId.clone();
-    }
-
-    /** Convenience constructor that defaults {@link CounterStatus#OK} for normal success. */
-    public Success(UserHandle userHandle, byte[] credentialId, long signCount) {
-      this(userHandle, credentialId, signCount, CounterStatus.OK);
     }
 
     @Override

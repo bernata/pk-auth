@@ -11,6 +11,10 @@ import org.jspecify.annotations.Nullable;
  * adapters' shape so the host's {@code application.yml} reads the same. Secrets configurable via
  * env-var with the standard Micronaut mapping: {@code pkauth.jwt.secret} ↔ {@code
  * PKAUTH_JWT_SECRET}.
+ *
+ * <p>Relying-party id/name/origins and JWT issuer/audience/secret are required — there are no
+ * adapter defaults. Misconfiguration surfaces as a startup failure rather than a silent dev-mode
+ * boot.
  */
 @ConfigurationProperties("pkauth")
 public final class PkAuthConfiguration {
@@ -19,6 +23,7 @@ public final class PkAuthConfiguration {
   private Jwt jwt = new Jwt();
   private Ceremony ceremony = new Ceremony();
   private Otp otp = new Otp();
+  private boolean devMode;
 
   public RelyingParty getRelyingParty() {
     return relyingParty;
@@ -53,6 +58,28 @@ public final class PkAuthConfiguration {
   }
 
   /**
+   * Whether to enable in-memory testkit SPIs and dev-only logging senders, plus per-startup random
+   * OTP pepper auto-generation when {@code pkauth.otp.pepper} is unset. Defaults to {@code false} —
+   * production deployments must supply real SPI beans / senders / pepper.
+   *
+   * @return {@code true} when {@code pkauth.dev-mode=true}, {@code false} otherwise
+   * @since 0.9.1
+   */
+  public boolean isDevMode() {
+    return devMode;
+  }
+
+  /**
+   * Bind the {@code pkauth.dev-mode} property.
+   *
+   * @param devMode whether dev-mode wiring is enabled
+   * @since 0.9.1
+   */
+  public void setDevMode(boolean devMode) {
+    this.devMode = devMode;
+  }
+
+  /**
    * Ceremony tunables forwarded to {@code CeremonyConfig}. Same default and key as the Spring
    * adapter's {@code pkauth.ceremony.challengeTtl}.
    */
@@ -69,58 +96,64 @@ public final class PkAuthConfiguration {
     }
   }
 
-  /** Relying-party identity nested config. */
+  /**
+   * Relying-party identity nested config. {@code id}, {@code name}, and {@code origins} are all
+   * required — there are no defaults. {@link PkAuthFactory} validates them at startup.
+   */
   @ConfigurationProperties("relying-party")
   public static final class RelyingParty {
-    private String id = "example.com";
-    private String name = "pk-auth Micronaut demo";
-    private List<String> origins = List.of("http://localhost:8080");
+    private @Nullable String id;
+    private @Nullable String name;
+    private @Nullable List<String> origins;
 
-    public String getId() {
+    public @Nullable String getId() {
       return id;
     }
 
-    public void setId(String id) {
+    public void setId(@Nullable String id) {
       this.id = id;
     }
 
-    public String getName() {
+    public @Nullable String getName() {
       return name;
     }
 
-    public void setName(String name) {
+    public void setName(@Nullable String name) {
       this.name = name;
     }
 
-    public List<String> getOrigins() {
+    public @Nullable List<String> getOrigins() {
       return origins;
     }
 
-    public void setOrigins(List<String> origins) {
+    public void setOrigins(@Nullable List<String> origins) {
       this.origins = origins;
     }
   }
 
-  /** JWT issuance and validation config. */
+  /**
+   * JWT issuance and validation config. {@code issuer}, {@code audience}, and {@code secret} are
+   * all required — there are no adapter defaults. {@link PkAuthFactory} validates them at startup.
+   */
   @ConfigurationProperties("jwt")
   public static final class Jwt {
-    private String issuer = "pk-auth-micronaut";
-    private String audience = "pk-auth-micronaut-clients";
+    private @Nullable String issuer;
+    private @Nullable String audience;
     private @Nullable String secret;
 
-    public String getIssuer() {
+    public @Nullable String getIssuer() {
       return issuer;
     }
 
-    public void setIssuer(String issuer) {
+    public void setIssuer(@Nullable String issuer) {
       this.issuer = issuer;
     }
 
-    public String getAudience() {
+    public @Nullable String getAudience() {
       return audience;
     }
 
-    public void setAudience(String audience) {
+    public void setAudience(@Nullable String audience) {
       this.audience = audience;
     }
 

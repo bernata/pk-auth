@@ -84,7 +84,8 @@ class CeremonyWireMapperTest {
 
   @Test
   void assertionSuccessIncludesToken() {
-    AssertionResult.Success success = new AssertionResult.Success(USER, CRED_ID, 42L);
+    AssertionResult.Success success =
+        new AssertionResult.Success(USER, CRED_ID, 42L, AssertionResult.CounterStatus.OK);
     CeremonyResponse r = CeremonyWireMapper.forAssertionSuccess(success, "the.jwt.token", "Phone");
     assertThat(r.status()).isEqualTo(200);
     assertThat(r.body())
@@ -98,7 +99,8 @@ class CeremonyWireMapperTest {
 
   @Test
   void assertionSuccessOmitsLabelWhenAbsent() {
-    AssertionResult.Success success = new AssertionResult.Success(USER, CRED_ID, 1L);
+    AssertionResult.Success success =
+        new AssertionResult.Success(USER, CRED_ID, 1L, AssertionResult.CounterStatus.OK);
     CeremonyResponse r = CeremonyWireMapper.forAssertionSuccess(success, "tok", null);
     assertThat(r.body()).doesNotContainKey("label").containsEntry("token", "tok");
   }
@@ -142,7 +144,8 @@ class CeremonyWireMapperTest {
 
   @Test
   void forAssertionErrorRejectsSuccess() {
-    AssertionResult.Success success = new AssertionResult.Success(USER, CRED_ID, 0L);
+    AssertionResult.Success success =
+        new AssertionResult.Success(USER, CRED_ID, 0L, AssertionResult.CounterStatus.OK);
     assertThatThrownBy(() -> CeremonyWireMapper.forAssertionError(success))
         .isInstanceOf(IllegalArgumentException.class);
   }

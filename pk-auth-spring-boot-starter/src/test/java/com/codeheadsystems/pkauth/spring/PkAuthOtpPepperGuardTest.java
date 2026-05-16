@@ -35,6 +35,13 @@ class PkAuthOtpPepperGuardTest {
   private final ApplicationContextRunner runner =
       new ApplicationContextRunner()
           .withConfiguration(AutoConfigurations.of(PkAuthAutoConfiguration.class))
+          .withPropertyValues(
+              "pkauth.relying-party.id=example.com",
+              "pkauth.relying-party.name=test",
+              "pkauth.relying-party.origins[0]=https://example.com",
+              "pkauth.jwt.issuer=pk-auth-test",
+              "pkauth.jwt.audience=pk-auth-test-clients",
+              "pkauth.jwt.secret=integration-test-secret-must-be-32-bytes")
           .withBean(CredentialRepository.class, InMemoryCredentialRepository::new)
           .withBean(UserLookup.class, InMemoryUserLookup::new)
           .withBean(ChallengeStore.class, InMemoryChallengeStore::new)

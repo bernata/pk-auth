@@ -60,15 +60,14 @@ public interface BackupCodeRepository {
    * Atomically replaces all backup codes for a user: deletes every existing code and inserts the
    * supplied records in a single logical unit of work.
    *
-   * <p>The default implementation calls {@link #deleteByUserHandle} followed by individual {@link
-   * #save} calls, which is NOT transactional. Production implementations SHOULD override this
-   * method to execute inside a database transaction so that a mid-loop failure cannot leave the
-   * user with a partial or empty set of codes.
+   * <p>Implementations MUST execute the delete and the inserts as a single atomic operation. A
+   * mid-operation failure must NOT leave the user with a partial or empty set of codes — readers
+   * must observe either the original set or the new set in its entirety. Use a database transaction
+   * (JDBI), {@code TransactWriteItems} (DynamoDB), or equivalent locking (in-memory).
+   *
+   * @param userHandle the user whose codes are being replaced; must be non-null
+   * @param records the new set of codes (may be empty)
+   * @since 0.9.1
    */
-  default void replaceAll(UserHandle userHandle, List<StoredBackupCode> records) {
-    deleteByUserHandle(userHandle);
-    for (StoredBackupCode record : records) {
-      save(record);
-    }
-  }
+  void replaceAll(UserHandle userHandle, List<StoredBackupCode> records);
 }
