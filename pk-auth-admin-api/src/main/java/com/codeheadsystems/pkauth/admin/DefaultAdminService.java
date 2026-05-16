@@ -142,6 +142,10 @@ public final class DefaultAdminService implements AdminService {
     if (send instanceof SendResult.RateLimited) {
       return new AdminResult.RateLimited<>(Duration.ofHours(1));
     }
+    if (send instanceof SendResult.EmailMismatch) {
+      return new AdminResult.ValidationFailed<>(
+          "email does not match the address bound to this user");
+    }
     return new AdminResult.Success<>(null);
   }
 

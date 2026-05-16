@@ -10,9 +10,13 @@ import java.util.Objects;
 import java.util.Optional;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
+import software.amazon.awssdk.enhanced.dynamodb.Expression;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
+import software.amazon.awssdk.enhanced.dynamodb.model.UpdateItemEnhancedRequest;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 
 /** {@link OtpRepository} backed by the single-table per ADR 0008. */
 public final class DynamoDbOtpRepository implements OtpRepository {
@@ -50,18 +54,51 @@ public final class DynamoDbOtpRepository implements OtpRepository {
     findItemById(otpId)
         .ifPresent(
             item -> {
-              item.setAttempts(item.getAttempts() + 1);
-              table.updateItem(item);
+              int prior = item.getAttempts();
+              item.setAttempts(prior + 1);
+              // Optimistic concurrency: only apply the increment if the stored counter still
+              // matches what we read. A concurrent racing verify will lose the CAS and retry on
+              // the next attempt with a fresh read.
+              try {
+                table.updateItem(
+                    UpdateItemEnhancedRequest.builder(OtpItem.class)
+                        .item(item)
+                        .conditionExpression(
+                            Expression.builder()
+                                .expression("#a = :prior")
+                                .putExpressionName("#a", "attempts") // reserved word
+                                .putExpressionValue(
+                                    ":prior", AttributeValue.fromN(Integer.toString(prior)))
+                                .build())
+                        .build());
+              } catch (ConditionalCheckFailedException ignored) {
+                // Another concurrent attempt incremented first; that's fine.
+              }
             });
   }
 
   @Override
   public void consume(String otpId) {
+    // Like backup-code consume, two concurrent verifies must NOT both succeed. The conditional
+    // makes DynamoDB enforce single-use server-side.
     findItemById(otpId)
         .ifPresent(
             item -> {
               item.setConsumed(true);
-              table.updateItem(item);
+              try {
+                table.updateItem(
+                    UpdateItemEnhancedRequest.builder(OtpItem.class)
+                        .item(item)
+                        .conditionExpression(
+                            Expression.builder()
+                                .expression("#c = :false")
+                                .putExpressionName("#c", "consumed") // reserved word
+                                .putExpressionValue(":false", AttributeValue.fromBool(false))
+                                .build())
+                        .build());
+              } catch (ConditionalCheckFailedException ignored) {
+                // Another concurrent verify already consumed this OTP; race lost cleanly.
+              }
             });
   }
 

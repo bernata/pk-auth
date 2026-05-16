@@ -12,6 +12,7 @@ import java.util.Objects;
 import java.util.Optional;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 import software.amazon.awssdk.services.dynamodb.model.DeleteItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.PutItemRequest;
 import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
@@ -52,13 +53,30 @@ public final class DynamoDbChallengeStore implements ChallengeStore {
     Map<String, AttributeValue> key = new HashMap<>();
     key.put("pk", AttributeValue.fromS("CHAL#" + id.value()));
     key.put("sk", AttributeValue.fromS("META"));
-    var response =
-        client.deleteItem(
-            DeleteItemRequest.builder()
-                .tableName(tableName)
-                .key(key)
-                .returnValues(ReturnValue.ALL_OLD)
-                .build());
+    // Server-side expiry: refuse to delete a row that's already past its expiresAt timestamp.
+    // ISO-8601 UTC strings compare lexicographically in the same order as the underlying
+    // instants, so a string `>` comparison against the current instant rejects expired rows
+    // even though we're comparing strings. DynamoDB's attribute-level TTL deletion is
+    // best-effort (can lag up to ~48h), so it cannot be relied on for security expiry — this
+    // condition is what actually enforces single-use within the TTL window.
+    software.amazon.awssdk.services.dynamodb.model.DeleteItemResponse response;
+    try {
+      response =
+          client.deleteItem(
+              DeleteItemRequest.builder()
+                  .tableName(tableName)
+                  .key(key)
+                  .conditionExpression("expiresAt > :now")
+                  .expressionAttributeValues(
+                      Map.of(":now", AttributeValue.fromS(Instant.now().toString())))
+                  .returnValues(ReturnValue.ALL_OLD)
+                  .build());
+    } catch (ConditionalCheckFailedException expired) {
+      // Row exists but is past expiry, OR the row simply doesn't exist (DynamoDB raises the
+      // same exception in both cases when a condition expression references a missing
+      // attribute). Either way, no challenge is consumed.
+      return Optional.empty();
+    }
     if (response.attributes() == null || response.attributes().isEmpty()) {
       return Optional.empty();
     }
@@ -73,11 +91,6 @@ public final class DynamoDbChallengeStore implements ChallengeStore {
       item.setUserHandle(attrs.get("userHandle").s());
     }
     item.setExpiresAt(attrs.get("expiresAt").s());
-    ChallengeRecord record = item.toRecord();
-    // Filter out anything we successfully deleted but which had already expired.
-    if (Instant.now().isAfter(record.expiresAt())) {
-      return Optional.empty();
-    }
-    return Optional.of(record);
+    return Optional.of(item.toRecord());
   }
 }

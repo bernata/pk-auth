@@ -1,4 +1,6 @@
 pkauth:
+  # Tests need the LoggingEmailSender / LoggingSmsSender dev defaults.
+  dev-mode: true
   relying-party:
     id: example.com
     name: pk-auth micronaut test

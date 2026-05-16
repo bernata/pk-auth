@@ -31,6 +31,8 @@ import org.junit.jupiter.api.Test;
 @Property(name = "pkauth.relying-party.id", value = "example.com")
 @Property(name = "pkauth.relying-party.name", value = "pk-auth micronaut test")
 @Property(name = "pkauth.relying-party.origins[0]", value = "https://example.com")
+@Property(name = "pkauth.jwt.secret", value = "pk-auth-micronaut-test-secret-32b!")
+@Property(name = "pkauth.dev-mode", value = "true")
 class PkAuthMicronautIntegrationTest {
 
   @Inject

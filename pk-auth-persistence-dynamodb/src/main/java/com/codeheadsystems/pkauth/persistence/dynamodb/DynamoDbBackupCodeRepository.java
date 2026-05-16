@@ -9,9 +9,13 @@ import java.util.List;
 import java.util.Objects;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
+import software.amazon.awssdk.enhanced.dynamodb.Expression;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
+import software.amazon.awssdk.enhanced.dynamodb.model.UpdateItemEnhancedRequest;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
+import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
 
 /** {@link BackupCodeRepository} backed by the single-table per ADR 0008. */
 public final class DynamoDbBackupCodeRepository implements BackupCodeRepository {
@@ -44,6 +48,10 @@ public final class DynamoDbBackupCodeRepository implements BackupCodeRepository 
 
   @Override
   public void consume(String codeId, Instant consumedAt) {
+    // Locate the row by codeId. The scan is a known availability concern (TODO: GSI on codeId);
+    // the security-critical bit is the conditional write below — two concurrent verify attempts
+    // that both observe consumed=false must NOT both succeed, or the single-use guarantee is
+    // broken. The condition expression makes DynamoDB itself enforce single-use server-side.
     table.scan().items().stream()
         .filter(item -> codeId.equals(item.getCodeId()))
         .filter(item -> !item.isConsumed())
@@ -52,7 +60,20 @@ public final class DynamoDbBackupCodeRepository implements BackupCodeRepository 
             item -> {
               item.setConsumed(true);
               item.setConsumedAt(consumedAt.toString());
-              table.updateItem(item);
+              try {
+                table.updateItem(
+                    UpdateItemEnhancedRequest.builder(BackupCodeItem.class)
+                        .item(item)
+                        .conditionExpression(
+                            Expression.builder()
+                                .expression("#c = :false")
+                                .putExpressionName("#c", "consumed") // reserved word
+                                .putExpressionValue(":false", AttributeValue.fromBool(false))
+                                .build())
+                        .build());
+              } catch (ConditionalCheckFailedException ignored) {
+                // Another concurrent verify already consumed this code; race lost cleanly.
+              }
             });
   }
 

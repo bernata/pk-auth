@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.ceremony;
 
+import com.codeheadsystems.pkauth.api.AttestationConveyance;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.internal.ChallengeGenerator;
@@ -111,6 +112,23 @@ public final class PasskeyAuthenticationServices {
 
     public PasskeyAuthenticationService build() {
       ObjectConverter oc = objectConverter == null ? new ObjectConverter() : objectConverter;
+      // The default non-strict WebAuthnManager skips attestation-statement signature
+      // verification. That's fine when conveyance is NONE (the authenticator returns a "none"
+      // attestation statement with no signature anyway), but it would silently mislead an
+      // operator who has configured DIRECT / INDIRECT / ENTERPRISE conveyance expecting their
+      // AttestationTrustPolicy to act on a verified statement. Force the operator to wire a
+      // strict manager explicitly via Builder#webAuthnManager(...) in that case.
+      if (webAuthnManager == null
+          && ceremonyConfig.attestationConveyance() != AttestationConveyance.NONE) {
+        throw new IllegalStateException(
+            "ceremonyConfig.attestationConveyance="
+                + ceremonyConfig.attestationConveyance()
+                + " requires an explicitly-wired WebAuthnManager (strict, with attestation"
+                + " statement verifiers). Call Builder#webAuthnManager(...) with a manager built"
+                + " via WebAuthnManager.createWebAuthnManager(verifiers, ...) before build(), or"
+                + " set ceremonyConfig.attestationConveyance=NONE if you do not need attestation"
+                + " signatures verified.");
+      }
       WebAuthnManager mgr =
           webAuthnManager == null
               ? WebAuthnManager.createNonStrictWebAuthnManager(oc)

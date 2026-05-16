@@ -29,11 +29,17 @@ public record CeremonyConfig(
     Objects.requireNonNull(counterRegression, "counterRegression");
   }
 
-  /** Conservative defaults appropriate for a consumer passkey deployment. */
+  /**
+   * Conservative defaults appropriate for a consumer passkey deployment.
+   *
+   * <p>{@code userVerification} defaults to {@link UserVerificationRequirement#REQUIRED} so
+   * WebAuthn4J enforces the asserted {@code flagUV} on every assertion — a deployment that wants to
+   * relax this (e.g. for hardware security keys without UV) must opt in explicitly.
+   */
   public static CeremonyConfig defaults() {
     return new CeremonyConfig(
         DEFAULT_CHALLENGE_TTL,
-        UserVerificationRequirement.PREFERRED,
+        UserVerificationRequirement.REQUIRED,
         ResidentKeyRequirement.PREFERRED,
         AttestationConveyance.NONE,
         CounterRegressionPolicy.REJECT);

@@ -85,7 +85,27 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
     CredentialItem item = existing.get();
     item.setSignCount(newCount);
     item.setLastUsedAt(lastUsedAt.toString());
-    table.updateItem(UpdateItemEnhancedRequest.builder(CredentialItem.class).item(item).build());
+    // Guard against the lost-update race described for the JDBI repository: two concurrent
+    // assertions (e.g. a clone vs. the real authenticator) would otherwise be able to overwrite
+    // a higher stored counter with a lower one, silently defeating clone detection. The
+    // conditional rejects the write unless the in-table value is still strictly less than the
+    // value we're trying to store.
+    try {
+      table.updateItem(
+          UpdateItemEnhancedRequest.builder(CredentialItem.class)
+              .item(item)
+              .conditionExpression(
+                  software.amazon.awssdk.enhanced.dynamodb.Expression.builder()
+                      .expression("signCount < :newSignCount")
+                      .putExpressionValue(
+                          ":newSignCount",
+                          software.amazon.awssdk.services.dynamodb.model.AttributeValue.fromN(
+                              Long.toString(newCount)))
+                      .build())
+              .build());
+    } catch (ConditionalCheckFailedException ignored) {
+      // A concurrent write already advanced the counter to at least newCount; nothing to do.
+    }
   }
 
   @Override

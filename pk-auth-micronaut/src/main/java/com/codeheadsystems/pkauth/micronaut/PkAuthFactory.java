@@ -25,10 +25,12 @@ import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import com.codeheadsystems.pkauth.spi.OtpRepository;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import io.micronaut.context.annotation.Factory;
+import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import java.nio.charset.StandardCharsets;
-import java.security.SecureRandom;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Wires every pk-auth service Micronaut hosts. Persistence SPIs ({@link CredentialRepository},
@@ -38,6 +40,8 @@ import java.util.Set;
  */
 @Factory
 public class PkAuthFactory {
+
+  private static final Logger LOG = LoggerFactory.getLogger(PkAuthFactory.class);
 
   @Singleton
   RelyingPartyConfig relyingPartyConfig(PkAuthConfiguration config) {
@@ -63,18 +67,18 @@ public class PkAuthFactory {
   @Singleton
   JwtKeyset jwtKeyset(PkAuthConfiguration config) {
     String secret = config.getJwt().getSecret();
-    byte[] bytes;
     if (secret == null || secret.isBlank()) {
-      bytes = new byte[32];
-      new SecureRandom().nextBytes(bytes);
-    } else {
-      bytes = secret.getBytes(StandardCharsets.UTF_8);
-      if (bytes.length < 32) {
-        // Nimbus rejects HS256 secrets under 32 bytes. Pad rather than crash on dev configs.
-        byte[] padded = new byte[32];
-        System.arraycopy(bytes, 0, padded, 0, bytes.length);
-        bytes = padded;
-      }
+      throw new IllegalArgumentException(
+          "pkauth.jwt.secret must be configured (≥ 32 bytes for HS256), or supply a JwtKeyset"
+              + " bean. Silent fallback to a random one-shot key was removed because it breaks"
+              + " multi-instance deployments and masks misconfiguration.");
+    }
+    byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
+    if (bytes.length < 32) {
+      throw new IllegalArgumentException(
+          "pkauth.jwt.secret must be at least 32 bytes for HS256 (got "
+              + bytes.length
+              + "). Configure a ≥ 32-byte random value or supply a JwtKeyset bean.");
     }
     return JwtKeyset.hs256(bytes);
   }
@@ -112,13 +116,26 @@ public class PkAuthFactory {
     return new BackupCodeService(repo, clock);
   }
 
+  /**
+   * Logging senders are dev-only: they write magic-link tokens / OTP codes to the application log.
+   * They activate only when {@code pkauth.dev-mode=true}; otherwise a host must supply real {@code
+   * EmailSender} / {@code SmsSender} beans.
+   */
   @Singleton
+  @Requires(property = "pkauth.dev-mode", value = "true")
   EmailSender emailSender() {
+    LOG.error(
+        "pkauth.dev-mode=true: using LoggingEmailSender — magic-link tokens will be written to"
+            + " the application log. DO NOT use in production.");
     return new LoggingEmailSender();
   }
 
   @Singleton
+  @Requires(property = "pkauth.dev-mode", value = "true")
   SmsSender smsSender() {
+    LOG.error(
+        "pkauth.dev-mode=true: using LoggingSmsSender — OTP codes will be written to the"
+            + " application log. DO NOT use in production.");
     return new LoggingSmsSender();
   }
 

@@ -189,11 +189,13 @@ public class PkAuthAutoConfiguration {
   public JwtKeyset pkAuthJwtKeyset(PkAuthProperties props) {
     String secret = props.jwt().secret();
     if (secret != null && !secret.isBlank()) {
-      // Nimbus requires ≥ 256-bit shared secrets for HS256. We hash short secrets up to length
-      // rather than refusing to start — friendlier dev experience and still strictly stronger than
-      // letting Nimbus reject at first issue. Operators wanting deterministic key material set a
-      // ≥ 32-byte secret directly.
-      byte[] keyBytes = expand(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8), 32);
+      byte[] keyBytes = secret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+      if (keyBytes.length < 32) {
+        throw new IllegalArgumentException(
+            "pkauth.jwt.secret must be at least 32 bytes for HS256 (got "
+                + keyBytes.length
+                + "). Configure a ≥ 32-byte random value or supply a JwtKeyset bean.");
+      }
       return JwtKeyset.hs256(keyBytes);
     }
     byte[] random = new byte[32];
@@ -220,15 +222,32 @@ public class PkAuthAutoConfiguration {
 
   // -- Alt-flow services -----------------------------------------------------------------------
 
+  /**
+   * Logging email/SMS senders are dev-only: they write the full message body — which contains the
+   * magic-link token or OTP code — to the application log. Gating them behind {@code
+   * pkauth.dev-mode=true} prevents an accidental production deploy from silently leaking single-use
+   * credentials to log aggregation systems. A host without a real {@code EmailSender} / {@code
+   * SmsSender} bean and without {@code dev-mode=true} fails to start (no bean for the downstream
+   * {@code MagicLinkService} / {@code OtpService} factory parameters), which is the intended
+   * fail-fast behaviour.
+   */
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public EmailSender pkAuthEmailSender() {
+    LOG.error(
+        "pkauth.dev-mode=true: using LoggingEmailSender — magic-link tokens will be written to"
+            + " the application log. DO NOT use in production.");
     return new LoggingEmailSender();
   }
 
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public SmsSender pkAuthSmsSender() {
+    LOG.error(
+        "pkauth.dev-mode=true: using LoggingSmsSender — OTP codes will be written to the"
+            + " application log. DO NOT use in production.");
     return new LoggingSmsSender();
   }
 
@@ -259,16 +278,5 @@ public class PkAuthAutoConfiguration {
   public OtpService pkAuthOtpService(
       OtpRepository repo, SmsSender smsSender, ClockProvider clockProvider) {
     return new OtpService(repo, smsSender, clockProvider);
-  }
-
-  private static byte[] expand(byte[] input, int minLength) {
-    if (input.length >= minLength) {
-      return input;
-    }
-    byte[] expanded = new byte[minLength];
-    for (int i = 0; i < minLength; i++) {
-      expanded[i] = input[i % input.length];
-    }
-    return expanded;
   }
 }

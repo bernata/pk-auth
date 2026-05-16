@@ -35,7 +35,7 @@ class ConfigTest {
   void ceremonyConfigDefaults() {
     CeremonyConfig c = CeremonyConfig.defaults();
     assertThat(c.challengeTtl()).isEqualTo(Duration.ofMinutes(5));
-    assertThat(c.userVerification()).isEqualTo(UserVerificationRequirement.PREFERRED);
+    assertThat(c.userVerification()).isEqualTo(UserVerificationRequirement.REQUIRED);
     assertThat(c.residentKey()).isEqualTo(ResidentKeyRequirement.PREFERRED);
     assertThat(c.attestationConveyance()).isEqualTo(AttestationConveyance.NONE);
     assertThat(c.counterRegression()).isEqualTo(CounterRegressionPolicy.REJECT);

@@ -5,6 +5,9 @@ micronaut:
     port: 8080
 
 pkauth:
+  # Demo uses the LoggingEmailSender / LoggingSmsSender for the verification flows. Production
+  # deployments must omit this flag and supply real EmailSender / SmsSender beans.
+  dev-mode: true
   relying-party:
     id: localhost
     name: pk-auth Micronaut demo

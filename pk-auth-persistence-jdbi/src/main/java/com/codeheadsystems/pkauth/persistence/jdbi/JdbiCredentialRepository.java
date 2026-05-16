@@ -88,11 +88,14 @@ public final class JdbiCredentialRepository implements CredentialRepository {
 
   @Override
   public void updateSignCount(byte[] credentialId, long newCount, Instant lastUsedAt) {
+    // Guard against concurrent racing assertions overwriting a higher stored counter with a
+    // lower one — that would silently defeat WebAuthn's clone-detection invariant. Only advance
+    // the counter when the new value strictly exceeds the stored one.
     jdbi.useHandle(
         h ->
             h.createUpdate(
                     "UPDATE credentials SET sign_count = :sc, last_used_at = :lua"
-                        + " WHERE credential_id = :cid")
+                        + " WHERE credential_id = :cid AND sign_count < :sc")
                 .bind("sc", newCount)
                 .bind("lua", OffsetDateTime.ofInstant(lastUsedAt, ZoneOffset.UTC))
                 .bind("cid", credentialId)

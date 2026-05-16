@@ -35,8 +35,12 @@ import org.slf4j.LoggerFactory;
  * </ul>
  *
  * <p>Single-use is enforced by tracking consumed JTI values in a Caffeine cache whose entries
- * expire after the JWT TTL. Rate limiting (brief §6.4 — N emails per user/purpose per hour) is
- * tracked the same way via the {@link MagicLinkRateLimiter} extension point.
+ * expire after {@code consumedJtiTtl} (default: {@link #DEFAULT_CONSUMED_JTI_TTL}). The cache is
+ * in-memory per-process — multi-instance deployments need a shared store via a host-provided {@link
+ * MagicLinkRateLimiter}-style hook (TODO; until then, single-use is best-effort per-process and a
+ * token redeemed on one replica can be redeemed again on another within its TTL window). Rate
+ * limiting (brief §6.4 — N emails per user/purpose per hour) is tracked through {@link
+ * MagicLinkRateLimiter}.
  */
 public final class MagicLinkService {
 
@@ -55,6 +59,13 @@ public final class MagicLinkService {
   /** Default TTL of an issued magic-link JWT. */
   public static final Duration DEFAULT_TTL = Duration.ofMinutes(15);
 
+  /**
+   * Default TTL for the consumed-JTI cache. Set comfortably larger than {@link #DEFAULT_TTL} so a
+   * JWT that's already expired can't be replayed even if the validator's clock-skew tolerance
+   * accepts it briefly after expiry.
+   */
+  public static final Duration DEFAULT_CONSUMED_JTI_TTL = Duration.ofMinutes(30);
+
   /** Default rate limit: 5 emails per (user, purpose) per hour. */
   public static final int DEFAULT_RATE_LIMIT = 5;
 
@@ -71,6 +82,13 @@ public final class MagicLinkService {
 
     /** No user matched the supplied identifier (login flow only). */
     record UserNotFound() implements SendResult {}
+
+    /**
+     * The caller-supplied email does not match the one bound to the user via {@link
+     * UserLookup#emailFor(UserHandle)}. Returned only when the host has implemented {@code
+     * emailFor}; otherwise the binding check is skipped (with a warning log) and the send proceeds.
+     */
+    record EmailMismatch() implements SendResult {}
   }
 
   /** Result of a consume attempt. */
@@ -102,7 +120,7 @@ public final class MagicLinkService {
   private final String baseUrl;
   private final int rateLimit;
   private final MagicLinkRateLimiter rateLimiter;
-  private final Set<String> consumedJtis = java.util.concurrent.ConcurrentHashMap.newKeySet();
+  private final Cache<String, Boolean> consumedJtis;
 
   public MagicLinkService(
       PkAuthJwtIssuer issuer,
@@ -119,7 +137,8 @@ public final class MagicLinkService {
         clockProvider,
         baseUrl,
         DEFAULT_RATE_LIMIT,
-        new InMemoryRateLimiter(DEFAULT_RATE_WINDOW));
+        new InMemoryRateLimiter(DEFAULT_RATE_WINDOW),
+        DEFAULT_CONSUMED_JTI_TTL);
   }
 
   /**
@@ -136,6 +155,32 @@ public final class MagicLinkService {
       String baseUrl,
       int rateLimit,
       MagicLinkRateLimiter rateLimiter) {
+    this(
+        issuer,
+        validator,
+        emailSender,
+        userLookup,
+        clockProvider,
+        baseUrl,
+        rateLimit,
+        rateLimiter,
+        DEFAULT_CONSUMED_JTI_TTL);
+  }
+
+  /**
+   * Test seam allowing override of the consumed-JTI cache TTL — important for tests that need to
+   * advance the clock past the cache expiration.
+   */
+  public MagicLinkService(
+      PkAuthJwtIssuer issuer,
+      PkAuthJwtValidator validator,
+      EmailSender emailSender,
+      UserLookup userLookup,
+      ClockProvider clockProvider,
+      String baseUrl,
+      int rateLimit,
+      MagicLinkRateLimiter rateLimiter,
+      Duration consumedJtiTtl) {
     this.issuer = Objects.requireNonNull(issuer, "issuer");
     this.validator = Objects.requireNonNull(validator, "validator");
     this.emailSender = Objects.requireNonNull(emailSender, "emailSender");
@@ -144,12 +189,37 @@ public final class MagicLinkService {
     this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl");
     this.rateLimit = rateLimit;
     this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter");
+    this.consumedJtis =
+        Caffeine.newBuilder()
+            .expireAfterWrite(Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl"))
+            .build();
   }
 
-  /** Sends a verification email containing a magic link tied to {@code email}. */
+  /**
+   * Sends a verification email containing a magic link tied to {@code email}. If the host has
+   * implemented {@link UserLookup#emailFor(UserHandle)}, the supplied {@code email} must equal the
+   * bound value (constant-time compare) — otherwise a caller could mint a "verified" claim for an
+   * arbitrary address. If the host has not implemented {@code emailFor}, the binding check is
+   * skipped (with a warning log) and the send proceeds.
+   */
   public SendResult sendVerificationEmail(UserHandle user, String email) {
     Objects.requireNonNull(user, "user");
     Objects.requireNonNull(email, "email");
+    Optional<String> bound = userLookup.emailFor(user);
+    if (bound.isPresent()) {
+      byte[] expected = bound.get().getBytes(StandardCharsets.UTF_8);
+      byte[] actual = email.getBytes(StandardCharsets.UTF_8);
+      if (!java.security.MessageDigest.isEqual(expected, actual)) {
+        LOG.warn("magiclink.send email-mismatch user={} purpose={}", user, PURPOSE_EMAIL_VERIFY);
+        return new SendResult.EmailMismatch();
+      }
+    } else {
+      LOG.warn(
+          "magiclink.send email-not-bound user={} — UserLookup#emailFor returned empty; the"
+              + " library cannot verify the caller-supplied address belongs to this user. Host"
+              + " apps that store user emails should override UserLookup#emailFor.",
+          user);
+    }
     int count = rateLimiter.countAndIncrement(user, PURPOSE_EMAIL_VERIFY, clockProvider.now());
     if (count > rateLimit) {
       LOG.info(
@@ -203,7 +273,8 @@ public final class MagicLinkService {
     // Single-use: the JTI is opaque; we don't have direct access to it through JwtClaims, so we
     // re-parse the JWT just for the id. Cheap because we already validated it above.
     String jti = jtiOf(token);
-    if (!consumedJtis.add(jti)) {
+    Boolean previous = consumedJtis.asMap().putIfAbsent(jti, Boolean.TRUE);
+    if (previous != null) {
       return new ConsumeResult.AlreadyConsumed();
     }
     return new ConsumeResult.Success(claims.userHandle(), purpose, email);
