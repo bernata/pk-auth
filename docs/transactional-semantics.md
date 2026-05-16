@@ -54,8 +54,8 @@ sequence:
 | Sequence | Failure scenario | Recovery |
 |---|---|---|
 | `ChallengeStore.takeOnce` → `CredentialRepository.save` | Save fails; challenge is consumed. | User restarts ceremony (new challenge issued). |
-| `BackupCodeRepository.claim` → JWT mint | Mint fails (e.g. secret missing). | Code is consumed; user contacts support or regenerates codes. |
-| `OtpRepository.verify` → phone-verified flag write | Flag write fails. | OTP is consumed; user requests a new OTP and re-verifies. |
+| `BackupCodeRepository.consume` → JWT mint | Mint fails (e.g. secret missing). | Code is consumed; user contacts support or regenerates codes. |
+| `OtpRepository.consume` → phone-verified flag write | Flag write fails. | OTP is consumed; user requests a new OTP and re-verifies. |
 
 In every case, the "consume once" side of the operation succeeds before the downstream
 write, and a failure leaves the user in a recoverable (if inconvenient) state.

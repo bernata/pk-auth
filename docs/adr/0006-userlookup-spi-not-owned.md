@@ -1,6 +1,6 @@
 # 6. `UserLookup` is an SPI, not an owned table
 
-Date: 2026-03-12
+Date: 2026-05-15
 
 ## Status
 

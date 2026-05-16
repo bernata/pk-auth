@@ -35,11 +35,11 @@ Jackson 3's `tools.jackson.databind` bundles `java.time` and `Jdk8` datatype sup
   - Either run two `ObjectMapper` instances (one Jackson 2 for Dropwizard's framework path, one Jackson 3 for our pk-auth payloads), or
   - Wait for Dropwizard 5 to migrate to Jackson 3, or
   - Translate at the Jersey resource boundary.
-  Phase 9 will explore this. Spring Boot 3.5 / 4 and Micronaut 4 are both progressing toward Jackson 3 support and are not expected to be problematic.
+  Phase 9 will explore this. Spring Boot 4 ships Jackson 3 natively; Micronaut 4 still bundles Jackson 2.
 - **Negative:** Adapter authors familiar with Jackson 2 must learn the slightly different builder API. This is well documented upstream.
 - **Negative:** Some Jackson ecosystem extensions (e.g., older Afterburner, certain Money/Joda modules) had not yet released Jackson 3 jars at the time of writing. None are on pk-auth's roadmap.
 
 ## Open follow-ups
 
-- Phase 9 must produce a follow-up ADR (or note in `adr/0004-dagger-for-dropwizard.md`) documenting the concrete strategy chosen for Dropwizard's Jackson-2 internals.
+- Phase 9 must produce a follow-up ADR documenting the concrete strategy chosen for Dropwizard's Jackson-2 internals. See [ADR 0010](0010-dropwizard-track-latest.md) for the Dropwizard versioning decision and the `PkAuthJacksonBridge` approach at the Jackson 2/3 boundary.
 - The build brief `pk-auth-build-brief.md` §3 line "Jackson 2.x" is now historical — supersede in the next brief revision.

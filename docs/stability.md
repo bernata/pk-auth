@@ -42,7 +42,6 @@ These are the surfaces most likely to evolve before 1.0:
 | `OtpRepository` | `pk-auth-otp` | Store and verify time-limited OTP codes |
 | `EmailSender` | `pk-auth-magic-link` | Dispatch magic-link emails |
 | `SmsSender` | `pk-auth-otp` | Dispatch phone OTP messages |
-| `RateLimiter` | `pk-auth-core` | Host-implemented rate limiting hook |
 | `RevocationCheck` | `pk-auth-jwt` | Determine whether a valid JWT has been revoked |
 
 ### `@apiNote experimental` convention

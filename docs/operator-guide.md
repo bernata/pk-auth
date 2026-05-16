@@ -24,10 +24,10 @@ adapters all consume the same core. A typical production deployment needs:
 | `pkauth.jwt.secret` (HS256) | 32 bytes | Hard fail at boot if shorter. Rotate by issuing a fresh secret and tolerating a grace window (issue + verify in parallel — pk-auth itself does not rotate; the host shoulds run two issuers behind a load balancer until tokens expire). |
 | `pkauth.relying-party.id` | n/a | The eTLD+1 (e.g. `example.com`, NOT `auth.example.com`). Cross-subdomain passkeys all bind to this. Once a credential is registered against an RP ID, it cannot be re-registered against a different one without a fresh enrollment. |
 | `pkauth.relying-party.origins` | n/a | Strict allow-list of `https://` origins. WebAuthn rejects mismatches; expand the list as you add subdomains. |
-| Argon2id pepper | n/a | Per-deployment salt-pepper for backup-code + OTP hashes. Treat as a long-lived secret; rotating it invalidates every existing hash. |
+| Argon2id pepper | n/a | Per-deployment pepper for OTP hashes only (backup codes use Argon2id without a pepper). Treat as a long-lived secret; rotating it invalidates every existing OTP hash. |
 
 Recommended: stash secrets in a KMS/Secrets Manager and inject as environment
-variables (`PKAUTH_JWT_SECRET`, `PKAUTH_ARGON2_PEPPER`). The adapters bind both.
+variables (`PKAUTH_JWT_SECRET`, `PKAUTH_OTP_PEPPER`). The adapters bind both.
 
 ## 3. Persistence migrations
 

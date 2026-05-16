@@ -10,7 +10,7 @@ Accepted.
 
 The Dropwizard adapter (`pk-auth-dropwizard`, Phase 9) must wire pk-auth's framework-neutral
 services — `PasskeyAuthenticationService`, the JWT issuer/validator, the optional `AdminService`,
-the Jackson 2 bridge — into Jersey resources and a Dropwizard `ConfiguredBundle`. Dropwizard
+the pk-auth services and JWT types — into Jersey resources and a Dropwizard `ConfiguredBundle`. Dropwizard
 itself does not ship an opinionated DI container. The realistic options were:
 
 1. **Hand-rolled wiring.** A `PkAuthBundle` constructor that news everything up directly.
@@ -31,7 +31,7 @@ This ADR records the rationale.
 
 ## Decision
 
-Use Dagger 2 (`com.google.dagger:dagger:2.56.x` with `dagger-compiler` on the
+Use Dagger 2 (`com.google.dagger:dagger:2.59.x` with `dagger-compiler` on the
 `annotationProcessor` configuration) to wire the Dropwizard adapter's object graph. The bundle's
 public API does not leak Dagger types: host applications hand the bundle a `PersistenceBindings`
 record and an optional `AdminService`, and the bundle internally builds a `PkAuthComponent` whose

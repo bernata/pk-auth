@@ -35,7 +35,7 @@ Volume of optional features is explicitly **not** a priority. Ship a small, shar
 
 - **WebAuthn library**: `com.webauthn4j:webauthn4j-core` (latest stable — currently 0.31.x). Do **not** use `webauthn4j-spring-security`, and do **not** use Yubico's `java-webauthn-server`. The core wraps WebAuthn4J's `WebAuthnManager` directly.
 - **Build**: Gradle with **Kotlin DSL**, version catalog at `gradle/libs.versions.toml`, convention plugins in an included build at `build-logic/` (not `buildSrc/`).
-- **JSON**: Jackson 2.x. Configure a shared `ObjectMapper` factory in the core (`pk-auth-core`) with `JavaTimeModule`, `Jdk8Module`, fail-on-unknown-properties on input, exclude nulls on output.
+- **JSON**: Jackson 3 (`tools.jackson.core:jackson-databind`). Configure a shared `ObjectMapper` factory in the core (`pk-auth-core`) using the Jackson 3 `JsonMapper.builder()` flow, fail-on-unknown-properties on input, exclude nulls on output. Java time and JDK 8 datatype support is built into Jackson 3 databind — no separate `JavaTimeModule`/`Jdk8Module` modules needed. Annotations stay on `com.fasterxml.jackson.core:jackson-annotations 2.21` (works with both Jackson 2 and 3). The Dropwizard adapter still uses Jackson 2 internally (via `PkAuthJacksonBridge`) because Dropwizard 5.x ships its own Jackson 2 `ObjectMapper`. See ADR 0009.
 - **JWT**: Nimbus JOSE+JWT (`com.nimbusds:nimbus-jose-jwt`). HS256 and ES256 supported; ES256 default for production.
 - **SQL persistence**: **JDBI 3** + **Flyway** against PostgreSQL. **No Hibernate, no JPA, no Spring Data JPA, no Micronaut Data JPA.** A future JPA module may be added; do not add it now.
 - **NoSQL persistence**: AWS SDK v2 (`software.amazon.awssdk:dynamodb-enhanced`).
@@ -59,7 +59,7 @@ We deliberately **do not** use Spring Security's built-in `spring-security-webau
 
 - Spring Boot → a custom `AuthenticationProvider` (`org.springframework.security.authentication.AuthenticationProvider`) + a `Filter` that delegates to the core.
 - Dropwizard → a Jersey `Authenticator<PasskeyCredentials, PasskeyPrincipal>` + an `AuthDynamicFeature`.
-- Micronaut → a Micronaut Security `AuthenticationProvider<HttpRequest<?>, ?, ?>` + a `SecurityRule`.
+- Micronaut → a plain `@Filter` (no Micronaut Security dependency).
 
 This guarantees feature parity. Spring users who *prefer* Spring Security's webauthn module can opt out and use that instead — document this in the Spring module README as an alternative path, but don't implement it.
 
@@ -124,7 +124,7 @@ pk-auth/
 │   │   ├── 0006-userlookup-spi-not-owned.md
 │   │   ├── 0007-dynamodb-local-vs-localstack.md
 │   │   └── 0008-dynamodb-single-table-design.md
-│   ├── architecture.md
+│   ├── (see DESIGN.md at project root)
 │   ├── threat-model.md
 │   └── operator-guide.md
 ├── pk-auth-bom/                         # platform BOM for downstream consumers
@@ -415,7 +415,7 @@ public interface AdminService {
 
 ### 6.10 `pk-auth-spring-boot-starter`
 
-- Targets Spring Boot 3.5.x, Spring Security 6.5.x. Java 21.
+- Targets Spring Boot 4.x, Spring Security 7.x. Java 21.
 - `@AutoConfiguration` class that wires:
   - `PasskeyAuthenticationService` (from core).
   - `PkAuthAuthenticationProvider implements org.springframework.security.authentication.AuthenticationProvider` — wraps the service.

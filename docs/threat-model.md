@@ -168,5 +168,4 @@ grep -r "interface.*Repository\|interface.*Store\|interface.*Sender\|interface.*
 grep -r "takeOnce\|ChallengeStore" pk-auth-core/src
 ```
 
-Open items and known gaps are tracked in [`TODO.md`](../TODO.md). If this document
-contradicts the code, the code wins.
+If this document contradicts the code, the code wins.
