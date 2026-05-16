@@ -55,3 +55,4 @@ logs/
 # Claude Code per-repo settings (agent permissions, local overrides)
 .claude/settings.json
 .claude/settings.local.json
+build-logic/.kotlin
