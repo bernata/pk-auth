@@ -1,0 +1,196 @@
+name: Manual Build Release to Maven Central
+
+# Trigger from the Actions tab. Bumps the patch version off the latest `vX.Y.Z` tag, pushes the
+# new tag, then runs the same publish + GitHub release flow as release.yml. Useful for cutting a
+# release without having to tag locally.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get latest tag and increment version
+        id: version
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          LATEST_TAG=$(git tag -l "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | head -n 1)
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No existing tags found, starting with v0.0.1"
+            NEW_VERSION="0.0.1"
+            NEW_TAG="v0.0.1"
+          else
+            echo "Latest tag: $LATEST_TAG"
+            VERSION=${LATEST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            # Strip any pre-release suffix from patch before incrementing (e.g., "0-alpha" -> "0").
+            PATCH=${PATCH%%-*}
+            PATCH=$((PATCH + 1))
+            NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+            NEW_TAG="v$NEW_VERSION"
+          fi
+
+          echo "New version: $NEW_VERSION"
+          echo "New tag: $NEW_TAG"
+
+          echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "TAG=$NEW_TAG" >> $GITHUB_ENV
+
+          git tag -a "$NEW_TAG" -m "Auto-release $NEW_VERSION"
+          git push origin "$NEW_TAG"
+
+          echo "Created and pushed tag: $NEW_TAG"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Verify version matches tag
+        run: |
+          GRADLE_VERSION=$(./gradlew properties -q | grep "^version:" | awk '{print $2}')
+          echo "Gradle version: $GRADLE_VERSION"
+          echo "Expected version: $VERSION"
+          if [ "$GRADLE_VERSION" != "$VERSION" ]; then
+            echo "ERROR: Gradle version ($GRADLE_VERSION) does not match tag version ($VERSION)"
+            exit 1
+          fi
+
+      - name: Build and test
+        run: ./gradlew clean build test --stacktrace
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | base64 -d | gpg --batch --import
+          echo "test" | gpg --clearsign --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" > /dev/null
+          echo "GPG key imported and tested successfully"
+
+      - name: Configure GPG for signing
+        run: |
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpg-connect-agent reloadagent /bye
+
+      - name: Publish to Maven Central
+        env:
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          export GPG_TTY=$(tty)
+          cat > ~/.gradle/gradle.properties << EOF
+          signing.gnupg.keyName=$GPG_KEY_ID
+          signing.gnupg.passphrase=$GPG_PASSPHRASE
+          EOF
+          chmod 600 ~/.gradle/gradle.properties
+
+          ./gradlew publishAggregationToCentralPortal --no-daemon --stacktrace
+
+      - name: Build distribution archives
+        run: |
+          ./gradlew \
+            :pk-auth-core:jar :pk-auth-core:javadocJar :pk-auth-core:sourcesJar \
+            :pk-auth-jwt:jar :pk-auth-jwt:javadocJar :pk-auth-jwt:sourcesJar \
+            :pk-auth-admin-api:jar :pk-auth-admin-api:javadocJar :pk-auth-admin-api:sourcesJar \
+            :pk-auth-backup-codes:jar :pk-auth-backup-codes:javadocJar :pk-auth-backup-codes:sourcesJar \
+            :pk-auth-magic-link:jar :pk-auth-magic-link:javadocJar :pk-auth-magic-link:sourcesJar \
+            :pk-auth-otp:jar :pk-auth-otp:javadocJar :pk-auth-otp:sourcesJar \
+            :pk-auth-persistence-jdbi:jar :pk-auth-persistence-jdbi:javadocJar :pk-auth-persistence-jdbi:sourcesJar \
+            :pk-auth-persistence-dynamodb:jar :pk-auth-persistence-dynamodb:javadocJar :pk-auth-persistence-dynamodb:sourcesJar \
+            :pk-auth-testkit:jar :pk-auth-testkit:javadocJar :pk-auth-testkit:sourcesJar \
+            :pk-auth-spring-boot-starter:jar :pk-auth-spring-boot-starter:javadocJar :pk-auth-spring-boot-starter:sourcesJar \
+            :pk-auth-dropwizard:jar :pk-auth-dropwizard:javadocJar :pk-auth-dropwizard:sourcesJar \
+            :pk-auth-micronaut:jar :pk-auth-micronaut:javadocJar :pk-auth-micronaut:sourcesJar
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Release ${{ env.VERSION }}
+          body: |
+            ## pk-auth ${{ env.VERSION }}
+
+            **Auto-released** from the Actions tab.
+
+            ### Maven Central
+
+            Add the modules you need (all share the same version):
+
+            ```gradle
+            implementation("com.codeheadsystems:pk-auth-spring-boot-starter:${{ env.VERSION }}")
+            // or :pk-auth-dropwizard / :pk-auth-micronaut for the other adapters
+            implementation("com.codeheadsystems:pk-auth-persistence-jdbi:${{ env.VERSION }}")
+            // testImplementation("com.codeheadsystems:pk-auth-testkit:${{ env.VERSION }}")
+            ```
+
+            ```xml
+            <dependency>
+              <groupId>com.codeheadsystems</groupId>
+              <artifactId>pk-auth-spring-boot-starter</artifactId>
+              <version>${{ env.VERSION }}</version>
+            </dependency>
+            ```
+
+            ### Modules Published
+            - `com.codeheadsystems:pk-auth-core:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-jwt:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-admin-api:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-backup-codes:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-magic-link:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-otp:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-persistence-jdbi:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-persistence-dynamodb:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-testkit:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-spring-boot-starter:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-dropwizard:${{ env.VERSION }}`
+            - `com.codeheadsystems:pk-auth-micronaut:${{ env.VERSION }}`
+
+            ### What's Changed
+            See commits since last release for details.
+
+            **Note:** Artifacts may take up to 2 hours to appear in Maven Central after release.
+          files: |
+            pk-auth-core/build/libs/*.jar
+            pk-auth-jwt/build/libs/*.jar
+            pk-auth-admin-api/build/libs/*.jar
+            pk-auth-backup-codes/build/libs/*.jar
+            pk-auth-magic-link/build/libs/*.jar
+            pk-auth-otp/build/libs/*.jar
+            pk-auth-persistence-jdbi/build/libs/*.jar
+            pk-auth-persistence-dynamodb/build/libs/*.jar
+            pk-auth-testkit/build/libs/*.jar
+            pk-auth-spring-boot-starter/build/libs/*.jar
+            pk-auth-dropwizard/build/libs/*.jar
+            pk-auth-micronaut/build/libs/*.jar
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::Auto-release failed! Check logs for details."

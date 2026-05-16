@@ -7,6 +7,13 @@ plugins {
     base
 }
 
+// Required for the nmcp aggregation plugin (auto-applied by `nmcp.settings` in settings.gradle.kts)
+// to resolve its runtime dependencies. Subprojects keep their own repository declarations.
+repositories {
+    mavenCentral()
+    gradlePluginPortal()
+}
+
 // `test` is a lifecycle task at the root so the standard `gradle clean build test` workflow
 // resolves even when no test-bearing subprojects exist yet. Once subprojects with the java
 // plugin are added in Phase 1+, Gradle's multi-project task expansion runs each subproject's

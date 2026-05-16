@@ -1,9 +1,30 @@
 # pk-auth
 
+![pk-auth CI](https://github.com/codeheadsystems/pk-auth/actions/workflows/ci.yml/badge.svg)
+
 A production-grade, **passkeys-first** authentication template for the JVM.
 pk-auth ships as a reusable library set that can be dropped into a Spring
 Boot, Dropwizard, or Micronaut application; the core is framework-neutral
 and the host's user/credential storage is a plug-in SPI.
+
+## Maven Central
+
+All modules share the same version and `com.codeheadsystems` group id.
+
+| Artifact ID | Version | Description |
+|---|---|---|
+| `pk-auth-core` | [![Maven Central: pk-auth-core](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-core?label=pk-auth-core)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-core) | Framework-neutral SPIs, DTOs, and ceremony service. |
+| `pk-auth-jwt` | [![Maven Central: pk-auth-jwt](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-jwt?label=pk-auth-jwt)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-jwt) | HS256/ES256 JWT issuance + validation (Nimbus JOSE+JWT). |
+| `pk-auth-admin-api` | [![Maven Central: pk-auth-admin-api](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-admin-api?label=pk-auth-admin-api)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-admin-api) | Framework-neutral admin service (list/rename/delete passkeys, etc.). |
+| `pk-auth-backup-codes` | [![Maven Central: pk-auth-backup-codes](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-backup-codes?label=pk-auth-backup-codes)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-backup-codes) | Argon2id-hashed one-time backup codes. |
+| `pk-auth-magic-link` | [![Maven Central: pk-auth-magic-link](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-magic-link?label=pk-auth-magic-link)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-magic-link) | Single-use email magic-link tokens. |
+| `pk-auth-otp` | [![Maven Central: pk-auth-otp](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-otp?label=pk-auth-otp)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-otp) | 6-digit SMS OTP codes for phone verification. |
+| `pk-auth-persistence-jdbi` | [![Maven Central: pk-auth-persistence-jdbi](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-persistence-jdbi?label=pk-auth-persistence-jdbi)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-persistence-jdbi) | JDBI 3 + Flyway + Postgres SPI implementations. |
+| `pk-auth-persistence-dynamodb` | [![Maven Central: pk-auth-persistence-dynamodb](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-persistence-dynamodb?label=pk-auth-persistence-dynamodb)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-persistence-dynamodb) | AWS SDK v2 DynamoDB Enhanced SPI implementations (single-table). |
+| `pk-auth-testkit` | [![Maven Central: pk-auth-testkit](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-testkit?label=pk-auth-testkit)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-testkit) | `FakeAuthenticator`, in-memory SPIs, and fixtures for tests. |
+| `pk-auth-spring-boot-starter` | [![Maven Central: pk-auth-spring-boot-starter](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-spring-boot-starter?label=pk-auth-spring-boot-starter)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-spring-boot-starter) | Spring Boot 4 / Spring Security 7 auto-configure. |
+| `pk-auth-dropwizard` | [![Maven Central: pk-auth-dropwizard](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-dropwizard?label=pk-auth-dropwizard)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-dropwizard) | Dropwizard 5 `ConfiguredBundle` + Dagger 2 wiring. |
+| `pk-auth-micronaut` | [![Maven Central: pk-auth-micronaut](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-micronaut?label=pk-auth-micronaut)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-micronaut) | Micronaut 4 `@Factory` + controllers + JWT filter. |
 
 What you get out of the box:
 
