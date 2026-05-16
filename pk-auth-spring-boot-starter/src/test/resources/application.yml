@@ -1,4 +1,7 @@
 pkauth:
+  # Use the testkit in-memory SPIs for these integration tests. In production this flag must be
+  # absent or false — the starter then refuses to boot without explicit SPI beans.
+  dev-mode: true
   relying-party:
     id: example.com
     name: pk-auth starter integration test

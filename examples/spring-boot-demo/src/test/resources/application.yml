@@ -5,6 +5,7 @@ demo:
     - https://example.com
   persistence: memory
 pkauth:
+  dev-mode: true
   relying-party:
     id: example.com
     name: pk-auth Spring Boot demo (test)

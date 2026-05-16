@@ -16,6 +16,10 @@ demo:
   # `dynamodb` requires a running DynamoDB Local + bootstrapped tables.
   persistence: memory
 pkauth:
+  # Demo runs against the testkit's in-memory SPIs by default. In production, do NOT set
+  # `dev-mode: true` — supply real CredentialRepository / UserLookup / ChallengeStore /
+  # BackupCodeRepository / OtpRepository beans (e.g. via the JDBI or DynamoDB persistence module).
+  dev-mode: true
   relying-party:
     id: localhost
     name: pk-auth Spring Boot demo

@@ -38,6 +38,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 
@@ -49,9 +50,11 @@ import org.springframework.context.annotation.Bean;
  *       PasskeyAuthenticationServices} factory.
  *   <li>SPI implementations — {@code CredentialRepository} / {@code UserLookup} / {@code
  *       ChallengeStore} / {@code BackupCodeRepository} / {@code OtpRepository}. Each is provided
- *       only when no host-app bean of the same type exists ({@link ConditionalOnMissingBean}). The
- *       starter ships in-memory defaults from {@code pk-auth-testkit} so a host app boots without
- *       extra wiring — host apps that want JDBI or DynamoDB declare those beans themselves
+ *       only when no host-app bean of the same type exists ({@link ConditionalOnMissingBean}) AND
+ *       the host has explicitly opted in to the in-memory testkit defaults by setting {@code
+ *       pkauth.dev-mode=true}. Without that flag, a host that fails to declare its own SPI beans
+ *       will fail to start — preventing accidental production deploys backed by single-JVM,
+ *       non-persistent storage. Host apps that want JDBI or DynamoDB declare those beans themselves
  *       (typically in their own {@code @Configuration}).
  *   <li>JWT issuer + validator backed by {@link JwtKeyset#hs256(byte[])} when {@link
  *       PkAuthProperties.Jwt#secret()} is set, otherwise a freshly-minted random secret per startup
@@ -100,36 +103,51 @@ public class PkAuthAutoConfiguration {
         CounterRegressionPolicy.REJECT);
   }
 
+  /**
+   * Logged once on bean creation when the dev-mode testkit defaults activate, so an operator who
+   * trips this in production sees it loudly in startup logs.
+   */
+  private static final String DEV_MODE_WARNING =
+      "pkauth.dev-mode=true: using in-memory testkit SPI for {} — DO NOT use in production. "
+          + "State is per-JVM and lost on restart.";
+
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public CredentialRepository pkAuthCredentialRepository() {
-    LOG.info("pkauth.credentials backend=in-memory (testkit default)");
+    LOG.error(DEV_MODE_WARNING, "credentials");
     return new InMemoryCredentialRepository();
   }
 
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public UserLookup pkAuthUserLookup() {
-    LOG.info("pkauth.users backend=in-memory (testkit default)");
+    LOG.error(DEV_MODE_WARNING, "users");
     return new InMemoryUserLookup();
   }
 
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public ChallengeStore pkAuthChallengeStore() {
-    LOG.info("pkauth.challenges backend=in-memory (testkit default)");
+    LOG.error(DEV_MODE_WARNING, "challenges");
     return new InMemoryChallengeStore();
   }
 
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public BackupCodeRepository pkAuthBackupCodeRepository() {
+    LOG.error(DEV_MODE_WARNING, "backup-codes");
     return new InMemoryBackupCodeRepository();
   }
 
   @Bean
   @ConditionalOnMissingBean
+  @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public OtpRepository pkAuthOtpRepository() {
+    LOG.error(DEV_MODE_WARNING, "otp");
     return new InMemoryOtpRepository();
   }
 
