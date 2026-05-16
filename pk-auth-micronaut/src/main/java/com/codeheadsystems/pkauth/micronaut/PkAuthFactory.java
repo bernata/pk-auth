@@ -105,6 +105,21 @@ public class PkAuthFactory {
     return new PkAuthJwtIssuer(cfg, keyset, clock);
   }
 
+  /**
+   * Shared ceremony orchestrator — JWT mint + label lookup + wire mapping. Lives in {@code
+   * pk-auth-jwt} so every adapter holds a single dependency rather than three.
+   *
+   * @since 0.9.1
+   */
+  @Singleton
+  com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator ceremonyOrchestrator(
+      PasskeyAuthenticationService service,
+      PkAuthJwtIssuer issuer,
+      CredentialRepository credentialRepository) {
+    return new com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator(
+        service, issuer, credentialRepository);
+  }
+
   @Singleton
   PkAuthJwtValidator jwtValidator(JwtConfig cfg, JwtKeyset keyset, ClockProvider clock) {
     return new PkAuthJwtValidator(cfg, keyset, clock);

@@ -6,7 +6,7 @@ import com.codeheadsystems.pkauth.admin.AdminRequests.FinishPhoneVerification;
 import com.codeheadsystems.pkauth.admin.AdminRequests.RenameCredential;
 import com.codeheadsystems.pkauth.admin.AdminRequests.StartEmailVerification;
 import com.codeheadsystems.pkauth.admin.AdminRequests.StartPhoneVerification;
-import com.codeheadsystems.pkauth.admin.AdminResult;
+import com.codeheadsystems.pkauth.admin.AdminResponseMapper;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
 import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
@@ -29,14 +29,10 @@ import java.util.Objects;
 
 /**
  * HTTP exposure of {@link AdminService}. Mounted at {@code /auth/admin} by the bundle when {@code
- * pk-auth-admin-api} is on the classpath. All endpoints except {@code complete-verification}
- * require authentication; subject-scoping is enforced by {@link AdminService}'s configured {@link
- * com.codeheadsystems.pkauth.admin.AdminAuthorizer}.
- *
- * <p>Request bodies are the shared records on {@link
- * com.codeheadsystems.pkauth.admin.AdminRequests} and responses use the shared {@link
- * BackupCodesCountResponse} and {@link EmailVerificationResult} records so every adapter emits
- * byte-for-byte identical JSON.
+ * pk-auth-admin-api} is on the classpath. Every {@link
+ * com.codeheadsystems.pkauth.admin.AdminResult} is routed through {@link AdminResponseMapper} (via
+ * {@link PkAuthAdminResultMapper}) so the JSON shape is byte-for-byte identical across the Spring,
+ * Dropwizard, and Micronaut adapters.
  *
  * @since 0.9.1
  */
@@ -75,8 +71,7 @@ public class PkAuthAdminResource {
     UserHandle user = principal.userHandle();
     CredentialId id = CredentialId.fromB64Url(credentialIdB64Url);
     String label = body == null ? null : body.label();
-    AdminResult<?> result = adminService.renameCredential(user, user, id, label);
-    return PkAuthAdminResultMapper.toResponse(result);
+    return PkAuthAdminResultMapper.toResponse(adminService.renameCredential(user, user, id, label));
   }
 
   @DELETE
@@ -100,12 +95,9 @@ public class PkAuthAdminResource {
   @Path("/backup-codes/count")
   public Response remainingBackupCodes(@Auth PkAuthPasskeyPrincipal principal) {
     UserHandle user = principal.userHandle();
-    AdminResult<Integer> result = adminService.remainingBackupCodes(user, user);
-    return switch (result) {
-      case AdminResult.Success<Integer> s ->
-          Response.ok(new BackupCodesCountResponse(s.value())).build();
-      default -> PkAuthAdminResultMapper.toResponse(result);
-    };
+    return PkAuthAdminResultMapper.toResponse(
+        AdminResponseMapper.toResponse(
+            adminService.remainingBackupCodes(user, user), BackupCodesCountResponse::new));
   }
 
   @POST
@@ -123,12 +115,9 @@ public class PkAuthAdminResource {
   @Path("/email/complete-verification")
   public Response completeEmailVerification(FinishEmailVerification body) {
     String token = body == null ? null : body.token();
-    AdminResult<UserHandle> result = adminService.completeEmailVerification(token);
-    return switch (result) {
-      case AdminResult.Success<UserHandle> s ->
-          Response.ok(new EmailVerificationResult(s.value())).build();
-      default -> PkAuthAdminResultMapper.toResponse(result);
-    };
+    return PkAuthAdminResultMapper.toResponse(
+        AdminResponseMapper.toResponse(
+            adminService.completeEmailVerification(token), EmailVerificationResult::new));
   }
 
   @POST

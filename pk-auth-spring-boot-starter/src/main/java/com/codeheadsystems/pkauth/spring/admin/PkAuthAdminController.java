@@ -6,7 +6,7 @@ import com.codeheadsystems.pkauth.admin.AdminRequests.FinishPhoneVerification;
 import com.codeheadsystems.pkauth.admin.AdminRequests.RenameCredential;
 import com.codeheadsystems.pkauth.admin.AdminRequests.StartEmailVerification;
 import com.codeheadsystems.pkauth.admin.AdminRequests.StartPhoneVerification;
-import com.codeheadsystems.pkauth.admin.AdminResult;
+import com.codeheadsystems.pkauth.admin.AdminResponseMapper;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
 import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
@@ -28,18 +28,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * REST adapter for {@link AdminService}. Mounted under {@code /auth/admin} per brief §6.9 endpoint
- * table.
- *
- * <p>Every authenticated endpoint resolves the actor from the JWT-derived {@link
- * PkAuthJwtAuthenticationToken} in {@link SecurityContextHolder}. The brief's authorization model
- * is subject-scoped: the actor must equal the target. The actor passes themselves as the target on
- * every call — host apps wanting staff-impersonation flows wire a non-default {@code
- * AdminAuthorizer} bean and add their own {@code target} route segment.
- *
- * <p>Request bodies are the shared records on {@link
- * com.codeheadsystems.pkauth.admin.AdminRequests} and responses use the shared {@link
- * BackupCodesCountResponse} and {@link EmailVerificationResult} records so every adapter emits
- * byte-for-byte identical JSON.
+ * table. Every {@link com.codeheadsystems.pkauth.admin.AdminResult} is routed through {@link
+ * AdminResponseMapper} (via {@link PkAuthAdminResultMapper}) so the JSON shape is byte-for-byte
+ * identical across the Spring, Dropwizard, and Micronaut adapters.
  *
  * @since 0.9.1
  */
@@ -96,12 +87,9 @@ public class PkAuthAdminController {
   @GetMapping("/backup-codes/count")
   public ResponseEntity<Object> remainingBackupCodes() {
     UserHandle user = currentUser();
-    AdminResult<Integer> result = adminService.remainingBackupCodes(user, user);
-    return switch (result) {
-      case AdminResult.Success<Integer> s ->
-          ResponseEntity.ok(new BackupCodesCountResponse(s.value()));
-      default -> PkAuthAdminResultMapper.toResponse(result);
-    };
+    return PkAuthAdminResultMapper.toResponseEntity(
+        AdminResponseMapper.toResponse(
+            adminService.remainingBackupCodes(user, user), BackupCodesCountResponse::new));
   }
 
   // -- Email -----------------------------------------------------------------------------------
@@ -117,13 +105,10 @@ public class PkAuthAdminController {
   @PostMapping("/email/complete-verification")
   public ResponseEntity<Object> completeEmailVerification(
       @RequestBody FinishEmailVerification body) {
-    AdminResult<UserHandle> result =
-        adminService.completeEmailVerification(body == null ? "" : body.token());
-    return switch (result) {
-      case AdminResult.Success<UserHandle> s ->
-          ResponseEntity.ok(new EmailVerificationResult(s.value()));
-      default -> PkAuthAdminResultMapper.toResponse(result);
-    };
+    return PkAuthAdminResultMapper.toResponseEntity(
+        AdminResponseMapper.toResponse(
+            adminService.completeEmailVerification(body == null ? "" : body.token()),
+            EmailVerificationResult::new));
   }
 
   // -- Phone -----------------------------------------------------------------------------------

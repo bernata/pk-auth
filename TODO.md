@@ -192,8 +192,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Follow-up: after deletion, sweep any docs that referenced the documented
   `{error, detail}` schema so they match what the mappers emit.
 
-### ⚠️ 13. Extract `CeremonyOrchestrator` / `AdminFlow` to remove ~600 lines of triplicated adapter code
-**Not done:** agent-completed work in a worktree was unmerged due to conflicts and the worktree has since been deleted. Needs a fresh agent run against the current main HEAD.
+### ✅ 13. Extract `CeremonyOrchestrator` / `AdminFlow` to remove ~600 lines of triplicated adapter code
+**Completed:** 2026-05-16 — new `CeremonyOrchestrator` in pk-auth-jwt owns the JWT-mint + label-lookup + wire-mapping pipeline; new `AdminResponseMapper` in pk-auth-admin-api owns the status / header / error-envelope logic. All three adapter ceremony controllers + admin controllers + per-adapter `errorEnvelope` helpers collapse to thin framework-binding shims.
 - Severity: **High** — [Maint #1, #3, #7]
 - Files: ceremony controllers (`PkAuthCeremonyController` x3 + Dropwizard's
   resource) and admin controllers / `PkAuthAdminResultMapper` x3 / inline

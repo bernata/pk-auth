@@ -179,10 +179,18 @@ public final class PkAuthModule {
 
   @Provides
   @Singleton
-  PkAuthCeremonyResource provideCeremonyResource(
+  com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator provideCeremonyOrchestrator(
       PasskeyAuthenticationService service,
       PkAuthJwtIssuer issuer,
       CredentialRepository credentialRepository) {
-    return new PkAuthCeremonyResource(service, issuer, credentialRepository);
+    return new com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator(
+        service, issuer, credentialRepository);
+  }
+
+  @Provides
+  @Singleton
+  PkAuthCeremonyResource provideCeremonyResource(
+      com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator orchestrator) {
+    return new PkAuthCeremonyResource(orchestrator);
   }
 }

@@ -3,6 +3,7 @@ package com.codeheadsystems.pkauth.spring.autoconfigure;
 
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.json.PkAuthObjectMappers;
+import com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -104,13 +105,23 @@ public class PkAuthWebAutoConfiguration {
    * doesn't run on starter packages. We register the bean here so host apps don't need a
    * {@code @ComponentScan(basePackages = "com.codeheadsystems.pkauth.spring.web")}.
    */
+  /**
+   * Shared ceremony orchestrator (JWT mint + label lookup + wire mapping). Lives in {@code
+   * pk-auth-jwt} so every adapter holds a single dependency rather than three.
+   */
   @Bean
   @ConditionalOnMissingBean
-  public PkAuthCeremonyController pkAuthCeremonyController(
+  public CeremonyOrchestrator pkAuthCeremonyOrchestrator(
       PasskeyAuthenticationService service,
       PkAuthJwtIssuer jwtIssuer,
       CredentialRepository credentialRepository) {
-    return new PkAuthCeremonyController(service, jwtIssuer, credentialRepository);
+    return new CeremonyOrchestrator(service, jwtIssuer, credentialRepository);
+  }
+
+  @Bean
+  @ConditionalOnMissingBean
+  public PkAuthCeremonyController pkAuthCeremonyController(CeremonyOrchestrator orchestrator) {
+    return new PkAuthCeremonyController(orchestrator);
   }
 
   /**
