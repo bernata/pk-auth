@@ -5,6 +5,7 @@ import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
+import com.codeheadsystems.pkauth.spi.DuplicateCredentialException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +22,7 @@ public final class InMemoryCredentialRepository implements CredentialRepository 
   @Override
   public void save(CredentialRecord record) {
     if (byCredentialId.putIfAbsent(record.credentialId(), record) != null) {
-      throw new IllegalStateException("Duplicate credential id");
+      throw new DuplicateCredentialException("Duplicate credential id");
     }
   }
 

@@ -4,12 +4,15 @@ package com.codeheadsystems.pkauth.persistence.dynamodb;
 import com.codeheadsystems.pkauth.api.ChallengeId;
 import com.codeheadsystems.pkauth.spi.ChallengeRecord;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
+import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
@@ -33,64 +36,89 @@ public final class DynamoDbChallengeStore implements ChallengeStore {
 
   @Override
   public void put(ChallengeId id, ChallengeRecord record, Duration ttl) {
-    ChallengeItem item = ChallengeItem.build(id, record);
-    Map<String, AttributeValue> values = new HashMap<>();
-    values.put("pk", AttributeValue.fromS(item.getPk()));
-    values.put("sk", AttributeValue.fromS(item.getSk()));
-    values.put("entityType", AttributeValue.fromS(item.getEntityType()));
-    values.put("ttl", AttributeValue.fromN(Long.toString(item.getTtl())));
-    values.put("challenge", AttributeValue.fromS(item.getChallenge()));
-    values.put("purpose", AttributeValue.fromS(item.getPurpose()));
-    if (item.getUserHandle() != null) {
-      values.put("userHandle", AttributeValue.fromS(item.getUserHandle()));
-    }
-    values.put("expiresAt", AttributeValue.fromS(item.getExpiresAt()));
-    client.putItem(PutItemRequest.builder().tableName(tableName).item(values).build());
+    wrap(
+        "challenges.put",
+        () -> {
+          ChallengeItem item = ChallengeItem.build(id, record);
+          Map<String, AttributeValue> values = new HashMap<>();
+          values.put("pk", AttributeValue.fromS(item.getPk()));
+          values.put("sk", AttributeValue.fromS(item.getSk()));
+          values.put("entityType", AttributeValue.fromS(item.getEntityType()));
+          values.put("ttl", AttributeValue.fromN(Long.toString(item.getTtl())));
+          values.put("challenge", AttributeValue.fromS(item.getChallenge()));
+          values.put("purpose", AttributeValue.fromS(item.getPurpose()));
+          if (item.getUserHandle() != null) {
+            values.put("userHandle", AttributeValue.fromS(item.getUserHandle()));
+          }
+          values.put("expiresAt", AttributeValue.fromS(item.getExpiresAt()));
+          client.putItem(PutItemRequest.builder().tableName(tableName).item(values).build());
+          return null;
+        });
   }
 
   @Override
   public Optional<ChallengeRecord> takeOnce(ChallengeId id) {
-    Map<String, AttributeValue> key = new HashMap<>();
-    key.put("pk", AttributeValue.fromS("CHAL#" + id.value()));
-    key.put("sk", AttributeValue.fromS("META"));
-    // Server-side expiry: refuse to delete a row that's already past its expiresAt timestamp.
-    // ISO-8601 UTC strings compare lexicographically in the same order as the underlying
-    // instants, so a string `>` comparison against the current instant rejects expired rows
-    // even though we're comparing strings. DynamoDB's attribute-level TTL deletion is
-    // best-effort (can lag up to ~48h), so it cannot be relied on for security expiry — this
-    // condition is what actually enforces single-use within the TTL window.
-    software.amazon.awssdk.services.dynamodb.model.DeleteItemResponse response;
+    return wrap(
+        "challenges.takeOnce",
+        () -> {
+          Map<String, AttributeValue> key = new HashMap<>();
+          key.put("pk", AttributeValue.fromS("CHAL#" + id.value()));
+          key.put("sk", AttributeValue.fromS("META"));
+          // Server-side expiry: refuse to delete a row that's already past its expiresAt timestamp.
+          // ISO-8601 UTC strings compare lexicographically in the same order as the underlying
+          // instants, so a string `>` comparison against the current instant rejects expired rows
+          // even though we're comparing strings. DynamoDB's attribute-level TTL deletion is
+          // best-effort (can lag up to ~48h), so it cannot be relied on for security expiry — this
+          // condition is what actually enforces single-use within the TTL window.
+          software.amazon.awssdk.services.dynamodb.model.DeleteItemResponse response;
+          try {
+            response =
+                client.deleteItem(
+                    DeleteItemRequest.builder()
+                        .tableName(tableName)
+                        .key(key)
+                        .conditionExpression("expiresAt > :now")
+                        .expressionAttributeValues(
+                            Map.of(":now", AttributeValue.fromS(Instant.now().toString())))
+                        .returnValues(ReturnValue.ALL_OLD)
+                        .build());
+          } catch (ConditionalCheckFailedException expired) {
+            // Row exists but is past expiry, OR the row simply doesn't exist (DynamoDB raises the
+            // same exception in both cases when a condition expression references a missing
+            // attribute). Either way, no challenge is consumed.
+            return Optional.empty();
+          }
+          if (response.attributes() == null || response.attributes().isEmpty()) {
+            return Optional.empty();
+          }
+          Map<String, AttributeValue> attrs = response.attributes();
+          ChallengeItem item = new ChallengeItem();
+          item.setPk(attrs.get("pk").s());
+          item.setSk(attrs.get("sk").s());
+          item.setEntityType(attrs.get("entityType").s());
+          item.setChallenge(attrs.get("challenge").s());
+          item.setPurpose(attrs.get("purpose").s());
+          if (attrs.containsKey("userHandle")) {
+            item.setUserHandle(attrs.get("userHandle").s());
+          }
+          item.setExpiresAt(attrs.get("expiresAt").s());
+          return Optional.of(item.toRecord());
+        });
+  }
+
+  /**
+   * Runs {@code body} and wraps any {@link SdkException} in a {@link PkAuthPersistenceException} so
+   * adapter exception mappers can produce a uniform 503. Documented {@link
+   * ConditionalCheckFailedException} control-flow branches handled inside {@code body} never reach
+   * here.
+   */
+  private static <T> T wrap(String op, Supplier<T> body) {
     try {
-      response =
-          client.deleteItem(
-              DeleteItemRequest.builder()
-                  .tableName(tableName)
-                  .key(key)
-                  .conditionExpression("expiresAt > :now")
-                  .expressionAttributeValues(
-                      Map.of(":now", AttributeValue.fromS(Instant.now().toString())))
-                  .returnValues(ReturnValue.ALL_OLD)
-                  .build());
-    } catch (ConditionalCheckFailedException expired) {
-      // Row exists but is past expiry, OR the row simply doesn't exist (DynamoDB raises the
-      // same exception in both cases when a condition expression references a missing
-      // attribute). Either way, no challenge is consumed.
-      return Optional.empty();
+      return body.get();
+    } catch (PkAuthPersistenceException already) {
+      throw already;
+    } catch (SdkException e) {
+      throw new PkAuthPersistenceException(op, e.getMessage(), e);
     }
-    if (response.attributes() == null || response.attributes().isEmpty()) {
-      return Optional.empty();
-    }
-    Map<String, AttributeValue> attrs = response.attributes();
-    ChallengeItem item = new ChallengeItem();
-    item.setPk(attrs.get("pk").s());
-    item.setSk(attrs.get("sk").s());
-    item.setEntityType(attrs.get("entityType").s());
-    item.setChallenge(attrs.get("challenge").s());
-    item.setPurpose(attrs.get("purpose").s());
-    if (attrs.containsKey("userHandle")) {
-      item.setUserHandle(attrs.get("userHandle").s());
-    }
-    item.setExpiresAt(attrs.get("expiresAt").s());
-    return Optional.of(item.toRecord());
   }
 }

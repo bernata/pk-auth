@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** In-memory {@link OtpRepository}. */
@@ -31,9 +32,11 @@ public final class InMemoryOtpRepository implements OtpRepository {
   }
 
   @Override
-  public int incrementAttempts(UserHandle userHandle, String otpId) {
-    // Use an array to capture the new attempts count from inside the lambda.
-    int[] newAttempts = {0};
+  public OptionalInt incrementAttempts(UserHandle userHandle, String otpId) {
+    // Use a sentinel of -1 to distinguish "no matching row" from a real attempt count, since the
+    // lambda can't differentiate empty Optional vs. zero via primitive int. After the compute,
+    // -1 means computeIfPresent never matched (or the userHandle guard rejected the row).
+    int[] newAttempts = {-1};
     byId.computeIfPresent(
         otpId,
         (k, existing) -> {
@@ -53,17 +56,21 @@ public final class InMemoryOtpRepository implements OtpRepository {
               existing.createdAt(),
               existing.expiresAt());
         });
-    return newAttempts[0];
+    return newAttempts[0] < 0 ? OptionalInt.empty() : OptionalInt.of(newAttempts[0]);
   }
 
   @Override
-  public void consume(UserHandle userHandle, String otpId) {
+  public boolean consume(UserHandle userHandle, String otpId) {
+    // Atomic compute: only one caller observes the unconsumed→consumed transition. Concurrent
+    // verifiers see false and the OtpService treats that as "already consumed / no match".
+    boolean[] flipped = {false};
     byId.computeIfPresent(
         otpId,
         (k, existing) -> {
-          if (!existing.userHandle().equals(userHandle)) {
+          if (!existing.userHandle().equals(userHandle) || existing.consumed()) {
             return existing;
           }
+          flipped[0] = true;
           return new StoredOtp(
               existing.otpId(),
               existing.userHandle(),
@@ -75,6 +82,7 @@ public final class InMemoryOtpRepository implements OtpRepository {
               existing.createdAt(),
               existing.expiresAt());
         });
+    return flipped[0];
   }
 
   @Override

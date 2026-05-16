@@ -5,6 +5,7 @@ import com.codeheadsystems.pkauth.api.AttestationConveyance;
 import com.codeheadsystems.pkauth.api.ResidentKeyRequirement;
 import com.codeheadsystems.pkauth.api.UserVerificationRequirement;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
+import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
@@ -21,6 +22,7 @@ import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
 import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.otp.SmsSender;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -151,6 +153,19 @@ public class PkAuthAutoConfiguration {
     return new InMemoryOtpRepository();
   }
 
+  /**
+   * Default in-memory ceremony rate limiter. Hosts MUST replace this with a shared (Redis /
+   * DB-backed) {@link CeremonyRateLimiter} bean in multi-replica deployments — see {@link
+   * InMemoryCeremonyRateLimiter}'s class javadoc.
+   *
+   * @since 0.9.1
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public CeremonyRateLimiter pkAuthCeremonyRateLimiter() {
+    return new InMemoryCeremonyRateLimiter();
+  }
+
   @Bean
   @ConditionalOnMissingBean
   public PasskeyAuthenticationService pkAuthService(
@@ -159,7 +174,8 @@ public class PkAuthAutoConfiguration {
       ChallengeStore challengeStore,
       ClockProvider clockProvider,
       RelyingPartyConfig rp,
-      CeremonyConfig ceremonyConfig) {
+      CeremonyConfig ceremonyConfig,
+      CeremonyRateLimiter ceremonyRateLimiter) {
     return PasskeyAuthenticationServices.builder()
         .credentialRepository(credentialRepository)
         .userLookup(userLookup)
@@ -167,6 +183,7 @@ public class PkAuthAutoConfiguration {
         .clockProvider(clockProvider)
         .relyingPartyConfig(rp)
         .ceremonyConfig(ceremonyConfig)
+        .ceremonyRateLimiter(ceremonyRateLimiter)
         .build();
   }
 

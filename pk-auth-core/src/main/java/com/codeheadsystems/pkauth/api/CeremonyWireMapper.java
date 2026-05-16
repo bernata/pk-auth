@@ -22,9 +22,12 @@ import org.jspecify.annotations.Nullable;
  *
  * <ul>
  *   <li>Registration success → 200; all registration errors → 400, except {@code
- *       DuplicateCredential} → 409.
+ *       DuplicateCredential} → 409 and {@code RateLimited} → 429.
  *   <li>Assertion success → 200; {@code UnknownCredential} → 404; {@code CounterRegression} →
- *       409; {@code UserVerificationRequired} / {@code InvalidSignature} → 401; the rest → 400.
+ *       409; {@code UserVerificationRequired} / {@code InvalidSignature} → 401; {@code
+ *       RateLimited} → 429; the rest → 400.
+ *   <li>Start ceremony rate-limit refusal (a {@code CeremonyRateLimitedException} escaping the
+ *       service) → 429; adapters call {@link #rateLimited()} to shape the response.
  * </ul>
  */
 public final class CeremonyWireMapper {
@@ -60,7 +63,21 @@ public final class CeremonyWireMapper {
                   "duplicate_credential", "credentialId", Base64Url.encode(dc.credentialId())));
       case RegistrationResult.InvalidPayload ip ->
           new CeremonyResponse(400, errorBody("invalid_payload", "detail", ip.detail()));
+      case RegistrationResult.RateLimited rl ->
+          new CeremonyResponse(429, Map.of("outcome", "rate_limited"));
     };
+  }
+
+  /**
+   * Canonical 429 response shape for {@code start*} ceremony rate-limit refusals. Adapter
+   * controllers use this when {@link com.codeheadsystems.pkauth.spi.CeremonyRateLimitedException}
+   * escapes the service.
+   *
+   * @return canonical rate-limited response (HTTP 429, body {@code {"outcome": "rate_limited"}})
+   * @since 0.9.1
+   */
+  public static CeremonyResponse rateLimited() {
+    return new CeremonyResponse(429, Map.of("outcome", "rate_limited"));
   }
 
   /**
@@ -112,6 +129,8 @@ public final class CeremonyWireMapper {
           new CeremonyResponse(401, Map.of("outcome", "user_verification_required"));
       case AssertionResult.InvalidSignature is ->
           new CeremonyResponse(401, Map.of("outcome", "invalid_signature"));
+      case AssertionResult.RateLimited rl ->
+          new CeremonyResponse(429, Map.of("outcome", "rate_limited"));
     };
   }
 

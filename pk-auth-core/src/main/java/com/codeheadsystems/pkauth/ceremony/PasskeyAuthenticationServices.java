@@ -8,6 +8,7 @@ import com.codeheadsystems.pkauth.internal.ChallengeGenerator;
 import com.codeheadsystems.pkauth.internal.DefaultPasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.metrics.Metrics;
 import com.codeheadsystems.pkauth.spi.AttestationTrustPolicy;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -46,6 +47,7 @@ public final class PasskeyAuthenticationServices {
     private CeremonyConfig ceremonyConfig = CeremonyConfig.defaults();
     private SecureRandom secureRandom = new SecureRandom();
     private Metrics metrics = Metrics.noop();
+    private @Nullable CeremonyRateLimiter ceremonyRateLimiter;
 
     private Builder() {}
 
@@ -110,6 +112,22 @@ public final class PasskeyAuthenticationServices {
       return this;
     }
 
+    /**
+     * Override the {@link CeremonyRateLimiter} consulted on every ceremony entrypoint. When unset,
+     * the builder wires an {@link InMemoryCeremonyRateLimiter} with the default per-IP /
+     * per-username allowances. Multi-replica deployments MUST supply a shared (Redis / DB-backed)
+     * implementation here; the in-memory default tracks counters per-process and per-replica
+     * counters multiply by the cluster size.
+     *
+     * @param v a non-null limiter implementation
+     * @return this builder
+     * @since 0.9.1
+     */
+    public Builder ceremonyRateLimiter(CeremonyRateLimiter v) {
+      this.ceremonyRateLimiter = Objects.requireNonNull(v, "ceremonyRateLimiter");
+      return this;
+    }
+
     public PasskeyAuthenticationService build() {
       ObjectConverter oc = objectConverter == null ? new ObjectConverter() : objectConverter;
       // The default non-strict WebAuthnManager skips attestation-statement signature
@@ -136,6 +154,8 @@ public final class PasskeyAuthenticationServices {
       RelyingPartyConfig rp = Objects.requireNonNull(rpConfig, "relyingPartyConfig must be set");
       OriginValidator origins =
           originValidator == null ? OriginValidator.strict(rp) : originValidator;
+      CeremonyRateLimiter limiter =
+          ceremonyRateLimiter == null ? new InMemoryCeremonyRateLimiter() : ceremonyRateLimiter;
       return new DefaultPasskeyAuthenticationService(
           mgr,
           oc,
@@ -148,7 +168,8 @@ public final class PasskeyAuthenticationServices {
           rp,
           ceremonyConfig,
           new ChallengeGenerator(secureRandom),
-          metrics);
+          metrics,
+          limiter);
     }
   }
 }

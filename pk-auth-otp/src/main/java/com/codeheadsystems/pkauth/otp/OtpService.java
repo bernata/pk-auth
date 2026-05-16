@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -191,9 +192,18 @@ public final class OtpService {
       return new VerifyResult.Expired();
     }
 
-    // Increment first to close the TOCTOU window: the returned count is authoritative.
-    int newAttempts = repository.incrementAttempts(user, active.otpId());
-    if (newAttempts > active.maxAttempts()) {
+    // Increment first to close the TOCTOU window: the returned count is authoritative. Use `>=`
+    // so the attempt that reaches the cap is itself rejected — paired with the JDBI repo now
+    // incrementing unconditionally, this closes the prior bypass where the guarded UPDATE was a
+    // no-op once attempts == max_attempts. An empty result means the row has vanished between
+    // findLatestActive and incrementAttempts (e.g. concurrent admin delete) — treat as no-op
+    // mismatch via NoActiveOtp so we don't pretend a phantom verify succeeded.
+    OptionalInt incremented = repository.incrementAttempts(user, active.otpId());
+    if (incremented.isEmpty()) {
+      return new VerifyResult.NoActiveOtp();
+    }
+    int newAttempts = incremented.getAsInt();
+    if (newAttempts >= active.maxAttempts()) {
       return new VerifyResult.AttemptsExceeded();
     }
 
@@ -204,9 +214,16 @@ public final class OtpService {
             active.hashedCode().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
     if (matches) {
-      repository.consume(user, active.otpId());
-      LOG.info("otp.verify success user={} otpId={}", user, active.otpId());
-      return new VerifyResult.Success();
+      // consume() is guarded server-side; two concurrent verifies cannot both observe true.
+      // The loser of the race sees false and is treated as a mismatch.
+      boolean consumed = repository.consume(user, active.otpId());
+      if (consumed) {
+        LOG.info("otp.verify success user={} otpId={}", user, active.otpId());
+        return new VerifyResult.Success();
+      }
+      LOG.info("otp.verify race-lost user={} otpId={}", user, active.otpId());
+      int remaining = Math.max(0, active.maxAttempts() - newAttempts);
+      return new VerifyResult.CodeMismatch(remaining);
     }
     int remaining = Math.max(0, active.maxAttempts() - newAttempts);
     LOG.info("otp.verify mismatch user={} otpId={} remaining={}", user, active.otpId(), remaining);

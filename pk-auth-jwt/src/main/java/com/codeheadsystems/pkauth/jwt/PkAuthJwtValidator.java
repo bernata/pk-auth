@@ -180,12 +180,14 @@ public final class PkAuthJwtValidator {
    * This prevents a forged token claiming {@code kid=X} from being accepted by a different key Y —
    * the actual security property being enforced.
    *
-   * <p>If the keyset contains <em>no</em> keys with an assigned {@code kid} (e.g. legacy HS256
-   * keysets built without explicit key IDs), the filter is skipped and all keys are tried so that
-   * existing deployments continue to work without modification.
+   * <p>If the keyset contains at least one key with an assigned {@code kid} but the token header
+   * carries no {@code kid}, the token is rejected. Without this rule a leaked retired key (still
+   * present in the keyset for rotation) could sign a kid-less token and be silently accepted,
+   * defeating kid-based rotation.
    *
-   * <p>If {@code kid} is absent from the header entirely, all keys are tried (backwards
-   * compatibility with single-key / pre-rotation issuers).
+   * <p>If the keyset contains <em>no</em> keys with an assigned {@code kid} (fully legacy keyset,
+   * e.g. HS256 built without explicit key IDs), the {@code kid} filter is skipped entirely and all
+   * keys are tried so that legacy single-key deployments continue to work without modification.
    */
   private boolean verifyAgainstCandidateKeys(SignedJWT jwt, @Nullable String kid) {
     // Fetch the full set of verification keys (no filter yet).
@@ -197,22 +199,36 @@ public final class PkAuthJwtValidator {
       return false;
     }
 
+    boolean keysetHasKid = allCandidates.stream().anyMatch(k -> k.getKeyID() != null);
+
     List<JWK> candidates;
-    if (kid != null && allCandidates.stream().anyMatch(k -> k.getKeyID() != null)) {
-      // The keyset contains at least one key with a real kid, so kid-based filtering is meaningful.
-      // Only try the key(s) whose kid matches the header — do NOT fall back to other keys.
-      JWKSelector kidSelector = new JWKSelector(new JWKMatcher.Builder().keyID(kid).build());
-      try {
-        candidates = keyset.verificationSource().get(kidSelector, (SecurityContext) null);
-      } catch (com.nimbusds.jose.KeySourceException | RuntimeException e) {
-        return false;
-      }
-      if (candidates.isEmpty()) {
-        // kid was specified, keyset has kid-bearing keys, but none matched — reject.
-        return false;
+    if (kid != null) {
+      if (keysetHasKid) {
+        // The keyset has kid-bearing keys, so kid-based filtering is meaningful.
+        // Only try the key(s) whose kid matches the header — do NOT fall back to other keys.
+        JWKSelector kidSelector = new JWKSelector(new JWKMatcher.Builder().keyID(kid).build());
+        try {
+          candidates = keyset.verificationSource().get(kidSelector, (SecurityContext) null);
+        } catch (com.nimbusds.jose.KeySourceException | RuntimeException e) {
+          return false;
+        }
+        if (candidates.isEmpty()) {
+          // kid was specified, keyset has kid-bearing keys, but none matched — reject.
+          return false;
+        }
+      } else {
+        // Token carries a kid but the keyset is fully kid-less — no filtering possible, try all.
+        candidates = allCandidates;
       }
     } else {
-      // No kid in header, or keyset has no key with an assigned kid (legacy mode): try all.
+      // No kid in header.
+      if (keysetHasKid) {
+        // At least one key in the keyset carries a kid. Requiring kid in the header prevents a
+        // leaked retired key from signing a kid-less token that the validator would otherwise
+        // accept by trying every key, defeating kid-based rotation.
+        return false;
+      }
+      // Fully legacy keyset (no key has a kid): backwards-compatible try-all path.
       candidates = allCandidates;
     }
 

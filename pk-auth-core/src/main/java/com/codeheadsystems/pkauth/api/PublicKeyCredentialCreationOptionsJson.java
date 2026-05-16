@@ -10,6 +10,14 @@ import org.jspecify.annotations.Nullable;
 /**
  * Server payload for {@code navigator.credentials.create()}. Mirrors the WebAuthn JSON Spec §5.1.3
  * "PublicKeyCredentialCreationOptionsJSON".
+ *
+ * <p><strong>Privacy invariant:</strong> {@code excludeCredentials} is always non-null and is
+ * serialized as a JSON array (possibly empty). Emitting {@code null} (or omitting the field) for
+ * brand-new users while emitting a populated list for existing users would create an
+ * account-enumeration oracle on the public {@code permitAll} start-registration endpoint. Callers
+ * MUST pass an empty list rather than {@code null} when there are no credentials to exclude.
+ *
+ * @since 0.9.1
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record PublicKeyCredentialCreationOptionsJson(
@@ -18,7 +26,7 @@ public record PublicKeyCredentialCreationOptionsJson(
     byte[] challenge,
     List<PublicKeyCredentialParameters> pubKeyCredParams,
     @Nullable Long timeout,
-    @Nullable List<PublicKeyCredentialDescriptor> excludeCredentials,
+    List<PublicKeyCredentialDescriptor> excludeCredentials,
     @Nullable AuthenticatorSelectionCriteria authenticatorSelection,
     @Nullable AttestationConveyance attestation,
     @Nullable Map<String, Object> extensions) {
@@ -30,9 +38,10 @@ public record PublicKeyCredentialCreationOptionsJson(
     Objects.requireNonNull(pubKeyCredParams, "pubKeyCredParams");
     challenge = challenge.clone();
     pubKeyCredParams = List.copyOf(pubKeyCredParams);
-    if (excludeCredentials != null) {
-      excludeCredentials = List.copyOf(excludeCredentials);
-    }
+    // Defensive default: deserialization of legacy payloads that omit the field arrives as null
+    // here. Producers MUST pass a (possibly empty) list — the privacy invariant lives at the
+    // service layer; this defaulting only protects deserialization round-trips.
+    excludeCredentials = excludeCredentials == null ? List.of() : List.copyOf(excludeCredentials);
     if (extensions != null) {
       extensions = Map.copyOf(extensions);
     }

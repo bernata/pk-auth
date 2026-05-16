@@ -41,6 +41,7 @@ class ResultTypesTest {
           case RegistrationResult.AttestationRejected ar -> "ar:" + ar.reason();
           case RegistrationResult.DuplicateCredential dc -> "dup";
           case RegistrationResult.InvalidPayload ip -> "ip:" + ip.detail();
+          case RegistrationResult.RateLimited rl -> "rl:" + rl.bucket();
         };
     assertThat(formatted).isEqualTo("ok:Yubikey");
   }
@@ -100,6 +101,7 @@ class ResultTypesTest {
             case AssertionResult.CounterRegression cr -> "cr:" + cr.stored() + "/" + cr.received();
             case AssertionResult.UserVerificationRequired uvr -> "uvr";
             case AssertionResult.InvalidSignature is -> "is";
+            case AssertionResult.RateLimited rl -> "rl:" + rl.bucket();
           };
       assertThat(tag).isNotBlank();
     }

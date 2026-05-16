@@ -114,12 +114,13 @@ class PkAuthObjectMappersTest {
 
   @Test
   void publicKeyCredentialRequestOptionsRoundTrips() {
+    // allowCredentials is non-null by contract (privacy invariant — see record Javadoc).
     PublicKeyCredentialRequestOptionsJson opts =
         new PublicKeyCredentialRequestOptionsJson(
             new byte[] {6, 7, 8},
             30000L,
             "example.com",
-            null,
+            List.of(),
             UserVerificationRequirement.DISCOURAGED,
             null);
     String json = mapper.writeValueAsString(opts);
@@ -128,6 +129,7 @@ class PkAuthObjectMappersTest {
     assertThat(back.challenge()).containsExactly(6, 7, 8);
     assertThat(back.rpId()).isEqualTo("example.com");
     assertThat(back.userVerification()).isEqualTo(UserVerificationRequirement.DISCOURAGED);
+    assertThat(back.allowCredentials()).isNotNull().isEmpty();
   }
 
   @Test

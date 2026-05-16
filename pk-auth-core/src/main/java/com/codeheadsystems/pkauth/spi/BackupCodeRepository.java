@@ -33,11 +33,25 @@ public interface BackupCodeRepository {
   List<StoredBackupCode> findByUserHandle(UserHandle userHandle);
 
   /**
-   * Marks the supplied code id as consumed for the given user. The {@code userHandle} is the
-   * partition under which the code lives; implementations use it to address the row directly
-   * instead of scanning. Implementations should treat double-consume as a no-op.
+   * Atomically marks the supplied code id as consumed for the given user. The {@code userHandle} is
+   * the partition under which the code lives; implementations use it to address the row directly
+   * instead of scanning.
+   *
+   * <p>Implementations MUST guarantee single-use semantics: the guarded UPDATE (or conditional
+   * write) must only succeed when an unconsumed row for {@code (userHandle, codeId)} exists.
+   * Concurrent callers observing the same code as unconsumed must NOT both receive {@code true} —
+   * exactly one must win. Return value:
+   *
+   * <ul>
+   *   <li>{@code true} — this call atomically transitioned an unconsumed row to consumed and the
+   *       caller is the unique winner. The caller may now mint a credential / JWT from this code.
+   *   <li>{@code false} — the row does not exist, was already consumed, or a concurrent caller won
+   *       the race. The caller MUST treat this as a verification miss.
+   * </ul>
+   *
+   * @since 0.9.1
    */
-  void consume(UserHandle userHandle, String codeId, Instant consumedAt);
+  boolean consume(UserHandle userHandle, String codeId, Instant consumedAt);
 
   /** Deletes every backup code for a user — used by {@code regenerateAll}. */
   void deleteByUserHandle(UserHandle userHandle);

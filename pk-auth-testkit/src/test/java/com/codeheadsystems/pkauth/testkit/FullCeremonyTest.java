@@ -46,7 +46,7 @@ class FullCeremonyTest {
                 env.users.findUserHandleByUsername(CeremonyScenarios.USERNAME).orElseThrow())
             .get(0);
     assertThatThrownBy(() -> env.credentials.save(existing))
-        .isInstanceOf(IllegalStateException.class)
+        .isInstanceOf(com.codeheadsystems.pkauth.spi.DuplicateCredentialException.class)
         .hasMessageContaining("Duplicate");
   }
 }

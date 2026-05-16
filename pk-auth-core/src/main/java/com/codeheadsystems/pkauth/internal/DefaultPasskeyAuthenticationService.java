@@ -32,6 +32,8 @@ import com.codeheadsystems.pkauth.internal.challenge.ChallengeValidation;
 import com.codeheadsystems.pkauth.internal.challenge.ChallengeValidator;
 import com.codeheadsystems.pkauth.metrics.Metrics;
 import com.codeheadsystems.pkauth.spi.AttestationTrustPolicy;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimitedException;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeRecord;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
@@ -105,7 +107,16 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
   private final ChallengeGenerator challengeGenerator;
   private final Metrics metrics;
   private final ChallengeValidator challengeValidator;
+  private final CeremonyRateLimiter rateLimiter;
 
+  /**
+   * Backward-compatible constructor that wires a never-deny rate limiter. New call sites SHOULD use
+   * {@link #DefaultPasskeyAuthenticationService(WebAuthnManager, ObjectConverter,
+   * CredentialRepository, UserLookup, ChallengeStore, ClockProvider, OriginValidator,
+   * AttestationTrustPolicy, RelyingPartyConfig, CeremonyConfig, ChallengeGenerator, Metrics,
+   * CeremonyRateLimiter)} and pass an explicit limiter ({@code InMemoryCeremonyRateLimiter} for
+   * single-instance hosts; a shared backend for multi-replica deployments).
+   */
   public DefaultPasskeyAuthenticationService(
       WebAuthnManager webAuthnManager,
       ObjectConverter objectConverter,
@@ -119,6 +130,43 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       CeremonyConfig ceremonyConfig,
       ChallengeGenerator challengeGenerator,
       Metrics metrics) {
+    this(
+        webAuthnManager,
+        objectConverter,
+        credentialRepository,
+        userLookup,
+        challengeStore,
+        clockProvider,
+        originValidator,
+        attestationTrustPolicy,
+        rpConfig,
+        ceremonyConfig,
+        challengeGenerator,
+        metrics,
+        AllowAllRateLimiter.INSTANCE);
+  }
+
+  /**
+   * Full-control constructor. The supplied {@link CeremonyRateLimiter} is consulted on every
+   * entrypoint; when it denies, the ceremony short-circuits before any challenge / repository
+   * interaction.
+   *
+   * @since 0.9.1
+   */
+  public DefaultPasskeyAuthenticationService(
+      WebAuthnManager webAuthnManager,
+      ObjectConverter objectConverter,
+      CredentialRepository credentialRepository,
+      UserLookup userLookup,
+      ChallengeStore challengeStore,
+      ClockProvider clockProvider,
+      OriginValidator originValidator,
+      AttestationTrustPolicy attestationTrustPolicy,
+      RelyingPartyConfig rpConfig,
+      CeremonyConfig ceremonyConfig,
+      ChallengeGenerator challengeGenerator,
+      Metrics metrics,
+      CeremonyRateLimiter rateLimiter) {
     this.webAuthnManager = Objects.requireNonNull(webAuthnManager, "webAuthnManager");
     this.objectConverter = Objects.requireNonNull(objectConverter, "objectConverter");
     this.credentialRepository =
@@ -132,15 +180,48 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     this.ceremonyConfig = Objects.requireNonNull(ceremonyConfig, "ceremonyConfig");
     this.challengeGenerator = Objects.requireNonNull(challengeGenerator, "challengeGenerator");
     this.metrics = Objects.requireNonNull(metrics, "metrics");
+    this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter");
     this.challengeValidator =
         new ChallengeValidator(challengeStore, originValidator, clockProvider);
   }
 
+  /**
+   * Sentinel limiter used by the legacy no-rate-limiter constructor. Always allows — keeps existing
+   * unit tests passing without forcing them to declare a limiter, while the adapter modules wire a
+   * real {@link CeremonyRateLimiter} (defaulting to {@code InMemoryCeremonyRateLimiter}).
+   */
+  private enum AllowAllRateLimiter implements CeremonyRateLimiter {
+    INSTANCE;
+
+    @Override
+    public boolean tryAcquireForIp(@Nullable String ip) {
+      return true;
+    }
+
+    @Override
+    public boolean tryAcquireForUsername(String username) {
+      return true;
+    }
+  }
+
   // -- Registration ----------------------------------------------------------------------------
 
+  /**
+   * Starts a passkey registration ceremony.
+   *
+   * <p><strong>Privacy invariant:</strong> {@code excludeCredentials} on the returned options is
+   * always a (possibly empty) list — never {@code null}. Emitting {@code null} for brand-new
+   * usernames while emitting a populated list for existing users on this {@code permitAll} endpoint
+   * would create an account-enumeration oracle. Mirrors the same privacy guard in {@code
+   * MagicLinkService.sendLoginEmail}.
+   *
+   * @since 0.9.1
+   */
   @Override
-  public StartRegistrationResponse startRegistration(StartRegistrationRequest req) {
+  public StartRegistrationResponse startRegistration(
+      StartRegistrationRequest req, @Nullable String clientIp) {
     Objects.requireNonNull(req, "req");
+    enforceRateLimit("registration.start", clientIp, req.username());
     UserHandle userHandle = userLookup.createOrGetUserHandle(req.username());
 
     byte[] challenge = challengeGenerator.generate();
@@ -155,6 +236,9 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
             clockProvider.now().plus(ceremonyConfig.challengeTtl())),
         ceremonyConfig.challengeTtl());
 
+    // Always non-null: brand-new usernames yield an empty list rather than null so the wire
+    // shape is indistinguishable from an existing user with no exclusions. Prevents account
+    // enumeration on the public start-registration endpoint.
     List<PublicKeyCredentialDescriptor> excludeCredentials =
         credentialRepository.findByUserHandle(userHandle).stream()
             .map(this::toExcludeDescriptor)
@@ -179,7 +263,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
                 new PublicKeyCredentialParameters("public-key", -8),
                 new PublicKeyCredentialParameters("public-key", -257)),
             DEFAULT_TIMEOUT_MS,
-            excludeCredentials.isEmpty() ? null : excludeCredentials,
+            excludeCredentials,
             selection,
             ceremonyConfig.attestationConveyance(),
             null);
@@ -190,9 +274,14 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
   }
 
   @Override
-  public RegistrationResult finishRegistration(FinishRegistrationRequest req) {
+  public RegistrationResult finishRegistration(
+      FinishRegistrationRequest req, @Nullable String clientIp) {
     Objects.requireNonNull(req, "req");
     long start = System.nanoTime();
+    if (!rateLimiter.tryAcquireForIp(clientIp)) {
+      LOG.info("registration.finish rate-limited ip-bucket clientIp={}", clientIp);
+      return outcome("registration", new RegistrationResult.RateLimited("ip"), start);
+    }
     try {
       ChallengeValidation validation =
           challengeValidator.validate(
@@ -303,11 +392,27 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
 
   // -- Authentication --------------------------------------------------------------------------
 
+  /**
+   * Starts a passkey authentication ceremony.
+   *
+   * <p><strong>Privacy invariant:</strong> {@code allowCredentials} on the returned options is
+   * always a (possibly empty) list — never {@code null}. Emitting {@code null} for unknown
+   * usernames while emitting a populated list for known users on this {@code permitAll} endpoint
+   * would create an account-enumeration oracle. Mirrors the same privacy guard in {@code
+   * MagicLinkService.sendLoginEmail}.
+   *
+   * @since 0.9.1
+   */
   @Override
-  public StartAuthenticationResponse startAuthentication(StartAuthenticationRequest req) {
+  public StartAuthenticationResponse startAuthentication(
+      StartAuthenticationRequest req, @Nullable String clientIp) {
     Objects.requireNonNull(req, "req");
+    enforceRateLimit("authentication.start", clientIp, req.username());
 
     @Nullable UserHandle resolvedHandle = null;
+    // Always non-null: unknown usernames and the usernameless flow both yield an empty list
+    // rather than null so the wire shape is indistinguishable from a known user with no
+    // credentials. Prevents account enumeration on the public start-authentication endpoint.
     List<PublicKeyCredentialDescriptor> allowCredentials = List.of();
     if (req.username() != null) {
       Optional<UserHandle> handle = userLookup.findUserHandleByUsername(req.username());
@@ -337,12 +442,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
 
     PublicKeyCredentialRequestOptionsJson options =
         new PublicKeyCredentialRequestOptionsJson(
-            challenge,
-            DEFAULT_TIMEOUT_MS,
-            rpConfig.id(),
-            allowCredentials.isEmpty() ? null : allowCredentials,
-            uv,
-            null);
+            challenge, DEFAULT_TIMEOUT_MS, rpConfig.id(), allowCredentials, uv, null);
 
     metrics.incrementCounter("pkauth.authentication.start", "rp", rpConfig.id());
     LOG.info(
@@ -351,9 +451,14 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
   }
 
   @Override
-  public AssertionResult finishAuthentication(FinishAuthenticationRequest req) {
+  public AssertionResult finishAuthentication(
+      FinishAuthenticationRequest req, @Nullable String clientIp) {
     Objects.requireNonNull(req, "req");
     long start = System.nanoTime();
+    if (!rateLimiter.tryAcquireForIp(clientIp)) {
+      LOG.info("authentication.finish rate-limited ip-bucket clientIp={}", clientIp);
+      return outcomeAssertion(new AssertionResult.RateLimited("ip"), start);
+    }
     try {
       ChallengeValidation validation =
           challengeValidator.validate(
@@ -605,6 +710,23 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     metrics.recordTimer("pkauth.authentication.duration", elapsed, "result", variant);
     LOG.info("authentication.finish outcome={} latencyMs={}", variant, elapsed.toMillis());
     return result;
+  }
+
+  /**
+   * Consults the configured {@link CeremonyRateLimiter} for both the per-IP and per-username
+   * buckets on a {@code start*} call. Throws {@link CeremonyRateLimitedException} when either
+   * bucket denies; the adapter controller catches this and emits {@code 429 Too Many Requests}.
+   */
+  private void enforceRateLimit(
+      String phase, @Nullable String clientIp, @Nullable String username) {
+    if (!rateLimiter.tryAcquireForIp(clientIp)) {
+      LOG.info("{} rate-limited ip-bucket clientIp={}", phase, clientIp);
+      throw new CeremonyRateLimitedException("ip");
+    }
+    if (username != null && !rateLimiter.tryAcquireForUsername(username)) {
+      LOG.info("{} rate-limited username-bucket username={}", phase, username);
+      throw new CeremonyRateLimitedException("username");
+    }
   }
 
   /**

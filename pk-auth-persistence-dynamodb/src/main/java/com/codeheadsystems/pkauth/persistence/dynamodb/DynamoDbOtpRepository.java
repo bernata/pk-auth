@@ -4,11 +4,15 @@ package com.codeheadsystems.pkauth.persistence.dynamodb;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spi.OtpRepository;
+import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.function.Supplier;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
@@ -39,95 +43,139 @@ public final class DynamoDbOtpRepository implements OtpRepository {
 
   @Override
   public void save(StoredOtp otp) {
-    table.putItem(OtpItem.fromRecord(otp));
+    wrap(
+        "otp.save",
+        () -> {
+          table.putItem(OtpItem.fromRecord(otp));
+          return null;
+        });
   }
 
   @Override
   public Optional<StoredOtp> findLatestActive(UserHandle userHandle, String phoneE164) {
-    String userB64 = Base64Url.encode(userHandle.value());
-    return table
-        .query(
-            QueryConditional.sortBeginsWith(
-                Key.builder().partitionValue("USER#" + userB64).sortValue("OTP#").build()))
-        .stream()
-        .flatMap(page -> page.items().stream())
-        .filter(i -> phoneE164.equals(i.getPhoneE164()))
-        .filter(i -> !i.isConsumed())
-        .max(Comparator.comparing(OtpItem::getCreatedAt))
-        .map(OtpItem::toRecord);
+    return wrap(
+        "otp.findLatestActive",
+        () -> {
+          String userB64 = Base64Url.encode(userHandle.value());
+          return table
+              .query(
+                  QueryConditional.sortBeginsWith(
+                      Key.builder().partitionValue("USER#" + userB64).sortValue("OTP#").build()))
+              .stream()
+              .flatMap(page -> page.items().stream())
+              .filter(i -> phoneE164.equals(i.getPhoneE164()))
+              .filter(i -> !i.isConsumed())
+              .max(Comparator.comparing(OtpItem::getCreatedAt))
+              .map(OtpItem::toRecord);
+        });
   }
 
   @Override
-  public int incrementAttempts(UserHandle userHandle, String otpId) {
-    // Atomic counter increment on the exact (pk, sk). No read, no scan. Two concurrent
-    // verifies both succeed and each observes a distinct post-increment value via
-    // UPDATED_NEW; the per-attempt cap check in OtpService remains the authority on lockout.
-    String userB64 = Base64Url.encode(userHandle.value());
-    try {
-      UpdateItemResponse resp =
-          client.updateItem(
-              UpdateItemRequest.builder()
-                  .tableName(tableName)
-                  .key(
-                      Map.of(
-                          "pk", AttributeValue.fromS("USER#" + userB64),
-                          "sk", AttributeValue.fromS("OTP#" + otpId)))
-                  .updateExpression("SET #a = if_not_exists(#a, :zero) + :one")
-                  .conditionExpression("attribute_exists(pk)")
-                  .expressionAttributeNames(Map.of("#a", "attempts"))
-                  .expressionAttributeValues(
-                      Map.of(
-                          ":zero", AttributeValue.fromN("0"),
-                          ":one", AttributeValue.fromN("1")))
-                  .returnValues(ReturnValue.UPDATED_NEW)
-                  .build());
-      AttributeValue updated = resp.attributes().get("attempts");
-      return updated == null ? 0 : Integer.parseInt(updated.n());
-    } catch (ConditionalCheckFailedException missing) {
-      // OTP not found for this user — caller treats 0 as "no active record".
-      return 0;
-    }
+  public OptionalInt incrementAttempts(UserHandle userHandle, String otpId) {
+    return wrap(
+        "otp.incrementAttempts",
+        () -> {
+          // Atomic counter increment on the exact (pk, sk). No read, no scan. Two concurrent
+          // verifies both succeed and each observes a distinct post-increment value via
+          // UPDATED_NEW; the per-attempt cap check in OtpService remains the authority on lockout.
+          String userB64 = Base64Url.encode(userHandle.value());
+          try {
+            UpdateItemResponse resp =
+                client.updateItem(
+                    UpdateItemRequest.builder()
+                        .tableName(tableName)
+                        .key(
+                            Map.of(
+                                "pk", AttributeValue.fromS("USER#" + userB64),
+                                "sk", AttributeValue.fromS("OTP#" + otpId)))
+                        .updateExpression("SET #a = if_not_exists(#a, :zero) + :one")
+                        .conditionExpression("attribute_exists(pk)")
+                        .expressionAttributeNames(Map.of("#a", "attempts"))
+                        .expressionAttributeValues(
+                            Map.of(
+                                ":zero", AttributeValue.fromN("0"),
+                                ":one", AttributeValue.fromN("1")))
+                        .returnValues(ReturnValue.UPDATED_NEW)
+                        .build());
+            AttributeValue updated = resp.attributes().get("attempts");
+            return updated == null
+                ? OptionalInt.empty()
+                : OptionalInt.of(Integer.parseInt(updated.n()));
+          } catch (ConditionalCheckFailedException missing) {
+            // OTP not found for this user — documented "no active record" branch.
+            return OptionalInt.empty();
+          }
+        });
   }
 
   @Override
-  public void consume(UserHandle userHandle, String otpId) {
-    // Like backup-code consume, two concurrent verifies must NOT both succeed. The
-    // conditional makes DynamoDB enforce single-use server-side. attribute_exists(pk)
-    // prevents creating a phantom row if the (userHandle, otpId) pair doesn't exist.
-    String userB64 = Base64Url.encode(userHandle.value());
-    try {
-      client.updateItem(
-          UpdateItemRequest.builder()
-              .tableName(tableName)
-              .key(
-                  Map.of(
-                      "pk", AttributeValue.fromS("USER#" + userB64),
-                      "sk", AttributeValue.fromS("OTP#" + otpId)))
-              .updateExpression("SET #c = :true")
-              .conditionExpression("attribute_exists(pk) AND #c = :false")
-              .expressionAttributeNames(Map.of("#c", "consumed"))
-              .expressionAttributeValues(
-                  Map.of(
-                      ":true", AttributeValue.fromBool(true),
-                      ":false", AttributeValue.fromBool(false)))
-              .build());
-    } catch (ConditionalCheckFailedException ignored) {
-      // Either the OTP doesn't exist for this user, or it was already consumed.
-    }
+  public boolean consume(UserHandle userHandle, String otpId) {
+    return wrap(
+        "otp.consume",
+        () -> {
+          // Like backup-code consume, two concurrent verifies must NOT both succeed. The
+          // conditional makes DynamoDB enforce single-use server-side. attribute_exists(pk)
+          // prevents creating a phantom row if the (userHandle, otpId) pair doesn't exist.
+          String userB64 = Base64Url.encode(userHandle.value());
+          try {
+            client.updateItem(
+                UpdateItemRequest.builder()
+                    .tableName(tableName)
+                    .key(
+                        Map.of(
+                            "pk", AttributeValue.fromS("USER#" + userB64),
+                            "sk", AttributeValue.fromS("OTP#" + otpId)))
+                    .updateExpression("SET #c = :true")
+                    .conditionExpression("attribute_exists(pk) AND #c = :false")
+                    .expressionAttributeNames(Map.of("#c", "consumed"))
+                    .expressionAttributeValues(
+                        Map.of(
+                            ":true", AttributeValue.fromBool(true),
+                            ":false", AttributeValue.fromBool(false)))
+                    .build());
+            return true;
+          } catch (ConditionalCheckFailedException ignored) {
+            // Either the OTP doesn't exist for this user, or it was already consumed.
+            return false;
+          }
+        });
   }
 
   @Override
   public int countSince(UserHandle userHandle, String phoneE164, Instant since) {
-    String userB64 = Base64Url.encode(userHandle.value());
-    return (int)
-        table
-            .query(
-                QueryConditional.sortBeginsWith(
-                    Key.builder().partitionValue("USER#" + userB64).sortValue("OTP#").build()))
-            .stream()
-            .flatMap(page -> page.items().stream())
-            .filter(i -> phoneE164.equals(i.getPhoneE164()))
-            .filter(i -> !Instant.parse(i.getCreatedAt()).isBefore(since))
-            .count();
+    return wrap(
+        "otp.countSince",
+        () -> {
+          String userB64 = Base64Url.encode(userHandle.value());
+          return (int)
+              table
+                  .query(
+                      QueryConditional.sortBeginsWith(
+                          Key.builder()
+                              .partitionValue("USER#" + userB64)
+                              .sortValue("OTP#")
+                              .build()))
+                  .stream()
+                  .flatMap(page -> page.items().stream())
+                  .filter(i -> phoneE164.equals(i.getPhoneE164()))
+                  .filter(i -> !Instant.parse(i.getCreatedAt()).isBefore(since))
+                  .count();
+        });
+  }
+
+  /**
+   * Runs {@code body} and wraps any {@link SdkException} in a {@link PkAuthPersistenceException} so
+   * adapter exception mappers can produce a uniform 503. Documented {@link
+   * ConditionalCheckFailedException} control-flow branches handled inside {@code body} never reach
+   * here.
+   */
+  private static <T> T wrap(String op, Supplier<T> body) {
+    try {
+      return body.get();
+    } catch (PkAuthPersistenceException already) {
+      throw already;
+    } catch (SdkException e) {
+      throw new PkAuthPersistenceException(op, e.getMessage(), e);
+    }
   }
 }

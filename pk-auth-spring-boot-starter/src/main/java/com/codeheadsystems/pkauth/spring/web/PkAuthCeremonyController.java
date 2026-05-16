@@ -17,10 +17,13 @@ import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.jwt.PkAuthCeremonyJwt;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimitedException;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
+import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -63,14 +66,16 @@ public class PkAuthCeremonyController {
   // -- Registration ---------------------------------------------------------------------------
 
   @PostMapping("/registration/start")
-  public StartRegistrationResponse startRegistration(@RequestBody StartRegistrationRequest req) {
+  public StartRegistrationResponse startRegistration(
+      @RequestBody StartRegistrationRequest req, HttpServletRequest httpRequest) {
     LOG.info("auth.registration.start username={}", req.username());
-    return service.startRegistration(req);
+    return service.startRegistration(req, clientIp(httpRequest));
   }
 
   @PostMapping("/registration/finish")
-  public ResponseEntity<Object> finishRegistration(@RequestBody FinishRegistrationRequest req) {
-    RegistrationResult result = service.finishRegistration(req);
+  public ResponseEntity<Object> finishRegistration(
+      @RequestBody FinishRegistrationRequest req, HttpServletRequest httpRequest) {
+    RegistrationResult result = service.finishRegistration(req, clientIp(httpRequest));
     if (result instanceof RegistrationResult.Success success) {
       LOG.info(
           "auth.registration.success user={} credentialId={}",
@@ -85,14 +90,15 @@ public class PkAuthCeremonyController {
 
   @PostMapping("/authentication/start")
   public StartAuthenticationResponse startAuthentication(
-      @RequestBody StartAuthenticationRequest req) {
+      @RequestBody StartAuthenticationRequest req, HttpServletRequest httpRequest) {
     LOG.info("auth.authentication.start username={}", req.username());
-    return service.startAuthentication(req);
+    return service.startAuthentication(req, clientIp(httpRequest));
   }
 
   @PostMapping("/authentication/finish")
-  public ResponseEntity<Object> finishAuthentication(@RequestBody FinishAuthenticationRequest req) {
-    AssertionResult result = service.finishAuthentication(req);
+  public ResponseEntity<Object> finishAuthentication(
+      @RequestBody FinishAuthenticationRequest req, HttpServletRequest httpRequest) {
+    AssertionResult result = service.finishAuthentication(req, clientIp(httpRequest));
     if (result instanceof AssertionResult.Success success) {
       String token = PkAuthCeremonyJwt.mintForAssertion(success, jwtIssuer);
       // The label is purely cosmetic for the response body; if the credential record was deleted
@@ -112,5 +118,26 @@ public class PkAuthCeremonyController {
     }
     CeremonyResponse wire = CeremonyWireMapper.forAssertionError(result);
     return ResponseEntity.status(wire.status()).body(wire.body());
+  }
+
+  /**
+   * Maps a {@link CeremonyRateLimitedException} thrown by {@code startRegistration} / {@code
+   * startAuthentication} to a canonical {@code 429} response. The start endpoints' response
+   * envelopes are not sealed result sums, so a thrown exception is the cleanest way to surface
+   * limiter refusal from those entrypoints (the finish endpoints surface it via the new {@code
+   * RateLimited} variants in {@link RegistrationResult} and {@link AssertionResult}).
+   *
+   * @since 0.9.1
+   */
+  @ExceptionHandler(CeremonyRateLimitedException.class)
+  public ResponseEntity<Object> handleRateLimited(CeremonyRateLimitedException ex) {
+    LOG.info("auth.ceremony rate-limited bucket={}", ex.bucket());
+    CeremonyResponse wire = CeremonyWireMapper.rateLimited();
+    return ResponseEntity.status(wire.status()).body(wire.body());
+  }
+
+  /** Extracts the source IP from the servlet request, falling back to the remote address. */
+  private static String clientIp(HttpServletRequest request) {
+    return request == null ? null : request.getRemoteAddr();
   }
 }

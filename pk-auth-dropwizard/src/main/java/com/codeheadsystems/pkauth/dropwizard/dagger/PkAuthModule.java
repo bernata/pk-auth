@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.dropwizard.dagger;
 
+import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
@@ -12,6 +13,7 @@ import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -101,6 +103,19 @@ public final class PkAuthModule {
         defaults.counterRegression());
   }
 
+  /**
+   * Default in-memory {@link CeremonyRateLimiter}. Hosts MUST override this binding with a shared
+   * (Redis / DB-backed) implementation in multi-replica deployments — see {@link
+   * InMemoryCeremonyRateLimiter} javadoc.
+   *
+   * @since 0.9.1
+   */
+  @Provides
+  @Singleton
+  CeremonyRateLimiter provideCeremonyRateLimiter() {
+    return new InMemoryCeremonyRateLimiter();
+  }
+
   @Provides
   @Singleton
   PasskeyAuthenticationService providePasskeyAuthenticationService(
@@ -109,7 +124,8 @@ public final class PkAuthModule {
       CredentialRepository credentials,
       UserLookup userLookup,
       ChallengeStore challengeStore,
-      ClockProvider clock) {
+      ClockProvider clock,
+      CeremonyRateLimiter rateLimiter) {
     return PasskeyAuthenticationServices.builder()
         .relyingPartyConfig(rp)
         .ceremonyConfig(cc)
@@ -117,6 +133,7 @@ public final class PkAuthModule {
         .userLookup(userLookup)
         .challengeStore(challengeStore)
         .clockProvider(clock)
+        .ceremonyRateLimiter(rateLimiter)
         .build();
   }
 

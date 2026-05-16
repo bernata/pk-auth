@@ -26,13 +26,22 @@ public final class InMemoryBackupCodeRepository implements BackupCodeRepository 
   }
 
   @Override
-  public void consume(UserHandle userHandle, String codeId, Instant consumedAt) {
+  public boolean consume(UserHandle userHandle, String codeId, Instant consumedAt) {
+    // Atomic check-and-set via computeIfPresent: only the first caller observing an
+    // unconsumed row for (userHandle, codeId) transitions it to consumed and returns true.
+    // Concurrent racers see consumed=true and return false. Tracks the winner via a
+    // single-element array to escape the lambda's effectively-final capture restriction.
+    boolean[] won = {false};
     byId.computeIfPresent(
         codeId,
         (k, existing) -> {
           if (!existing.userHandle().equals(userHandle)) {
             return existing;
           }
+          if (existing.consumed()) {
+            return existing;
+          }
+          won[0] = true;
           return new StoredBackupCode(
               existing.codeId(),
               existing.userHandle(),
@@ -41,6 +50,7 @@ public final class InMemoryBackupCodeRepository implements BackupCodeRepository 
               existing.createdAt(),
               consumedAt);
         });
+    return won[0];
   }
 
   @Override

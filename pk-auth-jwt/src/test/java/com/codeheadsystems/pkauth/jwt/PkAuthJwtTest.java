@@ -343,6 +343,40 @@ class PkAuthJwtTest {
   }
 
   @Test
+  void kidlessTokenIsRejectedWhenKeysetHasAnyKidBearingKey() throws Exception {
+    // Threat model: an attacker holds a retired key that still lives in the verification keyset
+    // for graceful rotation. They forge a token WITHOUT a kid header, signed with the retired key.
+    // The validator must NOT iterate every key looking for a match — that would silently accept
+    // the retired-key signature and defeat kid-based rotation. As long as the keyset contains at
+    // least one key with an assigned kid, a missing kid in the header is itself a rejection.
+    ECKey retiredKey = generateEcKey("retired");
+    ECKey currentKey = generateEcKey("current");
+    JwtKeyset keyset = JwtKeyset.es256(currentKey, retiredKey);
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    // Build a token signed by the retired key but with NO kid header.
+    JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.ES256).build();
+    JWTClaimsSet claims =
+        new JWTClaimsSet.Builder()
+            .issuer(ISSUER)
+            .audience(AUDIENCE)
+            .subject(Base64Url.encode(new byte[] {1}))
+            .issueTime(Date.from(NOW))
+            .notBeforeTime(Date.from(NOW))
+            .expirationTime(Date.from(NOW.plus(Duration.ofMinutes(15))))
+            .jwtID(UUID.randomUUID().toString())
+            .claim(PkAuthJwtIssuer.CLAIM_METHOD, "backup-code")
+            .claim(PkAuthJwtIssuer.CLAIM_AMR, List.of("user"))
+            .build();
+    SignedJWT jwt = new SignedJWT(header, claims);
+    jwt.sign(new ECDSASigner(retiredKey));
+
+    assertThat(validator.validate(jwt.serialize()))
+        .isInstanceOf(JwtVerificationResult.InvalidSignature.class);
+  }
+
+  @Test
   void forgedKidClaimIsRejectedWithoutFallingBackToOtherKey() throws Exception {
     // Two keys in the keyset: keyX (kid="key-x") and keyY (kid="key-y").
     // A forged token claims kid="key-x" but is signed with keyY.

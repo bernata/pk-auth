@@ -5,6 +5,7 @@ import com.codeheadsystems.pkauth.api.UserHandle;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 /** Persistent storage for SMS-OTP records (brief §6.5). */
 public interface OtpRepository {
@@ -63,17 +64,32 @@ public interface OtpRepository {
    * The {@code userHandle} addresses the row directly so implementations can avoid full-table
    * scans.
    *
+   * <p>Returns {@link OptionalInt#empty()} when no row exists for the supplied {@code (userHandle,
+   * otpId)} pair. Callers MUST treat the empty case as "no active OTP" — not as a zero-count
+   * attempt — so that a phantom verify against a deleted / never-issued row cannot masquerade as a
+   * successful low-attempt verification.
+   *
    * @param userHandle owner of the OTP record
    * @param otpId the OTP record to increment
-   * @return the attempts value <em>after</em> the increment, or 0 if the row does not exist
+   * @return the attempts value <em>after</em> the increment, or {@link OptionalInt#empty()} if the
+   *     row does not exist
+   * @since 0.9.1
    */
-  int incrementAttempts(UserHandle userHandle, String otpId);
+  OptionalInt incrementAttempts(UserHandle userHandle, String otpId);
 
   /**
-   * Marks the supplied OTP id consumed for the given user. Implementations should treat
-   * double-consume as a no-op.
+   * Atomically marks the supplied OTP id consumed for the given user, but only when it is not
+   * already consumed. Returns {@code true} when this call performed the transition (a previously
+   * unconsumed row is now consumed); {@code false} when the row is missing or was already consumed
+   * by a concurrent caller. Implementations must enforce this guard server-side so two concurrent
+   * verifies cannot both observe success.
+   *
+   * @param userHandle owner of the OTP record
+   * @param otpId the OTP record to consume
+   * @return {@code true} iff this call flipped the row from unconsumed to consumed
+   * @since 0.9.1
    */
-  void consume(UserHandle userHandle, String otpId);
+  boolean consume(UserHandle userHandle, String otpId);
 
   /**
    * Returns how many OTPs were issued for the supplied (user, phone) since {@code since}. Used by

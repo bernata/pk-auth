@@ -6,12 +6,16 @@ import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
+import com.codeheadsystems.pkauth.spi.DuplicateCredentialException;
+import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbIndex;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
@@ -40,119 +44,152 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
 
   @Override
   public void save(CredentialRecord record) {
-    try {
-      table.putItem(
-          r ->
-              r.item(CredentialItem.fromRecord(record))
-                  .conditionExpression(
-                      software.amazon.awssdk.enhanced.dynamodb.Expression.builder()
-                          .expression("attribute_not_exists(pk)")
-                          .build()));
-    } catch (ConditionalCheckFailedException e) {
-      throw new IllegalStateException(
-          "Duplicate credential id; refusing to overwrite an existing credential", e);
-    }
+    wrap(
+        "credentials.save",
+        () -> {
+          try {
+            table.putItem(
+                r ->
+                    r.item(CredentialItem.fromRecord(record))
+                        .conditionExpression(
+                            software.amazon.awssdk.enhanced.dynamodb.Expression.builder()
+                                .expression("attribute_not_exists(pk)")
+                                .build()));
+          } catch (ConditionalCheckFailedException e) {
+            throw new DuplicateCredentialException(
+                "Duplicate credential id; refusing to overwrite an existing credential", e);
+          }
+          return null;
+        });
   }
 
   @Override
   public Optional<CredentialRecord> findByCredentialId(CredentialId credentialId) {
-    String credIdB64 = credentialId.b64url();
-    return credentialByIdIndex
-        .query(
-            QueryConditional.keyEqualTo(
-                Key.builder().partitionValue("CRED#" + credIdB64).sortValue("META").build()))
-        .stream()
-        .flatMap(page -> page.items().stream())
-        .findFirst()
-        .map(CredentialItem::toRecord);
+    return wrap(
+        "credentials.findByCredentialId",
+        () -> {
+          String credIdB64 = credentialId.b64url();
+          return credentialByIdIndex
+              .query(
+                  QueryConditional.keyEqualTo(
+                      Key.builder().partitionValue("CRED#" + credIdB64).sortValue("META").build()))
+              .stream()
+              .flatMap(page -> page.items().stream())
+              .findFirst()
+              .map(CredentialItem::toRecord);
+        });
   }
 
   @Override
   public List<CredentialRecord> findByUserHandle(UserHandle userHandle) {
-    String userB64 = Base64Url.encode(userHandle.value());
-    return table
-        .query(
-            QueryConditional.sortBeginsWith(
-                Key.builder().partitionValue("USER#" + userB64).sortValue("CRED#").build()))
-        .stream()
-        .flatMap(page -> page.items().stream())
-        .map(CredentialItem::toRecord)
-        .toList();
+    return wrap(
+        "credentials.findByUserHandle",
+        () -> {
+          String userB64 = Base64Url.encode(userHandle.value());
+          return table
+              .query(
+                  QueryConditional.sortBeginsWith(
+                      Key.builder().partitionValue("USER#" + userB64).sortValue("CRED#").build()))
+              .stream()
+              .flatMap(page -> page.items().stream())
+              .map(CredentialItem::toRecord)
+              .toList();
+        });
   }
 
   @Override
   public void updateSignCount(CredentialId credentialId, long newCount, Instant lastUsedAt) {
-    // Retry loop: @DynamoDbVersionAttribute provides optimistic concurrency — if a concurrent
-    // writer (e.g. updateLabel) changes the item between our read and write, the enhanced client
-    // throws ConditionalCheckFailedException. We re-fetch and re-apply up to MAX_RETRIES times.
-    for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      Optional<CredentialItem> existing = lookupItem(credentialId);
-      if (existing.isEmpty()) {
-        return;
-      }
-      CredentialItem item = existing.get();
-      item.setSignCount(newCount);
-      item.setLastUsedAt(lastUsedAt.toString());
-      // Guard against the lost-update race: two concurrent assertions (e.g. a clone vs. the real
-      // authenticator) would otherwise overwrite a higher stored counter with a lower one, silently
-      // defeating clone detection. The conditional rejects the write unless the in-table value is
-      // still strictly less than the value we're trying to store. The version check from
-      // @DynamoDbVersionAttribute is automatically ANDed in by the enhanced client.
-      try {
-        table.updateItem(
-            UpdateItemEnhancedRequest.builder(CredentialItem.class)
-                .item(item)
-                .conditionExpression(
-                    software.amazon.awssdk.enhanced.dynamodb.Expression.builder()
-                        .expression("signCount < :newSignCount")
-                        .putExpressionValue(
-                            ":newSignCount",
-                            software.amazon.awssdk.services.dynamodb.model.AttributeValue.fromN(
-                                Long.toString(newCount)))
-                        .build())
-                .build());
-        return; // success
-      } catch (ConditionalCheckFailedException e) {
-        // Either the version changed (concurrent update — retry) or another writer already advanced
-        // signCount to >= newCount (clone-detection defence — give up immediately).
-        Optional<CredentialItem> current = lookupItem(credentialId);
-        if (current.isPresent() && current.get().getSignCount() >= newCount) {
-          // A concurrent write already advanced the counter; nothing to do.
-          return;
-        }
-        // Version conflict from a concurrent field update — loop and retry.
-      }
-    }
+    wrap(
+        "credentials.updateSignCount",
+        () -> {
+          // Retry loop: @DynamoDbVersionAttribute provides optimistic concurrency — if a concurrent
+          // writer (e.g. updateLabel) changes the item between our read and write, the enhanced
+          // client throws ConditionalCheckFailedException. We re-fetch and re-apply up to
+          // MAX_RETRIES times.
+          for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            Optional<CredentialItem> existing = lookupItem(credentialId);
+            if (existing.isEmpty()) {
+              return null;
+            }
+            CredentialItem item = existing.get();
+            item.setSignCount(newCount);
+            item.setLastUsedAt(lastUsedAt.toString());
+            // Guard against the lost-update race: two concurrent assertions (e.g. a clone vs. the
+            // real authenticator) would otherwise overwrite a higher stored counter with a lower
+            // one, silently defeating clone detection. The conditional rejects the write unless
+            // the in-table value is still strictly less than the value we're trying to store. The
+            // version check from @DynamoDbVersionAttribute is automatically ANDed in by the
+            // enhanced client.
+            try {
+              table.updateItem(
+                  UpdateItemEnhancedRequest.builder(CredentialItem.class)
+                      .item(item)
+                      .conditionExpression(
+                          software.amazon.awssdk.enhanced.dynamodb.Expression.builder()
+                              .expression("signCount < :newSignCount")
+                              .putExpressionValue(
+                                  ":newSignCount",
+                                  software.amazon.awssdk.services.dynamodb.model.AttributeValue
+                                      .fromN(Long.toString(newCount)))
+                              .build())
+                      .build());
+              return null; // success
+            } catch (ConditionalCheckFailedException e) {
+              // Either the version changed (concurrent update — retry) or another writer already
+              // advanced signCount to >= newCount (clone-detection defence — give up immediately).
+              Optional<CredentialItem> current = lookupItem(credentialId);
+              if (current.isPresent() && current.get().getSignCount() >= newCount) {
+                // A concurrent write already advanced the counter; nothing to do.
+                return null;
+              }
+              // Version conflict from a concurrent field update — loop and retry.
+            }
+          }
+          return null;
+        });
   }
 
   @Override
   public void updateLabel(CredentialId credentialId, String label) {
-    // Retry loop: guards against concurrent field updates clobbering each other via the
-    // @DynamoDbVersionAttribute optimistic-lock on CredentialItem.
-    for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      Optional<CredentialItem> existing = lookupItem(credentialId);
-      if (existing.isEmpty()) {
-        return;
-      }
-      CredentialItem item = existing.get();
-      item.setLabel(label);
-      try {
-        table.updateItem(
-            UpdateItemEnhancedRequest.builder(CredentialItem.class).item(item).build());
-        return; // success
-      } catch (ConditionalCheckFailedException ignored) {
-        // Version conflict from a concurrent update — re-fetch and retry.
-      }
-    }
+    wrap(
+        "credentials.updateLabel",
+        () -> {
+          // Retry loop: guards against concurrent field updates clobbering each other via the
+          // @DynamoDbVersionAttribute optimistic-lock on CredentialItem.
+          for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            Optional<CredentialItem> existing = lookupItem(credentialId);
+            if (existing.isEmpty()) {
+              return null;
+            }
+            CredentialItem item = existing.get();
+            item.setLabel(label);
+            try {
+              table.updateItem(
+                  UpdateItemEnhancedRequest.builder(CredentialItem.class).item(item).build());
+              return null; // success
+            } catch (ConditionalCheckFailedException ignored) {
+              // Version conflict from a concurrent update — re-fetch and retry.
+            }
+          }
+          return null;
+        });
   }
 
   @Override
   public void delete(CredentialId credentialId) {
-    lookupItem(credentialId)
-        .ifPresent(
-            item ->
-                table.deleteItem(
-                    Key.builder().partitionValue(item.getPk()).sortValue(item.getSk()).build()));
+    wrap(
+        "credentials.delete",
+        () -> {
+          lookupItem(credentialId)
+              .ifPresent(
+                  item ->
+                      table.deleteItem(
+                          Key.builder()
+                              .partitionValue(item.getPk())
+                              .sortValue(item.getSk())
+                              .build()));
+          return null;
+        });
   }
 
   private Optional<CredentialItem> lookupItem(CredentialId credentialId) {
@@ -172,5 +209,22 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
     key.put("pk", AttributeValue.fromS(pk));
     key.put("sk", AttributeValue.fromS(sk));
     return key;
+  }
+
+  /**
+   * Runs {@code body} and wraps any {@link SdkException} in a {@link PkAuthPersistenceException} so
+   * adapter exception mappers can produce a uniform 503. {@link PkAuthPersistenceException}
+   * subclasses (including {@link DuplicateCredentialException}) are re-thrown unchanged. Documented
+   * {@link ConditionalCheckFailedException} control-flow branches handled inside {@code body} never
+   * reach here.
+   */
+  private static <T> T wrap(String op, Supplier<T> body) {
+    try {
+      return body.get();
+    } catch (PkAuthPersistenceException already) {
+      throw already;
+    } catch (SdkException e) {
+      throw new PkAuthPersistenceException(op, e.getMessage(), e);
+    }
   }
 }

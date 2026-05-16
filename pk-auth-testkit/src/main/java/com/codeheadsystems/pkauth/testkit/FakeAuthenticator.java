@@ -202,12 +202,14 @@ public final class FakeAuthenticator {
   }
 
   private Credential pickCredential(StartAuthenticationResponse start) {
-    if (start.publicKey().allowCredentials() != null) {
-      for (var desc : start.publicKey().allowCredentials()) {
-        Credential c = credentialsById.get(Base64Url.encode(desc.id()));
-        if (c != null) {
-          return c;
-        }
+    // Privacy invariant (TODO #6): allowCredentials is always non-null. An empty list is
+    // produced both by the usernameless flow and by unknown-username requests — we fall back to
+    // the single-credential path in that case, exactly as a real authenticator would.
+    var allow = start.publicKey().allowCredentials();
+    for (var desc : allow) {
+      Credential c = credentialsById.get(Base64Url.encode(desc.id()));
+      if (c != null) {
+        return c;
       }
     }
     if (credentialsById.size() == 1) {

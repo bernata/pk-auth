@@ -79,4 +79,19 @@ public sealed interface RegistrationResult {
       Objects.requireNonNull(detail, "detail");
     }
   }
+
+  /**
+   * Ceremony was refused by the configured rate limiter before the attestation was verified.
+   * Returned by {@code finishRegistration} when the per-IP budget for the configured window has
+   * been exhausted.
+   *
+   * @param bucket which limiter bucket denied the call ({@code "ip"} or {@code "username"}) — kept
+   *     for adapter logging / diagnostics; clients receive the response without this field
+   * @since 0.9.1
+   */
+  record RateLimited(String bucket) implements RegistrationResult {
+    public RateLimited {
+      Objects.requireNonNull(bucket, "bucket");
+    }
+  }
 }

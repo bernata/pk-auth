@@ -15,16 +15,22 @@ import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.jwt.PkAuthCeremonyJwt;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimitedException;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
+import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
+import io.micronaut.http.annotation.Error;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.Produces;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
+import java.net.InetSocketAddress;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Mounts the four WebAuthn ceremony endpoints under {@code /auth/passkeys/**} — same path scheme as
@@ -42,6 +48,8 @@ import java.util.Map;
 @ExecuteOn(TaskExecutors.BLOCKING)
 public class PkAuthCeremonyController {
 
+  private static final Logger LOG = LoggerFactory.getLogger(PkAuthCeremonyController.class);
+
   private final PasskeyAuthenticationService service;
   private final PkAuthJwtIssuer jwtIssuer;
   private final CredentialRepository credentialRepository;
@@ -57,13 +65,15 @@ public class PkAuthCeremonyController {
 
   @Post("/registration/start")
   public HttpResponse<StartRegistrationResponse> startRegistration(
-      @Body StartRegistrationRequest req) {
-    return HttpResponse.ok(service.startRegistration(req));
+      @Body StartRegistrationRequest req, HttpRequest<?> httpRequest) {
+    return HttpResponse.ok(service.startRegistration(req, clientIp(httpRequest)));
   }
 
   @Post("/registration/finish")
-  public HttpResponse<Map<String, Object>> finishRegistration(@Body FinishRegistrationRequest req) {
-    CeremonyResponse wire = CeremonyWireMapper.forRegistration(service.finishRegistration(req));
+  public HttpResponse<Map<String, Object>> finishRegistration(
+      @Body FinishRegistrationRequest req, HttpRequest<?> httpRequest) {
+    CeremonyResponse wire =
+        CeremonyWireMapper.forRegistration(service.finishRegistration(req, clientIp(httpRequest)));
     return HttpResponse.<Map<String, Object>>status(
             io.micronaut.http.HttpStatus.valueOf(wire.status()))
         .body(wire.body());
@@ -71,14 +81,14 @@ public class PkAuthCeremonyController {
 
   @Post("/authentication/start")
   public HttpResponse<StartAuthenticationResponse> startAuthentication(
-      @Body StartAuthenticationRequest req) {
-    return HttpResponse.ok(service.startAuthentication(req));
+      @Body StartAuthenticationRequest req, HttpRequest<?> httpRequest) {
+    return HttpResponse.ok(service.startAuthentication(req, clientIp(httpRequest)));
   }
 
   @Post("/authentication/finish")
   public HttpResponse<Map<String, Object>> finishAuthentication(
-      @Body FinishAuthenticationRequest req) {
-    AssertionResult result = service.finishAuthentication(req);
+      @Body FinishAuthenticationRequest req, HttpRequest<?> httpRequest) {
+    AssertionResult result = service.finishAuthentication(req, clientIp(httpRequest));
     if (result instanceof AssertionResult.Success success) {
       String token = PkAuthCeremonyJwt.mintForAssertion(success, jwtIssuer);
       String label =
@@ -95,5 +105,37 @@ public class PkAuthCeremonyController {
     return HttpResponse.<Map<String, Object>>status(
             io.micronaut.http.HttpStatus.valueOf(wire.status()))
         .body(wire.body());
+  }
+
+  /**
+   * Maps a {@link CeremonyRateLimitedException} thrown by {@code startRegistration} / {@code
+   * startAuthentication} to the canonical {@code 429} wire shape. The finish endpoints surface
+   * limiter refusal through {@code AssertionResult.RateLimited} / {@code
+   * RegistrationResult.RateLimited} and so do not route through this handler.
+   *
+   * @since 0.9.1
+   */
+  @Error(exception = CeremonyRateLimitedException.class)
+  public HttpResponse<Map<String, Object>> handleRateLimited(CeremonyRateLimitedException ex) {
+    LOG.info("auth.ceremony rate-limited bucket={}", ex.bucket());
+    CeremonyResponse wire = CeremonyWireMapper.rateLimited();
+    return HttpResponse.<Map<String, Object>>status(
+            io.micronaut.http.HttpStatus.valueOf(wire.status()))
+        .body(wire.body());
+  }
+
+  /**
+   * Extracts the source IP from the Micronaut {@link HttpRequest}. Falls back to {@code null} when
+   * the request lacks a remote address (e.g. in-process test dispatch).
+   */
+  private static String clientIp(HttpRequest<?> request) {
+    if (request == null) {
+      return null;
+    }
+    InetSocketAddress addr = request.getRemoteAddress();
+    if (addr == null || addr.getAddress() == null) {
+      return null;
+    }
+    return addr.getAddress().getHostAddress();
   }
 }

@@ -157,11 +157,27 @@ class DefaultPasskeyAuthenticationServiceTest {
     assertThat(resp.publicKey().user().name()).isEqualTo("alice");
     assertThat(resp.publicKey().user().displayName()).isEqualTo("Alice");
     assertThat(resp.publicKey().challenge()).containsExactly(CHALLENGE);
-    assertThat(resp.publicKey().excludeCredentials()).isNull();
+    // Privacy invariant (TODO #6): brand-new usernames must yield a non-null empty list so the
+    // wire shape is indistinguishable from existing users with no credentials to exclude.
+    assertThat(resp.publicKey().excludeCredentials()).isNotNull().isEmpty();
 
     verify(challengeStore)
         .put(eq(CHALLENGE_ID), any(ChallengeRecord.class), eq(Duration.ofMinutes(5)));
     verify(metrics).incrementCounter("pkauth.registration.start", "rp", "example.com");
+  }
+
+  @Test
+  void startRegistrationSerializesEmptyExcludeCredentialsAsJsonArray() {
+    // Belt-and-braces wire check (TODO #6): even with NON_NULL inclusion, an empty list must
+    // serialize as [] and the excludeCredentials key must be present so an unknown / brand-new
+    // username's response is byte-indistinguishable from a known user's response.
+    when(userLookup.createOrGetUserHandle("brand-new")).thenReturn(USER_HANDLE);
+    when(credentialRepository.findByUserHandle(USER_HANDLE)).thenReturn(List.of());
+
+    StartRegistrationResponse resp =
+        service.startRegistration(new StartRegistrationRequest("brand-new", null, null, null));
+    String json = jsonMapper.writeValueAsString(resp.publicKey());
+    assertThat(json).contains("\"excludeCredentials\":[]");
   }
 
   @Test
@@ -181,10 +197,36 @@ class DefaultPasskeyAuthenticationServiceTest {
   }
 
   @Test
-  void startAuthenticationOmitsAllowCredentialsForUsernamelessFlow() {
+  void startAuthenticationReturnsEmptyAllowCredentialsForUsernamelessFlow() {
+    // Privacy invariant (TODO #6): the usernameless flow must produce a non-null empty list so
+    // it is wire-indistinguishable from an unknown-username request.
     StartAuthenticationResponse resp =
         service.startAuthentication(new StartAuthenticationRequest(null, null));
-    assertThat(resp.publicKey().allowCredentials()).isNull();
+    assertThat(resp.publicKey().allowCredentials()).isNotNull().isEmpty();
+  }
+
+  @Test
+  void startAuthenticationReturnsEmptyAllowCredentialsForUnknownUsername() {
+    // Privacy invariant (TODO #6): an unknown username must produce the same empty-list shape
+    // as a known user with no credentials registered. Emitting null here was the
+    // account-enumeration leak fixed in this change.
+    when(userLookup.findUserHandleByUsername("ghost")).thenReturn(Optional.empty());
+
+    StartAuthenticationResponse resp =
+        service.startAuthentication(new StartAuthenticationRequest("ghost", null));
+
+    assertThat(resp.publicKey().allowCredentials()).isNotNull().isEmpty();
+  }
+
+  @Test
+  void startAuthenticationSerializesEmptyAllowCredentialsAsJsonArray() {
+    // Belt-and-braces wire check (TODO #6): an unknown user must produce an
+    // "allowCredentials":[] field present in the JSON, not an omitted field.
+    when(userLookup.findUserHandleByUsername("ghost")).thenReturn(Optional.empty());
+    StartAuthenticationResponse resp =
+        service.startAuthentication(new StartAuthenticationRequest("ghost", null));
+    String json = jsonMapper.writeValueAsString(resp.publicKey());
+    assertThat(json).contains("\"allowCredentials\":[]");
   }
 
   // -- Finish registration ------------------------------------------------------------------

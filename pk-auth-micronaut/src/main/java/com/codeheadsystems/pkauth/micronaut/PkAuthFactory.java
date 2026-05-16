@@ -4,6 +4,7 @@ package com.codeheadsystems.pkauth.micronaut;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.admin.DefaultAdminService;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
+import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
@@ -19,6 +20,7 @@ import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
 import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.otp.SmsSender;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -99,6 +101,18 @@ public class PkAuthFactory {
     return new PkAuthJwtValidator(cfg, keyset, clock);
   }
 
+  /**
+   * Default in-memory {@link CeremonyRateLimiter} — hosts running more than one replica MUST supply
+   * a shared (Redis / DB-backed) bean to replace this. See {@link InMemoryCeremonyRateLimiter}
+   * javadoc.
+   *
+   * @since 0.9.1
+   */
+  @Singleton
+  CeremonyRateLimiter ceremonyRateLimiter() {
+    return new InMemoryCeremonyRateLimiter();
+  }
+
   @Singleton
   PasskeyAuthenticationService ceremonyService(
       CredentialRepository credentialRepository,
@@ -106,7 +120,8 @@ public class PkAuthFactory {
       ChallengeStore challengeStore,
       RelyingPartyConfig rp,
       CeremonyConfig ceremonyConfig,
-      ClockProvider clock) {
+      ClockProvider clock,
+      CeremonyRateLimiter rateLimiter) {
     return PasskeyAuthenticationServices.builder()
         .credentialRepository(credentialRepository)
         .userLookup(userLookup)
@@ -114,6 +129,7 @@ public class PkAuthFactory {
         .relyingPartyConfig(rp)
         .ceremonyConfig(ceremonyConfig)
         .clockProvider(clock)
+        .ceremonyRateLimiter(rateLimiter)
         .build();
   }
 

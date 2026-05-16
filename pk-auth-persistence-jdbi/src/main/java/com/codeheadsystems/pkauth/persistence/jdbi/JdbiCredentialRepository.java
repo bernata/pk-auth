@@ -6,6 +6,8 @@ import com.codeheadsystems.pkauth.api.Transport;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
+import com.codeheadsystems.pkauth.spi.DuplicateCredentialException;
+import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -19,7 +21,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.mapper.RowMapper;
 
 /**
@@ -47,33 +51,38 @@ public final class JdbiCredentialRepository implements CredentialRepository {
       transportWire[i++] = t.wireName();
     }
     int inserted =
-        jdbi.withHandle(
-            h ->
-                h.createUpdate(
-                        "INSERT INTO credentials (credential_id, user_handle, public_key_cose,"
-                            + " sign_count, label, aaguid, transports, backup_eligible,"
-                            + " backup_state, created_at, last_used_at)"
-                            + " VALUES (:cid, :uh, :pk, :sc, :label, :aaguid, :transports,"
-                            + " :be, :bs, :createdAt, :lastUsedAt)"
-                            + " ON CONFLICT (credential_id) DO NOTHING")
-                    .bind("cid", record.credentialId().value())
-                    .bind("uh", record.userHandle().value())
-                    .bind("pk", record.publicKeyCose())
-                    .bind("sc", record.signCount())
-                    .bind("label", record.label())
-                    .bind("aaguid", record.aaguid())
-                    .bindArray("transports", String.class, (Object[]) transportWire)
-                    .bind("be", record.backupEligible())
-                    .bind("bs", record.backupState())
-                    .bind("createdAt", OffsetDateTime.ofInstant(record.createdAt(), ZoneOffset.UTC))
-                    .bind(
-                        "lastUsedAt",
-                        record.lastUsedAt() == null
-                            ? null
-                            : OffsetDateTime.ofInstant(record.lastUsedAt(), ZoneOffset.UTC))
-                    .execute());
+        wrap(
+            "credentials.save",
+            () ->
+                jdbi.withHandle(
+                    h ->
+                        h.createUpdate(
+                                "INSERT INTO credentials (credential_id, user_handle,"
+                                    + " public_key_cose, sign_count, label, aaguid, transports,"
+                                    + " backup_eligible, backup_state, created_at, last_used_at)"
+                                    + " VALUES (:cid, :uh, :pk, :sc, :label, :aaguid,"
+                                    + " :transports, :be, :bs, :createdAt, :lastUsedAt)"
+                                    + " ON CONFLICT (credential_id) DO NOTHING")
+                            .bind("cid", record.credentialId().value())
+                            .bind("uh", record.userHandle().value())
+                            .bind("pk", record.publicKeyCose())
+                            .bind("sc", record.signCount())
+                            .bind("label", record.label())
+                            .bind("aaguid", record.aaguid())
+                            .bindArray("transports", String.class, (Object[]) transportWire)
+                            .bind("be", record.backupEligible())
+                            .bind("bs", record.backupState())
+                            .bind(
+                                "createdAt",
+                                OffsetDateTime.ofInstant(record.createdAt(), ZoneOffset.UTC))
+                            .bind(
+                                "lastUsedAt",
+                                record.lastUsedAt() == null
+                                    ? null
+                                    : OffsetDateTime.ofInstant(record.lastUsedAt(), ZoneOffset.UTC))
+                            .execute()));
     if (inserted == 0) {
-      throw new IllegalStateException(
+      throw new DuplicateCredentialException(
           "Duplicate credential id; refusing to overwrite an existing credential");
     }
   }
@@ -81,28 +90,34 @@ public final class JdbiCredentialRepository implements CredentialRepository {
   /** Finds an active (not revoked) credential by id. */
   @Override
   public Optional<CredentialRecord> findByCredentialId(CredentialId credentialId) {
-    return jdbi.withHandle(
-        h ->
-            h.createQuery(
-                    "SELECT * FROM credentials"
-                        + " WHERE credential_id = :cid AND revoked_at IS NULL")
-                .bind("cid", credentialId.value())
-                .map(MAPPER)
-                .findFirst());
+    return wrap(
+        "credentials.findByCredentialId",
+        () ->
+            jdbi.withHandle(
+                h ->
+                    h.createQuery(
+                            "SELECT * FROM credentials"
+                                + " WHERE credential_id = :cid AND revoked_at IS NULL")
+                        .bind("cid", credentialId.value())
+                        .map(MAPPER)
+                        .findFirst()));
   }
 
   /** Returns only active (not revoked) credentials for the given user handle. */
   @Override
   public List<CredentialRecord> findByUserHandle(UserHandle userHandle) {
-    return jdbi.withHandle(
-        h ->
-            h.createQuery(
-                    "SELECT * FROM credentials"
-                        + " WHERE user_handle = :uh AND revoked_at IS NULL"
-                        + " ORDER BY created_at")
-                .bind("uh", userHandle.value())
-                .map(MAPPER)
-                .list());
+    return wrap(
+        "credentials.findByUserHandle",
+        () ->
+            jdbi.withHandle(
+                h ->
+                    h.createQuery(
+                            "SELECT * FROM credentials"
+                                + " WHERE user_handle = :uh AND revoked_at IS NULL"
+                                + " ORDER BY created_at")
+                        .bind("uh", userHandle.value())
+                        .map(MAPPER)
+                        .list()));
   }
 
   @Override
@@ -110,28 +125,38 @@ public final class JdbiCredentialRepository implements CredentialRepository {
     // Guard against concurrent racing assertions overwriting a higher stored counter with a
     // lower one — that would silently defeat WebAuthn's clone-detection invariant. Only advance
     // the counter when the new value strictly exceeds the stored one.
-    jdbi.useHandle(
-        h ->
-            h.createUpdate(
-                    "UPDATE credentials SET sign_count = :sc, last_used_at = :lua"
-                        + " WHERE credential_id = :cid AND sign_count < :sc"
-                        + "   AND revoked_at IS NULL")
-                .bind("sc", newCount)
-                .bind("lua", OffsetDateTime.ofInstant(lastUsedAt, ZoneOffset.UTC))
-                .bind("cid", credentialId.value())
-                .execute());
+    wrap(
+        "credentials.updateSignCount",
+        () -> {
+          jdbi.useHandle(
+              h ->
+                  h.createUpdate(
+                          "UPDATE credentials SET sign_count = :sc, last_used_at = :lua"
+                              + " WHERE credential_id = :cid AND sign_count < :sc"
+                              + "   AND revoked_at IS NULL")
+                      .bind("sc", newCount)
+                      .bind("lua", OffsetDateTime.ofInstant(lastUsedAt, ZoneOffset.UTC))
+                      .bind("cid", credentialId.value())
+                      .execute());
+          return null;
+        });
   }
 
   @Override
   public void updateLabel(CredentialId credentialId, String label) {
-    jdbi.useHandle(
-        h ->
-            h.createUpdate(
-                    "UPDATE credentials SET label = :label"
-                        + " WHERE credential_id = :cid AND revoked_at IS NULL")
-                .bind("label", label)
-                .bind("cid", credentialId.value())
-                .execute());
+    wrap(
+        "credentials.updateLabel",
+        () -> {
+          jdbi.useHandle(
+              h ->
+                  h.createUpdate(
+                          "UPDATE credentials SET label = :label"
+                              + " WHERE credential_id = :cid AND revoked_at IS NULL")
+                      .bind("label", label)
+                      .bind("cid", credentialId.value())
+                      .execute());
+          return null;
+        });
   }
 
   /**
@@ -150,40 +175,61 @@ public final class JdbiCredentialRepository implements CredentialRepository {
   public void delete(CredentialId credentialId, String reason) {
     String safeReason = reason == null ? DEFAULT_REVOKE_REASON : reason;
     byte[] credIdBytes = credentialId.value();
-    jdbi.useHandle(
-        h -> {
-          // Lookup user_handle before revoking so we can populate the audit event.
-          byte[] userHandle =
-              h.createQuery(
-                      "SELECT user_handle FROM credentials"
-                          + " WHERE credential_id = :cid AND revoked_at IS NULL")
-                  .bind("cid", credIdBytes)
-                  .mapTo(byte[].class)
-                  .findFirst()
-                  .orElse(null);
+    wrap(
+        "credentials.delete",
+        () -> {
+          jdbi.useHandle(
+              h -> {
+                // Lookup user_handle before revoking so we can populate the audit event.
+                byte[] userHandle =
+                    h.createQuery(
+                            "SELECT user_handle FROM credentials"
+                                + " WHERE credential_id = :cid AND revoked_at IS NULL")
+                        .bind("cid", credIdBytes)
+                        .mapTo(byte[].class)
+                        .findFirst()
+                        .orElse(null);
 
-          h.createUpdate(
-                  "UPDATE credentials"
-                      + " SET revoked_at = NOW(), revoked_reason = :reason"
-                      + " WHERE credential_id = :cid AND revoked_at IS NULL")
-              .bind("reason", safeReason)
-              .bind("cid", credIdBytes)
-              .execute();
+                h.createUpdate(
+                        "UPDATE credentials"
+                            + " SET revoked_at = NOW(), revoked_reason = :reason"
+                            + " WHERE credential_id = :cid AND revoked_at IS NULL")
+                    .bind("reason", safeReason)
+                    .bind("cid", credIdBytes)
+                    .execute();
 
-          h.createUpdate(
-                  "INSERT INTO pkauth_audit_events"
-                      + " (event_type, user_handle, subject_id, detail)"
-                      + " VALUES ('credential_revoked', :uh, :subjectId, :detail)")
-              .bind("uh", userHandle)
-              .bind("subjectId", credentialIdHex(credIdBytes))
-              .bind("detail", "reason=" + safeReason)
-              .execute();
+                h.createUpdate(
+                        "INSERT INTO pkauth_audit_events"
+                            + " (event_type, user_handle, subject_id, detail)"
+                            + " VALUES ('credential_revoked', :uh, :subjectId, :detail)")
+                    .bind("uh", userHandle)
+                    .bind("subjectId", credentialIdHex(credIdBytes))
+                    .bind("detail", "reason=" + safeReason)
+                    .execute();
+              });
+          return null;
         });
   }
 
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------
+
+  /**
+   * Runs {@code body} and wraps any {@link JdbiException} (or other unchecked JDBC exception) in a
+   * {@link PkAuthPersistenceException} so adapter exception mappers can produce a uniform 503.
+   * {@link PkAuthPersistenceException} (including {@link DuplicateCredentialException}) is
+   * re-thrown unchanged so the duplicate-credential branch reaches the caller intact.
+   */
+  private static <T> T wrap(String op, Supplier<T> body) {
+    try {
+      return body.get();
+    } catch (PkAuthPersistenceException already) {
+      throw already;
+    } catch (JdbiException e) {
+      throw new PkAuthPersistenceException(op, e.getMessage(), e);
+    }
+  }
 
   /** Returns a hex string representation of the credential id for use as a readable subject_id. */
   private static String credentialIdHex(byte[] credentialId) {

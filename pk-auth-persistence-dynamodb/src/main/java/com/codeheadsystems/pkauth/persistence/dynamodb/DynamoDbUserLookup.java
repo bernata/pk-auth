@@ -3,10 +3,13 @@ package com.codeheadsystems.pkauth.persistence.dynamodb;
 
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.json.Base64Url;
+import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbIndex;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
@@ -31,44 +34,60 @@ public final class DynamoDbUserLookup implements UserLookup {
 
   @Override
   public Optional<UserHandle> findUserHandleByUsername(String username) {
-    return lookupByUsername(username)
-        .map(item -> UserHandle.of(Base64Url.decode(item.getUserHandle())));
+    return wrap(
+        "users.findUserHandleByUsername",
+        () ->
+            lookupByUsername(username)
+                .map(item -> UserHandle.of(Base64Url.decode(item.getUserHandle()))));
   }
 
   @Override
   public Optional<UserView> findUserByHandle(UserHandle handle) {
-    String h = Base64Url.encode(handle.value());
-    UserItem item =
-        table.getItem(Key.builder().partitionValue("USER#" + h).sortValue("META").build());
-    return Optional.ofNullable(item).map(UserItem::toView);
+    return wrap(
+        "users.findUserByHandle",
+        () -> {
+          String h = Base64Url.encode(handle.value());
+          UserItem item =
+              table.getItem(Key.builder().partitionValue("USER#" + h).sortValue("META").build());
+          return Optional.ofNullable(item).map(UserItem::toView);
+        });
   }
 
   @Override
   public UserHandle createOrGetUserHandle(String username) {
-    Optional<UserItem> existing = lookupByUsername(username);
-    if (existing.isPresent()) {
-      return UserHandle.of(Base64Url.decode(existing.get().getUserHandle()));
-    }
-    UserHandle handle = UserHandle.random();
-    UserItem item = UserItem.build(handle, username, username);
-    try {
-      table.putItem(
-          r ->
-              r.item(item)
-                  .conditionExpression(
-                      Expression.builder().expression("attribute_not_exists(pk)").build()));
-      return handle;
-    } catch (ConditionalCheckFailedException race) {
-      return lookupByUsername(username)
-          .map(u -> UserHandle.of(Base64Url.decode(u.getUserHandle())))
-          .orElse(handle);
-    }
+    return wrap(
+        "users.createOrGetUserHandle",
+        () -> {
+          Optional<UserItem> existing = lookupByUsername(username);
+          if (existing.isPresent()) {
+            return UserHandle.of(Base64Url.decode(existing.get().getUserHandle()));
+          }
+          UserHandle handle = UserHandle.random();
+          UserItem item = UserItem.build(handle, username, username);
+          try {
+            table.putItem(
+                r ->
+                    r.item(item)
+                        .conditionExpression(
+                            Expression.builder().expression("attribute_not_exists(pk)").build()));
+            return handle;
+          } catch (ConditionalCheckFailedException race) {
+            return lookupByUsername(username)
+                .map(u -> UserHandle.of(Base64Url.decode(u.getUserHandle())))
+                .orElse(handle);
+          }
+        });
   }
 
   /** Pre-registers a user (test fixture support). */
   public UserHandle register(String username, String displayName) {
     UserHandle handle = UserHandle.random();
-    table.putItem(UserItem.build(handle, username, displayName));
+    wrap(
+        "users.register",
+        () -> {
+          table.putItem(UserItem.build(handle, username, displayName));
+          return null;
+        });
     return handle;
   }
 
@@ -81,5 +100,21 @@ public final class DynamoDbUserLookup implements UserLookup {
         .stream()
         .flatMap(page -> page.items().stream())
         .findFirst();
+  }
+
+  /**
+   * Runs {@code body} and wraps any {@link SdkException} in a {@link PkAuthPersistenceException} so
+   * adapter exception mappers can produce a uniform 503. Documented {@link
+   * ConditionalCheckFailedException} control-flow branches handled inside {@code body} never reach
+   * here.
+   */
+  private static <T> T wrap(String op, Supplier<T> body) {
+    try {
+      return body.get();
+    } catch (PkAuthPersistenceException already) {
+      throw already;
+    } catch (SdkException e) {
+      throw new PkAuthPersistenceException(op, e.getMessage(), e);
+    }
   }
 }

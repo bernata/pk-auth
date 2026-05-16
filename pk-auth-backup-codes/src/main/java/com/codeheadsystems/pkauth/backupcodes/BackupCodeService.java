@@ -289,9 +289,23 @@ public final class BackupCodeService {
     }
 
     if (matchedCode != null) {
-      repository.consume(user, matchedCode.codeId(), now);
-      LOG.info("backup-codes.verify outcome=success user={} codeId={}", user, matchedCode.codeId());
-      return new VerifyResult.Success();
+      // The Argon2 verify above is racy with concurrent verifies of the same code: two
+      // callers can both observe consumed=false and both pass Argon2 before either writes.
+      // The repository.consume contract is the single point of truth — only the caller
+      // whose guarded UPDATE / conditional write actually flipped the row from unconsumed
+      // to consumed receives true. The loser of the race MUST be reported as a miss so
+      // the recovery flow does not mint two JWTs from one code.
+      boolean won = repository.consume(user, matchedCode.codeId(), now);
+      if (won) {
+        LOG.info(
+            "backup-codes.verify outcome=success user={} codeId={}", user, matchedCode.codeId());
+        return new VerifyResult.Success();
+      }
+      LOG.info(
+          "backup-codes.verify outcome=miss reason=race-lost user={} codeId={}",
+          user,
+          matchedCode.codeId());
+      return new VerifyResult.NoMatch();
     }
 
     LOG.info("backup-codes.verify outcome=miss user={}", user);

@@ -83,16 +83,16 @@ public final class CeremonyScenarios {
   }
 
   /**
-   * Usernameless flow: startAuthentication with a null username returns options without
-   * allowCredentials; the FakeAuthenticator picks the sole registered credential and assertion
-   * succeeds.
+   * Usernameless flow: startAuthentication with a null username returns options with an empty
+   * {@code allowCredentials} list (never {@code null} — privacy invariant, see TODO #6); the
+   * FakeAuthenticator picks the sole registered credential and assertion succeeds.
    */
   public void usernamelessFlowSucceedsWithSingleCredential() {
     UserHandle handle = register();
 
     StartAuthenticationResponse start =
         service.startAuthentication(new StartAuthenticationRequest(null, null));
-    assertThat(start.publicKey().allowCredentials()).isNull();
+    assertThat(start.publicKey().allowCredentials()).isNotNull().isEmpty();
 
     AuthenticationResponseJson resp = authenticator.createAssertionResponse(start, handle);
     AssertionResult result =

@@ -15,15 +15,20 @@ import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.jwt.PkAuthCeremonyJwt;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
+import com.codeheadsystems.pkauth.spi.CeremonyRateLimitedException;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import jakarta.inject.Inject;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * The four WebAuthn ceremony endpoints. Mounted under {@code /auth/passkeys} by {@link
@@ -39,6 +44,8 @@ import java.util.Objects;
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
 public class PkAuthCeremonyResource {
+
+  private static final Logger LOG = LoggerFactory.getLogger(PkAuthCeremonyResource.class);
 
   private final PasskeyAuthenticationService service;
   private final PkAuthJwtIssuer issuer;
@@ -57,27 +64,44 @@ public class PkAuthCeremonyResource {
 
   @POST
   @Path("/registration/start")
-  public StartRegistrationResponse startRegistration(StartRegistrationRequest request) {
-    return service.startRegistration(request);
+  public Response startRegistration(
+      StartRegistrationRequest request, @Context HttpServletRequest httpRequest) {
+    try {
+      StartRegistrationResponse body = service.startRegistration(request, clientIp(httpRequest));
+      return Response.ok(body).build();
+    } catch (CeremonyRateLimitedException ex) {
+      return rateLimitedResponse(ex);
+    }
   }
 
   @POST
   @Path("/registration/finish")
-  public Response finishRegistration(FinishRegistrationRequest request) {
-    CeremonyResponse wire = CeremonyWireMapper.forRegistration(service.finishRegistration(request));
+  public Response finishRegistration(
+      FinishRegistrationRequest request, @Context HttpServletRequest httpRequest) {
+    CeremonyResponse wire =
+        CeremonyWireMapper.forRegistration(
+            service.finishRegistration(request, clientIp(httpRequest)));
     return Response.status(wire.status()).entity(wire.body()).build();
   }
 
   @POST
   @Path("/authentication/start")
-  public StartAuthenticationResponse startAuthentication(StartAuthenticationRequest request) {
-    return service.startAuthentication(request);
+  public Response startAuthentication(
+      StartAuthenticationRequest request, @Context HttpServletRequest httpRequest) {
+    try {
+      StartAuthenticationResponse body =
+          service.startAuthentication(request, clientIp(httpRequest));
+      return Response.ok(body).build();
+    } catch (CeremonyRateLimitedException ex) {
+      return rateLimitedResponse(ex);
+    }
   }
 
   @POST
   @Path("/authentication/finish")
-  public Response finishAuthentication(FinishAuthenticationRequest request) {
-    AssertionResult result = service.finishAuthentication(request);
+  public Response finishAuthentication(
+      FinishAuthenticationRequest request, @Context HttpServletRequest httpRequest) {
+    AssertionResult result = service.finishAuthentication(request, clientIp(httpRequest));
     if (result instanceof AssertionResult.Success s) {
       String token = PkAuthCeremonyJwt.mintForAssertion(s, issuer);
       String label =
@@ -89,6 +113,24 @@ public class PkAuthCeremonyResource {
       return Response.status(wire.status()).entity(wire.body()).build();
     }
     CeremonyResponse wire = CeremonyWireMapper.forAssertionError(result);
+    return Response.status(wire.status()).entity(wire.body()).build();
+  }
+
+  /** Extracts the source IP from the servlet request, falling back to the remote address. */
+  private static String clientIp(HttpServletRequest httpRequest) {
+    return httpRequest == null ? null : httpRequest.getRemoteAddr();
+  }
+
+  /**
+   * Maps a {@link CeremonyRateLimitedException} thrown by {@code startRegistration} / {@code
+   * startAuthentication} to the canonical {@code 429} wire shape. See {@link
+   * CeremonyWireMapper#rateLimited()}.
+   *
+   * @since 0.9.1
+   */
+  private static Response rateLimitedResponse(CeremonyRateLimitedException ex) {
+    LOG.info("auth.ceremony rate-limited bucket={}", ex.bucket());
+    CeremonyResponse wire = CeremonyWireMapper.rateLimited();
     return Response.status(wire.status()).entity(wire.body()).build();
   }
 }

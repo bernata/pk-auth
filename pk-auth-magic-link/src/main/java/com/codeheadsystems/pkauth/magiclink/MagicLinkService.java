@@ -8,6 +8,7 @@ import com.codeheadsystems.pkauth.jwt.JwtVerificationResult;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
+import com.codeheadsystems.pkauth.spi.ConsumedJtiStore;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -34,13 +35,14 @@ import org.slf4j.LoggerFactory;
  *   <li>Passwordless login — the {@code pkauth.purpose} claim is {@code login}.
  * </ul>
  *
- * <p>Single-use is enforced by tracking consumed JTI values in a Caffeine cache whose entries
- * expire after {@code consumedJtiTtl} (default: {@link #DEFAULT_CONSUMED_JTI_TTL}). The cache is
- * in-memory per-process — multi-instance deployments need a shared store via a host-provided {@link
- * MagicLinkRateLimiter}-style hook (TODO; until then, single-use is best-effort per-process and a
- * token redeemed on one replica can be redeemed again on another within its TTL window). Rate
- * limiting (brief §6.4 — N emails per user/purpose per hour) is tracked through {@link
- * MagicLinkRateLimiter}.
+ * <p>Single-use is enforced by recording consumed JTI values in a {@link ConsumedJtiStore} whose
+ * entries expire after {@code consumedJtiTtl} (default: {@link #DEFAULT_CONSUMED_JTI_TTL}). The
+ * SPI's default in-process implementation ({@link InMemoryConsumedJtiStore}) is dev/single-instance
+ * only — multi-replica deployments MUST inject a shared (Redis/DB-backed) store, otherwise a token
+ * redeemed on one replica can be redeemed again on another within its TTL window. The service logs
+ * a startup WARN when the in-memory default is wired. Rate limiting (brief §6.4 — N emails per
+ * user/purpose per hour) is tracked through {@link MagicLinkRateLimiter}, which follows the same
+ * pattern (dev-only in-process default; production replaces with a shared implementation).
  */
 public final class MagicLinkService {
 
@@ -120,7 +122,8 @@ public final class MagicLinkService {
   private final String baseUrl;
   private final int rateLimit;
   private final MagicLinkRateLimiter rateLimiter;
-  private final Cache<String, Boolean> consumedJtis;
+  private final ConsumedJtiStore consumedJtiStore;
+  private final Duration consumedJtiTtl;
 
   public MagicLinkService(
       PkAuthJwtIssuer issuer,
@@ -169,7 +172,8 @@ public final class MagicLinkService {
 
   /**
    * Test seam allowing override of the consumed-JTI cache TTL — important for tests that need to
-   * advance the clock past the cache expiration.
+   * advance the clock past the cache expiration. Defaults to a {@link InMemoryConsumedJtiStore}
+   * sized to {@code consumedJtiTtl}.
    */
   public MagicLinkService(
       PkAuthJwtIssuer issuer,
@@ -181,6 +185,37 @@ public final class MagicLinkService {
       int rateLimit,
       MagicLinkRateLimiter rateLimiter,
       Duration consumedJtiTtl) {
+    this(
+        issuer,
+        validator,
+        emailSender,
+        userLookup,
+        clockProvider,
+        baseUrl,
+        rateLimit,
+        rateLimiter,
+        consumedJtiTtl,
+        new InMemoryConsumedJtiStore(Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl")));
+  }
+
+  /**
+   * Full-control constructor accepting a host-supplied {@link ConsumedJtiStore}. Multi-replica
+   * deployments MUST inject a shared (Redis/DB-backed) implementation here; the other constructors
+   * default to {@link InMemoryConsumedJtiStore}, which is dev/single-instance only.
+   *
+   * @since 0.9.1
+   */
+  public MagicLinkService(
+      PkAuthJwtIssuer issuer,
+      PkAuthJwtValidator validator,
+      EmailSender emailSender,
+      UserLookup userLookup,
+      ClockProvider clockProvider,
+      String baseUrl,
+      int rateLimit,
+      MagicLinkRateLimiter rateLimiter,
+      Duration consumedJtiTtl,
+      ConsumedJtiStore consumedJtiStore) {
     this.issuer = Objects.requireNonNull(issuer, "issuer");
     this.validator = Objects.requireNonNull(validator, "validator");
     this.emailSender = Objects.requireNonNull(emailSender, "emailSender");
@@ -189,10 +224,16 @@ public final class MagicLinkService {
     this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl");
     this.rateLimit = rateLimit;
     this.rateLimiter = Objects.requireNonNull(rateLimiter, "rateLimiter");
-    this.consumedJtis =
-        Caffeine.newBuilder()
-            .expireAfterWrite(Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl"))
-            .build();
+    this.consumedJtiTtl = Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl");
+    this.consumedJtiStore = Objects.requireNonNull(consumedJtiStore, "consumedJtiStore");
+    if (consumedJtiStore instanceof InMemoryConsumedJtiStore) {
+      LOG.warn(
+          "magiclink.consumed-jti-store InMemoryConsumedJtiStore wired — FOR DEV /"
+              + " SINGLE-INSTANCE USE ONLY. Production deployments with more than one replica"
+              + " MUST inject a shared (Redis/DB-backed) ConsumedJtiStore via the"
+              + " MagicLinkService(... ConsumedJtiStore) constructor, otherwise a captured"
+              + " magic-link can be replayed across replicas within its TTL window.");
+    }
   }
 
   /**
@@ -283,10 +324,11 @@ public final class MagicLinkService {
     String email = stringClaim(claims.additionalClaims(), CLAIM_EMAIL);
 
     // Single-use: the JTI is opaque; we don't have direct access to it through JwtClaims, so we
-    // re-parse the JWT just for the id. Cheap because we already validated it above.
+    // re-parse the JWT just for the id. Cheap because we already validated it above. The store's
+    // tryConsume contract is atomic — concurrent verifies of the same JTI will see exactly one
+    // true return, with the loser observing AlreadyConsumed.
     String jti = jtiOf(token);
-    Boolean previous = consumedJtis.asMap().putIfAbsent(jti, Boolean.TRUE);
-    if (previous != null) {
+    if (!consumedJtiStore.tryConsume(jti, consumedJtiTtl)) {
       return new ConsumeResult.AlreadyConsumed();
     }
     return new ConsumeResult.Success(claims.userHandle(), purpose, email);
