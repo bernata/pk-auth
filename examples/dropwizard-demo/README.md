@@ -1,8 +1,8 @@
 # pk-auth Dropwizard demo
 
 Single-page demo of the [pk-auth Dropwizard adapter](../../pk-auth-dropwizard). Boots a
-Dropwizard 4 application with the in-memory testkit SPIs, mounts the four passkey ceremony
-endpoints under `/auth/**`, and the admin endpoints under `/auth/admin/**`, then serves an
+Dropwizard 5 application with the in-memory testkit SPIs, mounts the four passkey ceremony
+endpoints under `/auth/passkeys/**`, and the admin endpoints under `/auth/admin/**`, then serves an
 HTML+vanilla-JS page that drives the full flow with `navigator.credentials.{create,get}`.
 
 ## Run it
@@ -22,8 +22,8 @@ To stop, hit `Ctrl-C`.
 
 | Section | Endpoint | Notes |
 |---|---|---|
-| Register passkey | `POST /auth/registration/start`, `POST /auth/registration/finish` | First credential mints the user account; subsequent calls add additional passkeys (multi-passkey). |
-| Sign in | `POST /auth/authentication/start`, `POST /auth/authentication/finish` | On success returns a pk-auth JWT (HS256). |
+| Register passkey | `POST /auth/passkeys/registration/start`, `POST /auth/passkeys/registration/finish` | First credential mints the user account; subsequent calls add additional passkeys (multi-passkey). |
+| Sign in | `POST /auth/passkeys/authentication/start`, `POST /auth/passkeys/authentication/finish` | On success returns a pk-auth JWT (HS256). |
 | Account summary | `GET /auth/admin/account` | Credential count, remaining backup codes, verification flags. |
 | List / rename / delete passkeys | `GET/PATCH/DELETE /auth/admin/credentials*` | Last-credential guard rejects deletions that would lock the user out. |
 | Backup codes | `POST /auth/admin/backup-codes/regenerate`, `GET /auth/admin/backup-codes/count` | Plaintext shown exactly once. |

@@ -5,11 +5,11 @@ plugins {
 }
 
 description =
-    "pk-auth Dropwizard 4 adapter: ConfiguredBundle, Jersey resources, JWT auth filter," +
-        " and Dagger 2 wiring (see ADR 0004)."
+    "pk-auth Dropwizard 5 adapter: ConfiguredBundle, Jersey resources, JWT auth filter," +
+        " and Dagger 2 wiring (see ADR 0004, ADR 0010)."
 
 tasks.named<JavaCompile>("compileJava") {
-    // Dropwizard 4 pulls a handful of automatic-module dependencies (jersey, jetty, …) which
+    // Dropwizard 5 pulls a handful of automatic-module dependencies (jersey, jetty, …) which
     // would otherwise emit lint warnings that -Werror turns fatal. Mirrors the JDBI module.
     // -Xlint:-processing silences javac's "No processor claimed any of these annotations" hint
     // — Dagger only claims its own annotations, and JAX-RS/Jakarta annotations are processed by

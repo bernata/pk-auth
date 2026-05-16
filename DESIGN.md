@@ -288,8 +288,9 @@ SPIs.
   (Flyway). The schema is hand-tuned for the SPI access patterns;
   no JPA / Hibernate.
 - Tables: `pkauth_users`, `pkauth_credentials`, `pkauth_challenges`,
-  `pkauth_backup_codes`, `pkauth_otp_codes`, `pkauth_magic_links`.
-  All FK-cascade on user delete.
+  `pkauth_backup_codes`, `pkauth_otp_codes`. (Magic-link tokens are not
+  persisted — the JWT itself is the credential; consumed JTIs live in
+  a per-process TTL-bounded cache.) All FK-cascade on user delete.
 - Atomic-claim operations (`takeOnce`, `claimBackupCode`) use
   conditional `UPDATE ... WHERE consumed_at IS NULL RETURNING ...`.
 

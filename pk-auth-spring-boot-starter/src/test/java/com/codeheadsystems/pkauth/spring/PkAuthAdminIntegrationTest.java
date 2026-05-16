@@ -210,8 +210,9 @@ class PkAuthAdminIntegrationTest {
                     .content(objectMapper.writeValueAsString(fa)))
             .andExpect(status().isOk())
             .andReturn();
-    String header = authResult.getResponse().getHeader("Authorization");
-    assertThat(header).isNotNull();
-    return header.substring("Bearer ".length());
+    String body = authResult.getResponse().getContentAsString();
+    String token = objectMapper.readTree(body).path("token").asString();
+    assertThat(token).isNotBlank();
+    return token;
   }
 }

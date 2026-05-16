@@ -3,6 +3,7 @@ package com.codeheadsystems.pkauth.dropwizard.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.codeheadsystems.pkauth.admin.AdminErrorBody;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import jakarta.ws.rs.core.Response;
 import java.time.Duration;
@@ -36,16 +37,29 @@ final class AdminResultMapperTest {
   }
 
   @Test
-  void validationFailedIs400() {
+  void validationFailedIs400WithSharedErrorBody() {
     Response r = AdminResultMapper.toResponse(new AdminResult.ValidationFailed<>("bad input"));
     assertThat(r.getStatus()).isEqualTo(400);
-    assertThat(r.getEntity()).isEqualTo("bad input");
+    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("validation_failed", "bad input"));
   }
 
   @Test
-  void conflictIs409() {
+  void conflictIs409WithSharedErrorBody() {
     Response r = AdminResultMapper.toResponse(new AdminResult.Conflict<>("invariant violation"));
     assertThat(r.getStatus()).isEqualTo(409);
+    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("conflict", "invariant violation"));
+  }
+
+  @Test
+  void notFoundCarriesSharedErrorBody() {
+    Response r = AdminResultMapper.toResponse(new AdminResult.NotFound<>());
+    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("not_found", null));
+  }
+
+  @Test
+  void forbiddenCarriesSharedErrorBody() {
+    Response r = AdminResultMapper.toResponse(new AdminResult.Forbidden<>());
+    assertThat(r.getEntity()).isEqualTo(new AdminErrorBody("forbidden", null));
   }
 
   @Test

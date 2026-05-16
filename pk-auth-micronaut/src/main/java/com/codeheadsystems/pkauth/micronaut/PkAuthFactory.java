@@ -50,8 +50,14 @@ public class PkAuthFactory {
   }
 
   @Singleton
-  CeremonyConfig ceremonyConfig() {
-    return CeremonyConfig.defaults();
+  CeremonyConfig ceremonyConfig(PkAuthConfiguration config) {
+    CeremonyConfig defaults = CeremonyConfig.defaults();
+    return new CeremonyConfig(
+        config.getCeremony().getChallengeTtl(),
+        defaults.userVerification(),
+        defaults.residentKey(),
+        defaults.attestationConveyance(),
+        defaults.counterRegression());
   }
 
   @Singleton

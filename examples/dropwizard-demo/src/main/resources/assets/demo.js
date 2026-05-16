@@ -7,18 +7,9 @@ import { PkAuthClient, base64url } from "./passkeys-browser/index.js";
 
 const TOKEN_KEY = "pkauth-demo-token";
 
-// Dropwizard mounts ceremony at /auth/...; Spring + Micronaut at /auth/passkeys/....
-const DEMO_PATHS = {
-  dropwizard: {
-    startReg: "/auth/registration/start",
-    finishReg: "/auth/registration/finish",
-    startAuth: "/auth/authentication/start",
-    finishAuth: "/auth/authentication/finish",
-  },
-};
-
-const demoName = document.body.dataset.demo ?? "spring-boot";
-const ceremonyOptions = DEMO_PATHS[demoName] ? { paths: DEMO_PATHS[demoName] } : {};
+// All three adapters now mount the ceremony at /auth/passkeys/... — the per-adapter overrides
+// previously needed for Dropwizard have been removed.
+const ceremonyOptions = {};
 
 let token = localStorage.getItem(TOKEN_KEY);
 let lastPhone = "";

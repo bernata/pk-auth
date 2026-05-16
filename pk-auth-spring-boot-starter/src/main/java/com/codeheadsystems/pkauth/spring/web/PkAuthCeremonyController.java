@@ -2,6 +2,8 @@
 package com.codeheadsystems.pkauth.spring.web;
 
 import com.codeheadsystems.pkauth.api.AssertionResult;
+import com.codeheadsystems.pkauth.api.CeremonyWireMapper;
+import com.codeheadsystems.pkauth.api.CeremonyWireMapper.CeremonyResponse;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.RegistrationResult;
@@ -16,7 +18,6 @@ import com.codeheadsystems.pkauth.jwt.JwtClaims;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import java.util.List;
-import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -67,44 +68,14 @@ public class PkAuthCeremonyController {
   @PostMapping("/registration/finish")
   public ResponseEntity<Object> finishRegistration(@RequestBody FinishRegistrationRequest req) {
     RegistrationResult result = service.finishRegistration(req);
-    return switch (result) {
-      case RegistrationResult.Success success -> {
-        LOG.info(
-            "auth.registration.success user={} credentialId={}",
-            success.credential().userHandle(),
-            Base64Url.encode(success.credential().credentialId()));
-        yield ResponseEntity.ok(
-            Map.of(
-                "outcome", "success",
-                "userHandle", Base64Url.encode(success.credential().userHandle().value()),
-                "credentialId", Base64Url.encode(success.credential().credentialId()),
-                "label", success.credential().label()));
-      }
-      case RegistrationResult.InvalidChallenge ic ->
-          ResponseEntity.badRequest()
-              .body(Map.of("outcome", "invalid_challenge", "detail", ic.detail()));
-      case RegistrationResult.OriginMismatch om ->
-          ResponseEntity.badRequest()
-              .body(
-                  Map.of(
-                      "outcome", "origin_mismatch",
-                      "expected", om.expected(),
-                      "actual", om.actual()));
-      case RegistrationResult.AttestationRejected ar ->
-          ResponseEntity.badRequest()
-              .body(Map.of("outcome", "attestation_rejected", "reason", ar.reason()));
-      case RegistrationResult.DuplicateCredential dc ->
-          ResponseEntity.status(409)
-              .body(
-                  Map.of(
-                      "outcome",
-                      "duplicate_credential",
-                      "credentialId",
-                      Base64Url.encode(dc.credentialId())));
-      case RegistrationResult.InvalidPayload ip ->
-          ResponseEntity.badRequest()
-              .body(Map.of("outcome", "invalid_payload", "detail", ip.detail()));
-    };
+    if (result instanceof RegistrationResult.Success success) {
+      LOG.info(
+          "auth.registration.success user={} credentialId={}",
+          success.credential().userHandle(),
+          Base64Url.encode(success.credential().credentialId()));
+    }
+    CeremonyResponse wire = CeremonyWireMapper.forRegistration(result);
+    return ResponseEntity.status(wire.status()).body(wire.body());
   }
 
   // -- Authentication --------------------------------------------------------------------------
@@ -119,64 +90,23 @@ public class PkAuthCeremonyController {
   @PostMapping("/authentication/finish")
   public ResponseEntity<Object> finishAuthentication(@RequestBody FinishAuthenticationRequest req) {
     AssertionResult result = service.finishAuthentication(req);
-    return switch (result) {
-      case AssertionResult.Success success -> {
-        CredentialRecord cred =
-            credentialRepository
-                .findByCredentialId(success.credentialId())
-                .orElseThrow(() -> new IllegalStateException("credential vanished after assert"));
-        String token =
-            jwtIssuer.issue(
-                JwtClaims.forPasskey(success.userHandle(), success.credentialId(), List.of("pwk")));
-        LOG.info(
-            "auth.authentication.success user={} credentialId={} signCount={}",
-            success.userHandle(),
-            Base64Url.encode(success.credentialId()),
-            success.signCount());
-        yield ResponseEntity.ok()
-            .header("Authorization", "Bearer " + token)
-            .body(
-                Map.of(
-                    "outcome",
-                    "success",
-                    "userHandle",
-                    Base64Url.encode(success.userHandle().value()),
-                    "credentialId",
-                    Base64Url.encode(success.credentialId()),
-                    "label",
-                    cred.label(),
-                    "token",
-                    token));
-      }
-      case AssertionResult.UnknownCredential uc ->
-          ResponseEntity.status(404)
-              .body(
-                  Map.of(
-                      "outcome",
-                      "unknown_credential",
-                      "credentialId",
-                      Base64Url.encode(uc.credentialId())));
-      case AssertionResult.InvalidChallenge ic ->
-          ResponseEntity.badRequest()
-              .body(Map.of("outcome", "invalid_challenge", "detail", ic.detail()));
-      case AssertionResult.OriginMismatch om ->
-          ResponseEntity.badRequest()
-              .body(
-                  Map.of(
-                      "outcome", "origin_mismatch",
-                      "expected", om.expected(),
-                      "actual", om.actual()));
-      case AssertionResult.CounterRegression cr ->
-          ResponseEntity.status(409)
-              .body(
-                  Map.of(
-                      "outcome", "counter_regression",
-                      "stored", cr.stored(),
-                      "received", cr.received()));
-      case AssertionResult.UserVerificationRequired uv ->
-          ResponseEntity.status(401).body(Map.of("outcome", "user_verification_required"));
-      case AssertionResult.InvalidSignature is ->
-          ResponseEntity.status(401).body(Map.of("outcome", "invalid_signature"));
-    };
+    if (result instanceof AssertionResult.Success success) {
+      CredentialRecord cred =
+          credentialRepository
+              .findByCredentialId(success.credentialId())
+              .orElseThrow(() -> new IllegalStateException("credential vanished after assert"));
+      String token =
+          jwtIssuer.issue(
+              JwtClaims.forPasskey(success.userHandle(), success.credentialId(), List.of("pwk")));
+      LOG.info(
+          "auth.authentication.success user={} credentialId={} signCount={}",
+          success.userHandle(),
+          Base64Url.encode(success.credentialId()),
+          success.signCount());
+      CeremonyResponse wire = CeremonyWireMapper.forAssertionSuccess(success, token, cred.label());
+      return ResponseEntity.status(wire.status()).body(wire.body());
+    }
+    CeremonyResponse wire = CeremonyWireMapper.forAssertionError(result);
+    return ResponseEntity.status(wire.status()).body(wire.body());
   }
 }

@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.micronaut;
 
 import com.codeheadsystems.pkauth.admin.AccountSummary;
+import com.codeheadsystems.pkauth.admin.AdminErrorBody;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.admin.BackupCodesGenerated;
@@ -113,7 +114,11 @@ public class PkAuthAdminController {
     return map(adminService.completePhoneVerification(actor, actor, body.phone(), body.code()));
   }
 
-  /** Maps an {@link AdminResult} to an HTTP response. */
+  /**
+   * Maps an {@link AdminResult} to an HTTP response. Non-success bodies use the shared {@link
+   * AdminErrorBody} envelope so the wire shape matches the Spring and Dropwizard adapters
+   * byte-for-byte.
+   */
   static HttpResponse<?> map(AdminResult<?> result) {
     return switch (result) {
       // Success with no payload (delete, complete-verification etc.) must not return a bare
@@ -121,15 +126,16 @@ public class PkAuthAdminController {
       // become a 500. 204 No Content matches the semantic and serializes trivially.
       case AdminResult.Success<?> s when s.value() == null -> HttpResponse.noContent();
       case AdminResult.Success<?> s -> HttpResponse.ok(s.value());
-      case AdminResult.NotFound<?> n -> HttpResponse.notFound();
-      case AdminResult.Forbidden<?> f -> HttpResponse.status(HttpStatus.FORBIDDEN);
-      case AdminResult.ValidationFailed<?> v ->
-          HttpResponse.badRequest(new ErrorBody("validation_failed", v.detail()));
+      case AdminResult.NotFound<?> n -> HttpResponse.notFound().body(AdminErrorBody.of(result));
+      case AdminResult.Forbidden<?> f ->
+          HttpResponse.status(HttpStatus.FORBIDDEN).body(AdminErrorBody.of(result));
+      case AdminResult.ValidationFailed<?> v -> HttpResponse.badRequest(AdminErrorBody.of(result));
       case AdminResult.Conflict<?> c ->
-          HttpResponse.status(HttpStatus.CONFLICT).body(new ErrorBody("conflict", c.detail()));
+          HttpResponse.status(HttpStatus.CONFLICT).body(AdminErrorBody.of(result));
       case AdminResult.RateLimited<?> r ->
           HttpResponse.status(HttpStatus.TOO_MANY_REQUESTS)
-              .header("Retry-After", Long.toString(r.retryAfter().toSeconds()));
+              .header("Retry-After", Long.toString(r.retryAfter().toSeconds()))
+              .body(AdminErrorBody.of(result));
     };
   }
 
@@ -144,8 +150,6 @@ public class PkAuthAdminController {
   public record PhoneRequest(String phone) {}
 
   public record PhoneCompleteRequest(String phone, String code) {}
-
-  public record ErrorBody(String error, String detail) {}
 
   /** Compile-time assertion that the AdminResult payload types are visible — no logic. */
   @SuppressWarnings("unused")

@@ -163,7 +163,9 @@ public final class PkAuthModule {
   @Provides
   @Singleton
   PasskeyCeremonyResource provideCeremonyResource(
-      PasskeyAuthenticationService service, PkAuthJwtIssuer issuer) {
-    return new PasskeyCeremonyResource(service, issuer);
+      PasskeyAuthenticationService service,
+      PkAuthJwtIssuer issuer,
+      CredentialRepository credentialRepository) {
+    return new PasskeyCeremonyResource(service, issuer, credentialRepository);
   }
 }

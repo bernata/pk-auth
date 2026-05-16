@@ -5,7 +5,7 @@ observability, rotation, and the most common ways a deployment goes wrong.
 
 ## 1. Required environment
 
-pk-auth ships as a JVM library — Spring Boot 4, Dropwizard 4, or Micronaut 4
+pk-auth ships as a JVM library — Spring Boot 4, Dropwizard 5, or Micronaut 4
 adapters all consume the same core. A typical production deployment needs:
 
 - **JDK 21** (records, sealed types, virtual threads). Earlier JDKs will not compile.

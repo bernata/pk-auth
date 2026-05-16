@@ -37,7 +37,7 @@ import org.slf4j.LoggerFactory;
  *       at {@code /auth/admin}.
  * </ol>
  *
- * <p><b>Jackson coexistence.</b> Dropwizard 4 still wires Jackson 2 internally; pk-auth-core uses
+ * <p><b>Jackson coexistence.</b> Dropwizard 5 still wires Jackson 2 internally; pk-auth-core uses
  * Jackson 3 (ADR 0009). The bundle teaches Dropwizard's Jackson 2 {@code ObjectMapper} how to read
  * and write base64url byte arrays and pk-auth's value types — see {@link PkAuthJacksonBridge}. Wire
  * compatibility is verified end-to-end by the integration tests.
@@ -94,6 +94,10 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
     PkAuthJacksonBridge.register(environment.getObjectMapper());
 
     environment.jersey().register(component.ceremonyResource());
+    environment
+        .jersey()
+        .register(
+            new com.codeheadsystems.pkauth.dropwizard.resource.PkAuthPersistenceExceptionMapper());
 
     PasskeyAuthenticator authenticator = component.passkeyAuthenticator();
     environment.jersey().register(new AuthDynamicFeature(PasskeyAuthFilter.build(authenticator)));

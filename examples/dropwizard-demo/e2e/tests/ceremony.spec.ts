@@ -79,7 +79,7 @@ test.describe("pk-auth Dropwizard demo — full flow", () => {
     const [secondFinish] = await Promise.all([
       page.waitForResponse(
         (r) =>
-          r.url().includes("/auth/registration/finish") && r.request().method() === "POST",
+          r.url().includes("/auth/passkeys/registration/finish") && r.request().method() === "POST",
       ),
       page.click("#btn-register-again"),
     ]);

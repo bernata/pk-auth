@@ -6,12 +6,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.codeheadsystems.pkauth.admin.AccountSummary;
 import com.codeheadsystems.pkauth.admin.BackupCodesGenerated;
 import com.codeheadsystems.pkauth.admin.CredentialSummary;
-import com.codeheadsystems.pkauth.api.AssertionResult;
 import com.codeheadsystems.pkauth.api.AuthenticationResponseJson;
 import com.codeheadsystems.pkauth.api.FinishAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.FinishRegistrationRequest;
 import com.codeheadsystems.pkauth.api.RegistrationResponseJson;
-import com.codeheadsystems.pkauth.api.RegistrationResult;
 import com.codeheadsystems.pkauth.api.StartAuthenticationRequest;
 import com.codeheadsystems.pkauth.api.StartAuthenticationResponse;
 import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
@@ -19,7 +17,7 @@ import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.dropwizard.config.PkAuthConfig;
 import com.codeheadsystems.pkauth.dropwizard.json.PkAuthJacksonBridge;
-import com.codeheadsystems.pkauth.dropwizard.resource.PasskeyCeremonyResource.AuthenticatedResponse;
+import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.jwt.JwtVerificationResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.jakarta.rs.json.JacksonJsonProvider;
@@ -33,6 +31,7 @@ import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,7 +98,7 @@ final class PkAuthBundleIntegrationTest {
     // -- Register --------------------------------------------------------------------------
     StartRegistrationResponse regStart =
         post(
-            "/auth/registration/start",
+            "/auth/passkeys/registration/start",
             new StartRegistrationRequest("alice", "Alice", "Test key", null),
             StartRegistrationResponse.class);
     assertThat(regStart.publicKey()).isNotNull();
@@ -108,47 +107,50 @@ final class PkAuthBundleIntegrationTest {
         state.everything.authenticator.createRegistrationResponse(regStart);
     Response finishReg =
         client
-            .target(baseUrl + "/auth/registration/finish")
+            .target(baseUrl + "/auth/passkeys/registration/finish")
             .request(MediaType.APPLICATION_JSON)
             .post(
                 Entity.json(
                     new FinishRegistrationRequest(
                         regStart.challengeId(), "alice", "Test key", regResp)));
     assertThat(finishReg.getStatus()).isEqualTo(200);
-    RegistrationResult.Success success = finishReg.readEntity(RegistrationResult.Success.class);
-    assertThat(success.credential().label()).isEqualTo("Test key");
-    UserHandle userHandle = success.credential().userHandle();
+    Map<String, Object> regBody = finishReg.readEntity(new GenericType<Map<String, Object>>() {});
+    assertThat(regBody).containsEntry("outcome", "success").containsEntry("label", "Test key");
+    UserHandle userHandle = UserHandle.of(Base64Url.decode((String) regBody.get("userHandle")));
 
     // -- Authenticate ----------------------------------------------------------------------
     StartAuthenticationResponse authStart =
         post(
-            "/auth/authentication/start",
+            "/auth/passkeys/authentication/start",
             new StartAuthenticationRequest("alice", null),
             StartAuthenticationResponse.class);
     AuthenticationResponseJson authResp =
         state.everything.authenticator.createAssertionResponse(authStart, userHandle);
-    AuthenticatedResponse authed =
-        post(
-            "/auth/authentication/finish",
-            new FinishAuthenticationRequest(authStart.challengeId(), authResp),
-            AuthenticatedResponse.class);
-    assertThat(authed.assertion()).isInstanceOf(AssertionResult.Success.class);
-    assertThat(authed.token()).isNotBlank();
+    Response authResponse =
+        client
+            .target(baseUrl + "/auth/passkeys/authentication/finish")
+            .request(MediaType.APPLICATION_JSON)
+            .post(Entity.json(new FinishAuthenticationRequest(authStart.challengeId(), authResp)));
+    assertThat(authResponse.getStatus()).isEqualTo(200);
+    Map<String, Object> authBody = authResponse.readEntity(new GenericType<>() {});
+    assertThat(authBody).containsEntry("outcome", "success");
+    String token = (String) authBody.get("token");
+    assertThat(token).isNotBlank();
 
     // -- Validate JWT ----------------------------------------------------------------------
-    JwtVerificationResult validation = state.bundle.jwtValidator().validate(authed.token());
+    JwtVerificationResult validation = state.bundle.jwtValidator().validate(token);
     assertThat(validation).isInstanceOf(JwtVerificationResult.Success.class);
     JwtVerificationResult.Success vs = (JwtVerificationResult.Success) validation;
     assertThat(vs.claims().userHandle()).isEqualTo(userHandle);
 
     // -- Admin: account summary ------------------------------------------------------------
-    AccountSummary acct = get("/auth/admin/account", authed.token(), AccountSummary.class);
+    AccountSummary acct = get("/auth/admin/account", token, AccountSummary.class);
     assertThat(acct.userHandle()).isEqualTo(userHandle);
     assertThat(acct.credentialCount()).isEqualTo(1);
 
     // -- Admin: list credentials -----------------------------------------------------------
     List<CredentialSummary> creds =
-        getList("/auth/admin/credentials", authed.token(), new GenericType<>() {});
+        getList("/auth/admin/credentials", token, new GenericType<>() {});
     assertThat(creds).hasSize(1);
     assertThat(creds.get(0).label()).isEqualTo("Test key");
 
@@ -157,7 +159,7 @@ final class PkAuthBundleIntegrationTest {
         client
             .target(baseUrl + "/auth/admin/backup-codes/regenerate")
             .request(MediaType.APPLICATION_JSON)
-            .header(HttpHeaders.AUTHORIZATION, "Bearer " + authed.token())
+            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
             .post(Entity.json(""), BackupCodesGenerated.class);
     assertThat(codes.codes()).hasSize(10);
   }

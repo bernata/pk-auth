@@ -2,18 +2,22 @@
 package com.codeheadsystems.pkauth.micronaut;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
+import java.time.Duration;
 import java.util.List;
 import org.jspecify.annotations.Nullable;
 
 /**
  * Micronaut configuration bound under the {@code pkauth} prefix. Mirrors the Spring and Dropwizard
- * adapters' shape so the host's {@code application.yml} reads the same.
+ * adapters' shape so the host's {@code application.yml} reads the same. Secrets configurable via
+ * env-var with the standard Micronaut mapping: {@code pkauth.jwt.secret} ↔ {@code
+ * PKAUTH_JWT_SECRET}.
  */
 @ConfigurationProperties("pkauth")
 public final class PkAuthConfiguration {
 
   private RelyingParty relyingParty = new RelyingParty();
   private Jwt jwt = new Jwt();
+  private Ceremony ceremony = new Ceremony();
 
   public RelyingParty getRelyingParty() {
     return relyingParty;
@@ -29,6 +33,31 @@ public final class PkAuthConfiguration {
 
   public void setJwt(Jwt v) {
     this.jwt = v;
+  }
+
+  public Ceremony getCeremony() {
+    return ceremony;
+  }
+
+  public void setCeremony(Ceremony v) {
+    this.ceremony = v;
+  }
+
+  /**
+   * Ceremony tunables forwarded to {@code CeremonyConfig}. Same default and key as the Spring
+   * adapter's {@code pkauth.ceremony.challengeTtl}.
+   */
+  @ConfigurationProperties("ceremony")
+  public static final class Ceremony {
+    private Duration challengeTtl = Duration.ofMinutes(5);
+
+    public Duration getChallengeTtl() {
+      return challengeTtl;
+    }
+
+    public void setChallengeTtl(Duration challengeTtl) {
+      this.challengeTtl = challengeTtl;
+    }
   }
 
   /** Relying-party identity nested config. */

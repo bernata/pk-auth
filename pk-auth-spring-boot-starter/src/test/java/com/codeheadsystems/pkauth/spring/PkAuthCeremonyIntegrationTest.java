@@ -124,9 +124,10 @@ class PkAuthCeremonyIntegrationTest {
             .andReturn();
     String authBody = finishAuthResult.getResponse().getContentAsString();
     assertThat(authBody).contains("\"outcome\":\"success\"");
-    String authHeader = finishAuthResult.getResponse().getHeader("Authorization");
-    assertThat(authHeader).isNotNull().startsWith("Bearer ");
-    String token = authHeader.substring("Bearer ".length());
+    // Token is delivered in the response body; the Authorization response-header echo was
+    // removed because reverse proxies / access logs can capture it and broaden the leak surface.
+    String token = objectMapper.readTree(authBody).path("token").asString();
+    assertThat(token).isNotBlank();
 
     JwtVerificationResult verification = jwtValidator.validate(token);
     assertThat(verification).isInstanceOf(JwtVerificationResult.Success.class);

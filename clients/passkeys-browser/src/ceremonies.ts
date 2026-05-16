@@ -25,12 +25,12 @@ const PATHS = {
   finishAuth: "/auth/passkeys/authentication/finish",
 } as const;
 
-// The dropwizard adapter mounts ceremony endpoints at /auth/<phase>/<step>
-// (no /passkeys/ prefix); spring + micronaut use /auth/passkeys/<phase>/<step>.
-// The path is configurable so demos can override; defaults match spring/micronaut.
+// All three adapters (Spring, Dropwizard, Micronaut) now mount ceremony endpoints at
+// /auth/passkeys/<phase>/<step>. The `paths` override remains an escape hatch for hosts that
+// remap the routes but is no longer needed for any pk-auth-provided adapter.
 
 export interface CeremonyOptions {
-  /** Path overrides — useful for the dropwizard adapter, which omits the `/passkeys/` segment. */
+  /** Path overrides — kept as an escape hatch for hosts that remap pk-auth's default routes. */
   paths?: Partial<typeof PATHS>;
   /** Optional override for navigator.credentials (tests / non-browser callers). */
   credentials?: CredentialsContainer;

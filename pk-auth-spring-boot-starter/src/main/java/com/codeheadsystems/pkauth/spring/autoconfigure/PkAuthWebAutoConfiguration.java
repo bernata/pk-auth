@@ -9,6 +9,7 @@ import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import com.codeheadsystems.pkauth.spring.security.PkAuthAuthenticationProvider;
 import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationFilter;
 import com.codeheadsystems.pkauth.spring.web.PkAuthCeremonyController;
+import com.codeheadsystems.pkauth.spring.web.PkAuthExceptionHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -117,6 +118,17 @@ public class PkAuthWebAutoConfiguration {
       PkAuthJwtIssuer jwtIssuer,
       CredentialRepository credentialRepository) {
     return new PkAuthCeremonyController(service, jwtIssuer, credentialRepository);
+  }
+
+  /**
+   * Maps SPI {@link com.codeheadsystems.pkauth.spi.PkAuthPersistenceException} to a stable {@code
+   * 503} JSON body — see the controller-advice class for the wire shape. Registered explicitly
+   * because Spring Boot starters don't run component-scan on the starter's own packages.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public PkAuthExceptionHandler pkAuthExceptionHandler() {
+    return new PkAuthExceptionHandler();
   }
 
   // Brief §6.10 requires we explicitly check for Spring Security's own webauthn module and refuse

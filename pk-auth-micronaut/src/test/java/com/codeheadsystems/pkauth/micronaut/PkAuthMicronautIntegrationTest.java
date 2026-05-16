@@ -75,10 +75,9 @@ class PkAuthMicronautIntegrationTest {
                             startReg.challengeId(), "alice", "Test key", regResp))
                     .contentType(MediaType.APPLICATION_JSON),
                 String.class);
-    assertThat(regBody).contains("\"credential\"").contains("\"authenticatorData\"");
+    assertThat(regBody).contains("\"outcome\":\"success\"").contains("\"userHandle\"");
     var regJson = mapper.readTree(regBody);
-    UserHandle handle =
-        UserHandle.of(Base64Url.decode(regJson.path("credential").path("userHandle").asText()));
+    UserHandle handle = UserHandle.of(Base64Url.decode(regJson.path("userHandle").asText()));
 
     // Start authentication.
     StartAuthenticationResponse startAuth =
