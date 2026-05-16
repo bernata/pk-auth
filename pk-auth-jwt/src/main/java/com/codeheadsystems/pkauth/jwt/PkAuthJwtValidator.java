@@ -28,17 +28,42 @@ import org.jspecify.annotations.Nullable;
 /**
  * Validates pk-auth JWTs produced by {@link PkAuthJwtIssuer}. Separate from issuance so adapter
  * modules can take this class without pulling in signing keys.
+ *
+ * <p><strong>No revocation by default.</strong> Once issued, a token is considered valid until its
+ * {@code exp} claim expires. If your application needs to invalidate tokens early (e.g., on
+ * logout-all or user disable), supply a custom {@link RevocationCheck} via the four-argument
+ * constructor. The default behaviour is {@link RevocationCheck#allow()}, which never revokes. A
+ * revoked token produces a {@link JwtVerificationResult.Revoked} result rather than {@link
+ * JwtVerificationResult.Success}.
  */
 public final class PkAuthJwtValidator {
 
   private final JwtConfig config;
   private final JwtKeyset keyset;
   private final ClockProvider clockProvider;
+  private final RevocationCheck revocationCheck;
 
+  /**
+   * Constructs a validator with no-op revocation (tokens are valid until {@code exp}). Equivalent
+   * to {@code new PkAuthJwtValidator(config, keyset, clockProvider, RevocationCheck.allow())}.
+   */
   public PkAuthJwtValidator(JwtConfig config, JwtKeyset keyset, ClockProvider clockProvider) {
+    this(config, keyset, clockProvider, RevocationCheck.allow());
+  }
+
+  /**
+   * Constructs a validator with a custom {@link RevocationCheck}. Use this constructor when you
+   * need early token invalidation backed by your application's datastore.
+   */
+  public PkAuthJwtValidator(
+      JwtConfig config,
+      JwtKeyset keyset,
+      ClockProvider clockProvider,
+      RevocationCheck revocationCheck) {
     this.config = Objects.requireNonNull(config, "config");
     this.keyset = Objects.requireNonNull(keyset, "keyset");
     this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
+    this.revocationCheck = Objects.requireNonNull(revocationCheck, "revocationCheck");
   }
 
   /** Verifies signature and standard claims, then reconstructs a {@link JwtClaims}. */
@@ -101,6 +126,11 @@ public final class PkAuthJwtValidator {
       userHandle = UserHandle.of(Base64Url.decode(subject));
     } catch (RuntimeException e) {
       return new JwtVerificationResult.Malformed("invalid sub: " + e.getMessage());
+    }
+
+    String jti = body.getJWTID();
+    if (revocationCheck.isRevoked(jti, subject)) {
+      return new JwtVerificationResult.Revoked(jti, subject);
     }
 
     String methodClaim = stringClaim(body, PkAuthJwtIssuer.CLAIM_METHOD);

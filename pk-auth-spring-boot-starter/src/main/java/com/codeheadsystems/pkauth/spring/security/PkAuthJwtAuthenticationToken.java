@@ -17,7 +17,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
  * claims (iss / aud / exp) have been validated by {@link com.codeheadsystems.pkauth.jwt
  * .PkAuthJwtValidator}.
  */
-public final class JwtAuthenticationToken extends AbstractAuthenticationToken {
+public final class PkAuthJwtAuthenticationToken extends AbstractAuthenticationToken {
 
   private static final long serialVersionUID = 1L;
 
@@ -25,7 +25,7 @@ public final class JwtAuthenticationToken extends AbstractAuthenticationToken {
   private final JwtClaims claims;
   private final String token;
 
-  public JwtAuthenticationToken(UserHandle principal, JwtClaims claims, String token) {
+  public PkAuthJwtAuthenticationToken(UserHandle principal, JwtClaims claims, String token) {
     super(authorities(claims));
     this.principal = principal;
     this.claims = claims;

@@ -24,6 +24,9 @@ import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedExce
 /** {@link CredentialRepository} backed by the {@code PkAuthCore} single-table. */
 public final class DynamoDbCredentialRepository implements CredentialRepository {
 
+  /** Maximum number of optimistic-lock retries for field-level update operations. */
+  private static final int MAX_RETRIES = 3;
+
   private final DynamoDbTable<CredentialItem> table;
   private final DynamoDbIndex<CredentialItem> credentialByIdIndex;
 
@@ -78,45 +81,68 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
 
   @Override
   public void updateSignCount(byte[] credentialId, long newCount, Instant lastUsedAt) {
-    Optional<CredentialItem> existing = lookupItem(credentialId);
-    if (existing.isEmpty()) {
-      return;
-    }
-    CredentialItem item = existing.get();
-    item.setSignCount(newCount);
-    item.setLastUsedAt(lastUsedAt.toString());
-    // Guard against the lost-update race described for the JDBI repository: two concurrent
-    // assertions (e.g. a clone vs. the real authenticator) would otherwise be able to overwrite
-    // a higher stored counter with a lower one, silently defeating clone detection. The
-    // conditional rejects the write unless the in-table value is still strictly less than the
-    // value we're trying to store.
-    try {
-      table.updateItem(
-          UpdateItemEnhancedRequest.builder(CredentialItem.class)
-              .item(item)
-              .conditionExpression(
-                  software.amazon.awssdk.enhanced.dynamodb.Expression.builder()
-                      .expression("signCount < :newSignCount")
-                      .putExpressionValue(
-                          ":newSignCount",
-                          software.amazon.awssdk.services.dynamodb.model.AttributeValue.fromN(
-                              Long.toString(newCount)))
-                      .build())
-              .build());
-    } catch (ConditionalCheckFailedException ignored) {
-      // A concurrent write already advanced the counter to at least newCount; nothing to do.
+    // Retry loop: @DynamoDbVersionAttribute provides optimistic concurrency — if a concurrent
+    // writer (e.g. updateLabel) changes the item between our read and write, the enhanced client
+    // throws ConditionalCheckFailedException. We re-fetch and re-apply up to MAX_RETRIES times.
+    for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      Optional<CredentialItem> existing = lookupItem(credentialId);
+      if (existing.isEmpty()) {
+        return;
+      }
+      CredentialItem item = existing.get();
+      item.setSignCount(newCount);
+      item.setLastUsedAt(lastUsedAt.toString());
+      // Guard against the lost-update race: two concurrent assertions (e.g. a clone vs. the real
+      // authenticator) would otherwise overwrite a higher stored counter with a lower one, silently
+      // defeating clone detection. The conditional rejects the write unless the in-table value is
+      // still strictly less than the value we're trying to store. The version check from
+      // @DynamoDbVersionAttribute is automatically ANDed in by the enhanced client.
+      try {
+        table.updateItem(
+            UpdateItemEnhancedRequest.builder(CredentialItem.class)
+                .item(item)
+                .conditionExpression(
+                    software.amazon.awssdk.enhanced.dynamodb.Expression.builder()
+                        .expression("signCount < :newSignCount")
+                        .putExpressionValue(
+                            ":newSignCount",
+                            software.amazon.awssdk.services.dynamodb.model.AttributeValue.fromN(
+                                Long.toString(newCount)))
+                        .build())
+                .build());
+        return; // success
+      } catch (ConditionalCheckFailedException e) {
+        // Either the version changed (concurrent update — retry) or another writer already advanced
+        // signCount to >= newCount (clone-detection defence — give up immediately).
+        Optional<CredentialItem> current = lookupItem(credentialId);
+        if (current.isPresent() && current.get().getSignCount() >= newCount) {
+          // A concurrent write already advanced the counter; nothing to do.
+          return;
+        }
+        // Version conflict from a concurrent field update — loop and retry.
+      }
     }
   }
 
   @Override
   public void updateLabel(byte[] credentialId, String label) {
-    lookupItem(credentialId)
-        .ifPresent(
-            item -> {
-              item.setLabel(label);
-              table.updateItem(
-                  UpdateItemEnhancedRequest.builder(CredentialItem.class).item(item).build());
-            });
+    // Retry loop: guards against concurrent field updates clobbering each other via the
+    // @DynamoDbVersionAttribute optimistic-lock on CredentialItem.
+    for (int attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      Optional<CredentialItem> existing = lookupItem(credentialId);
+      if (existing.isEmpty()) {
+        return;
+      }
+      CredentialItem item = existing.get();
+      item.setLabel(label);
+      try {
+        table.updateItem(
+            UpdateItemEnhancedRequest.builder(CredentialItem.class).item(item).build());
+        return; // success
+      } catch (ConditionalCheckFailedException ignored) {
+        // Version conflict from a concurrent update — re-fetch and retry.
+      }
+    }
   }
 
   @Override

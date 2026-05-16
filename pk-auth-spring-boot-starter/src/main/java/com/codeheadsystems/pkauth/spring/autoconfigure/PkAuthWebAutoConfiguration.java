@@ -6,7 +6,6 @@ import com.codeheadsystems.pkauth.json.PkAuthObjectMappers;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
-import com.codeheadsystems.pkauth.spring.security.PkAuthAuthenticationProvider;
 import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationFilter;
 import com.codeheadsystems.pkauth.spring.web.PkAuthCeremonyController;
 import com.codeheadsystems.pkauth.spring.web.PkAuthExceptionHandler;
@@ -68,12 +67,6 @@ public class PkAuthWebAutoConfiguration {
   @ConditionalOnMissingBean
   public PkAuthJwtAuthenticationFilter pkAuthJwtAuthenticationFilter(PkAuthJwtValidator validator) {
     return new PkAuthJwtAuthenticationFilter(validator);
-  }
-
-  @Bean
-  @ConditionalOnMissingBean
-  public PkAuthAuthenticationProvider pkAuthAuthenticationProvider(PkAuthJwtValidator validator) {
-    return new PkAuthAuthenticationProvider(validator);
   }
 
   @Bean

@@ -8,6 +8,7 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.UUID;
+import software.amazon.awssdk.enhanced.dynamodb.extensions.annotations.DynamoDbVersionAttribute;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbAttribute;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbBean;
 import software.amazon.awssdk.enhanced.dynamodb.mapper.annotations.DynamoDbPartitionKey;
@@ -38,6 +39,7 @@ public final class CredentialItem {
   private boolean backupState;
   private String createdAt;
   private String lastUsedAt;
+  private Long version;
 
   @DynamoDbPartitionKey
   public String getPk() {
@@ -170,6 +172,21 @@ public final class CredentialItem {
 
   public void setLastUsedAt(String lastUsedAt) {
     this.lastUsedAt = lastUsedAt;
+  }
+
+  /**
+   * Optimistic-concurrency version managed automatically by the DynamoDB Enhanced Client. The
+   * enhanced client increments this on every put/update and adds a condition expression that
+   * rejects the write if the stored version has changed, preventing lost-update races between
+   * concurrent field mutators (e.g. {@code updateLabel} vs {@code updateSignCount}).
+   */
+  @DynamoDbVersionAttribute
+  public Long getVersion() {
+    return version;
+  }
+
+  public void setVersion(Long version) {
+    this.version = version;
   }
 
   /** Translates one of our {@link CredentialRecord} values into a DynamoDB item. */

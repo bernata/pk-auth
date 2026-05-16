@@ -2,10 +2,10 @@
 package com.codeheadsystems.pkauth.dropwizard;
 
 import com.codeheadsystems.pkauth.admin.AdminService;
-import com.codeheadsystems.pkauth.dropwizard.admin.AdminResource;
-import com.codeheadsystems.pkauth.dropwizard.auth.PasskeyAuthFilter;
-import com.codeheadsystems.pkauth.dropwizard.auth.PasskeyAuthenticator;
-import com.codeheadsystems.pkauth.dropwizard.auth.PasskeyPrincipal;
+import com.codeheadsystems.pkauth.dropwizard.admin.PkAuthAdminResource;
+import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthFilter;
+import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
+import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthPasskeyPrincipal;
 import com.codeheadsystems.pkauth.dropwizard.dagger.DaggerPkAuthComponent;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PersistenceBindings;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PkAuthComponent;
@@ -33,8 +33,8 @@ import org.slf4j.LoggerFactory;
  *   <li>A {@code Configuration} class implementing {@link HasPkAuthConfig}.
  *   <li>A {@link PersistenceBindings} describing the SPI implementations (JDBI, DynamoDB, or the
  *       testkit's in-memory variant).
- *   <li>An optional {@link AdminService} — when present, the bundle registers {@link AdminResource}
- *       at {@code /auth/admin}.
+ *   <li>An optional {@link AdminService} — when present, the bundle registers {@link
+ *       PkAuthAdminResource} at {@code /auth/admin}.
  * </ol>
  *
  * <p><b>Jackson coexistence.</b> Dropwizard 5 still wires Jackson 2 internally; pk-auth-core uses
@@ -64,7 +64,7 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
 
   /**
    * Constructs a bundle with optional admin support. When {@code adminService} is non-null the
-   * bundle additionally registers {@link AdminResource}.
+   * bundle additionally registers {@link PkAuthAdminResource}.
    *
    * @param persistence the SPI implementations used by the ceremony service.
    * @param adminService the admin service, or null to skip admin endpoint registration.
@@ -99,12 +99,16 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
         .register(
             new com.codeheadsystems.pkauth.dropwizard.resource.PkAuthPersistenceExceptionMapper());
 
-    PasskeyAuthenticator authenticator = component.passkeyAuthenticator();
-    environment.jersey().register(new AuthDynamicFeature(PasskeyAuthFilter.build(authenticator)));
-    environment.jersey().register(new AuthValueFactoryProvider.Binder<>(PasskeyPrincipal.class));
+    PkAuthDropwizardAuthenticator authenticator = component.passkeyAuthenticator();
+    environment
+        .jersey()
+        .register(new AuthDynamicFeature(PkAuthDropwizardAuthFilter.build(authenticator)));
+    environment
+        .jersey()
+        .register(new AuthValueFactoryProvider.Binder<>(PkAuthPasskeyPrincipal.class));
 
     if (adminService != null) {
-      environment.jersey().register(new AdminResource(adminService));
+      environment.jersey().register(new PkAuthAdminResource(adminService));
       LOG.info("pkauth.admin.endpoints.registered path=/auth/admin");
     }
 

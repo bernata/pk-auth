@@ -12,8 +12,7 @@ import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
 import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
-import com.codeheadsystems.pkauth.jwt.AuthMethod;
-import com.codeheadsystems.pkauth.jwt.JwtClaims;
+import com.codeheadsystems.pkauth.jwt.PkAuthCeremonyJwt;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import jakarta.inject.Inject;
@@ -23,7 +22,6 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -39,14 +37,14 @@ import java.util.Objects;
 @Path("/auth/passkeys")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
-public class PasskeyCeremonyResource {
+public class PkAuthCeremonyResource {
 
   private final PasskeyAuthenticationService service;
   private final PkAuthJwtIssuer issuer;
   private final CredentialRepository credentialRepository;
 
   @Inject
-  public PasskeyCeremonyResource(
+  public PkAuthCeremonyResource(
       PasskeyAuthenticationService service,
       PkAuthJwtIssuer issuer,
       CredentialRepository credentialRepository) {
@@ -80,12 +78,7 @@ public class PasskeyCeremonyResource {
   public Response finishAuthentication(FinishAuthenticationRequest request) {
     AssertionResult result = service.finishAuthentication(request);
     if (result instanceof AssertionResult.Success s) {
-      JwtClaims claims =
-          JwtClaims.forPasskey(s.userHandle(), s.credentialId(), List.of("pkauth", "webauthn"));
-      // Defensive: forPasskey requires a non-null credentialId; AssertionResult.Success
-      // guarantees it. Explicit AuthMethod.PASSKEY isn't needed at the call site but is implied.
-      assert claims.method() == AuthMethod.PASSKEY;
-      String token = issuer.issue(claims);
+      String token = PkAuthCeremonyJwt.mintForAssertion(s, issuer);
       String label =
           credentialRepository
               .findByCredentialId(s.credentialId())

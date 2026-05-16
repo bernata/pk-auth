@@ -13,6 +13,10 @@ public final class LoggingSmsSender implements SmsSender {
 
   @Override
   public void sendOtp(String phoneE164, String message) {
-    LOG.info("sms.dev phone={} message={}", phoneE164, message);
+    // Do not log the message body — it contains the plaintext OTP code.
+    LOG.info(
+        "sms.dev phone={} messageLength={}",
+        OtpService.maskPhone(phoneE164),
+        (message == null ? 0 : message.length()));
   }
 }

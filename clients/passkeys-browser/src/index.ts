@@ -2,6 +2,8 @@
 
 export * as base64url from "./base64url";
 export { PkAuthHttpError } from "./http";
+export type { CeremonyResult } from "./results";
+export { isCeremonySuccess, isCeremonyFailure } from "./results";
 export {
   PkAuthCeremonyClient,
   decodeCreationOptions,

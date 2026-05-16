@@ -5,7 +5,7 @@ import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.json.Base64Url;
-import com.codeheadsystems.pkauth.spring.security.JwtAuthenticationToken;
+import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationToken;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -25,18 +25,18 @@ import org.springframework.web.bind.annotation.RestController;
  * table.
  *
  * <p>Every authenticated endpoint resolves the actor from the JWT-derived {@link
- * JwtAuthenticationToken} in {@link SecurityContextHolder}. The brief's authorization model is
- * subject-scoped: the actor must equal the target. The actor passes themselves as the target on
+ * PkAuthJwtAuthenticationToken} in {@link SecurityContextHolder}. The brief's authorization model
+ * is subject-scoped: the actor must equal the target. The actor passes themselves as the target on
  * every call — host apps wanting staff-impersonation flows wire a non-default {@code
  * AdminAuthorizer} bean and add their own {@code target} route segment.
  */
 @RestController
 @RequestMapping("/auth/admin")
-public class AdminController {
+public class PkAuthAdminController {
 
   private final AdminService adminService;
 
-  public AdminController(AdminService adminService) {
+  public PkAuthAdminController(AdminService adminService) {
     this.adminService = adminService;
   }
 
@@ -45,7 +45,7 @@ public class AdminController {
   @GetMapping("/account")
   public ResponseEntity<Object> account() {
     UserHandle user = currentUser();
-    return AdminResultMapper.toResponse(adminService.getAccount(user, user));
+    return PkAuthAdminResultMapper.toResponse(adminService.getAccount(user, user));
   }
 
   // -- Credentials -----------------------------------------------------------------------------
@@ -53,7 +53,7 @@ public class AdminController {
   @GetMapping("/credentials")
   public ResponseEntity<Object> listCredentials() {
     UserHandle user = currentUser();
-    return AdminResultMapper.toResponse(adminService.listCredentials(user, user));
+    return PkAuthAdminResultMapper.toResponse(adminService.listCredentials(user, user));
   }
 
   @PatchMapping("/credentials/{credentialId}")
@@ -61,7 +61,7 @@ public class AdminController {
       @PathVariable("credentialId") String credentialId, @RequestBody RenameBody body) {
     UserHandle user = currentUser();
     byte[] id = Base64Url.decode(credentialId);
-    return AdminResultMapper.toResponse(
+    return PkAuthAdminResultMapper.toResponse(
         adminService.renameCredential(user, user, id, body == null ? "" : body.label()));
   }
 
@@ -70,7 +70,7 @@ public class AdminController {
     UserHandle user = currentUser();
     byte[] id = Base64Url.decode(credentialId);
     AdminResult<Void> result = adminService.deleteCredential(user, user, id);
-    return AdminResultMapper.toEmptyResponse(result);
+    return PkAuthAdminResultMapper.toEmptyResponse(result);
   }
 
   // -- Backup codes ----------------------------------------------------------------------------
@@ -78,7 +78,7 @@ public class AdminController {
   @PostMapping("/backup-codes/regenerate")
   public ResponseEntity<Object> regenerateBackupCodes() {
     UserHandle user = currentUser();
-    return AdminResultMapper.toResponse(adminService.regenerateBackupCodes(user, user));
+    return PkAuthAdminResultMapper.toResponse(adminService.regenerateBackupCodes(user, user));
   }
 
   @GetMapping("/backup-codes/count")
@@ -87,7 +87,7 @@ public class AdminController {
     AdminResult<Integer> result = adminService.remainingBackupCodes(user, user);
     return switch (result) {
       case AdminResult.Success<Integer> s -> ResponseEntity.ok(Map.of("remaining", s.value()));
-      default -> AdminResultMapper.toResponse(result);
+      default -> PkAuthAdminResultMapper.toResponse(result);
     };
   }
 
@@ -98,7 +98,7 @@ public class AdminController {
     UserHandle user = currentUser();
     AdminResult<Void> result =
         adminService.startEmailVerification(user, user, body == null ? "" : body.email());
-    return AdminResultMapper.toEmptyResponse(result);
+    return PkAuthAdminResultMapper.toEmptyResponse(result);
   }
 
   /** Unauthenticated per brief §6.9 ("token identifies the user"). */
@@ -109,7 +109,7 @@ public class AdminController {
     return switch (result) {
       case AdminResult.Success<UserHandle> s ->
           ResponseEntity.ok(Map.of("userHandle", Base64Url.encode(s.value().value())));
-      default -> AdminResultMapper.toResponse(result);
+      default -> PkAuthAdminResultMapper.toResponse(result);
     };
   }
 
@@ -118,14 +118,14 @@ public class AdminController {
   @PostMapping("/phone/start-verification")
   public ResponseEntity<Object> startPhoneVerification(@RequestBody PhoneBody body) {
     UserHandle user = currentUser();
-    return AdminResultMapper.toResponse(
+    return PkAuthAdminResultMapper.toResponse(
         adminService.startPhoneVerification(user, user, body == null ? "" : body.phone()));
   }
 
   @PostMapping("/phone/complete-verification")
   public ResponseEntity<Object> completePhoneVerification(@RequestBody PhoneVerifyBody body) {
     UserHandle user = currentUser();
-    return AdminResultMapper.toResponse(
+    return PkAuthAdminResultMapper.toResponse(
         adminService.completePhoneVerification(
             user, user, body == null ? "" : body.phone(), body == null ? "" : body.code()));
   }
@@ -134,7 +134,7 @@ public class AdminController {
 
   private UserHandle currentUser() {
     Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken pkAuthToken && pkAuthToken.isAuthenticated()) {
+    if (auth instanceof PkAuthJwtAuthenticationToken pkAuthToken && pkAuthToken.isAuthenticated()) {
       return pkAuthToken.getPrincipal();
     }
     throw new AccessDeniedException("Authenticated pk-auth JWT required");

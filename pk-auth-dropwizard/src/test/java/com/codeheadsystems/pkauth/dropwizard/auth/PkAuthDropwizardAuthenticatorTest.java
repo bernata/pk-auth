@@ -16,7 +16,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-final class PasskeyAuthenticatorTest {
+final class PkAuthDropwizardAuthenticatorTest {
 
   private static final byte[] SECRET = new byte[32];
 
@@ -25,7 +25,7 @@ final class PasskeyAuthenticatorTest {
   }
 
   private PkAuthJwtIssuer issuer;
-  private PasskeyAuthenticator authenticator;
+  private PkAuthDropwizardAuthenticator authenticator;
 
   @BeforeEach
   void setUp() {
@@ -34,7 +34,7 @@ final class PasskeyAuthenticatorTest {
     ClockProvider clock = ClockProvider.system();
     issuer = new PkAuthJwtIssuer(cfg, keyset, clock);
     PkAuthJwtValidator validator = new PkAuthJwtValidator(cfg, keyset, clock);
-    authenticator = new PasskeyAuthenticator(validator);
+    authenticator = new PkAuthDropwizardAuthenticator(validator);
   }
 
   @Test
@@ -44,7 +44,8 @@ final class PasskeyAuthenticatorTest {
         JwtClaims.forPasskey(handle, new byte[] {1, 2, 3, 4}, List.of("pkauth", "webauthn"));
     String token = issuer.issue(claims);
 
-    Optional<PasskeyPrincipal> p = authenticator.authenticate(new PasskeyCredentials(token));
+    Optional<PkAuthPasskeyPrincipal> p =
+        authenticator.authenticate(new PkAuthPasskeyCredentials(token));
     assertThat(p).isPresent();
     assertThat(p.get().userHandle()).isEqualTo(handle);
     assertThat(p.get().getName()).isNotBlank();
@@ -53,7 +54,8 @@ final class PasskeyAuthenticatorTest {
 
   @Test
   void invalidTokenReturnsEmpty() throws AuthenticationException {
-    Optional<PasskeyPrincipal> p = authenticator.authenticate(new PasskeyCredentials("not.a.jwt"));
+    Optional<PkAuthPasskeyPrincipal> p =
+        authenticator.authenticate(new PkAuthPasskeyCredentials("not.a.jwt"));
     assertThat(p).isEmpty();
   }
 
@@ -62,7 +64,8 @@ final class PasskeyAuthenticatorTest {
     UserHandle handle = UserHandle.random();
     String token = issuer.issue(JwtClaims.forBackupCode(handle, List.of("backup")));
     String tampered = token.substring(0, token.length() - 2) + "AA";
-    Optional<PasskeyPrincipal> p = authenticator.authenticate(new PasskeyCredentials(tampered));
+    Optional<PkAuthPasskeyPrincipal> p =
+        authenticator.authenticate(new PkAuthPasskeyCredentials(tampered));
     assertThat(p).isEmpty();
   }
 }

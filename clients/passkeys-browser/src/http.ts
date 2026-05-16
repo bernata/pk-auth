@@ -5,12 +5,36 @@ import type { ClientOptions } from "./types";
 export class PkAuthHttpError extends Error {
   readonly status: number;
   readonly body: string;
+  readonly data: Record<string, unknown> | undefined;
 
   constructor(status: number, body: string) {
     super(`HTTP ${status}: ${body}`);
     this.name = "PkAuthHttpError";
     this.status = status;
     this.body = body;
+    try {
+      const parsed = JSON.parse(body);
+      this.data = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : undefined;
+    } catch {
+      this.data = undefined;
+    }
+  }
+
+  /** The `error` field from the parsed response body, if present. */
+  get error(): string | undefined {
+    return typeof this.data?.["error"] === "string" ? (this.data["error"] as string) : undefined;
+  }
+
+  /** The `detail` field from the parsed response body, if present. */
+  get detail(): string | undefined {
+    return typeof this.data?.["detail"] === "string" ? (this.data["detail"] as string) : undefined;
+  }
+
+  /** The `outcome` field from the parsed response body, if present. */
+  get outcome(): string | undefined {
+    return typeof this.data?.["outcome"] === "string" ? (this.data["outcome"] as string) : undefined;
   }
 }
 

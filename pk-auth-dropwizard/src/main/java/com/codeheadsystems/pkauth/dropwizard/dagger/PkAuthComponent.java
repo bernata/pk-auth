@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.dropwizard.dagger;
 
-import com.codeheadsystems.pkauth.dropwizard.auth.PasskeyAuthenticator;
-import com.codeheadsystems.pkauth.dropwizard.resource.PasskeyCeremonyResource;
+import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
+import com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import dagger.Component;
@@ -21,7 +21,7 @@ import jakarta.inject.Singleton;
 public interface PkAuthComponent {
 
   /** The ceremony resource Jersey mounts at {@code /auth}. */
-  PasskeyCeremonyResource ceremonyResource();
+  PkAuthCeremonyResource ceremonyResource();
 
   /** JWT validator used by the auth filter. */
   PkAuthJwtValidator jwtValidator();
@@ -30,5 +30,5 @@ public interface PkAuthComponent {
   PkAuthJwtIssuer jwtIssuer();
 
   /** The authenticator the bundle plugs into Dropwizard's {@code AuthDynamicFeature}. */
-  PasskeyAuthenticator passkeyAuthenticator();
+  PkAuthDropwizardAuthenticator passkeyAuthenticator();
 }

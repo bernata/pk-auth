@@ -10,7 +10,7 @@ import java.util.Objects;
  * The Dropwizard {@link Principal} surfaced after a successful JWT verification. Carries the
  * pk-auth {@link UserHandle} so resources can scope work to the authenticated user.
  */
-public final class PasskeyPrincipal implements Principal {
+public final class PkAuthPasskeyPrincipal implements Principal {
 
   private final UserHandle userHandle;
   private final String jti;
@@ -21,7 +21,7 @@ public final class PasskeyPrincipal implements Principal {
    * @param userHandle the authenticated user's handle (JWT {@code sub}).
    * @param jti the unique token id (JWT {@code jti}).
    */
-  public PasskeyPrincipal(UserHandle userHandle, String jti) {
+  public PkAuthPasskeyPrincipal(UserHandle userHandle, String jti) {
     this.userHandle = Objects.requireNonNull(userHandle, "userHandle");
     this.jti = Objects.requireNonNull(jti, "jti");
   }

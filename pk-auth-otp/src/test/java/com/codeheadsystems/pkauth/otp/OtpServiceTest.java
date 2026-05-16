@@ -6,8 +6,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.testkit.InMemoryOtpRepository;
-import de.mkammerer.argon2.Argon2;
-import de.mkammerer.argon2.Argon2Factory;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
@@ -24,6 +22,16 @@ class OtpServiceTest {
   private static final UserHandle USER = UserHandle.of(new byte[] {1, 2, 3});
   private static final String PHONE = "+15551234567";
 
+  /** 32-byte fixed pepper for tests. */
+  private static final byte[] TEST_PEPPER = new byte[32];
+
+  static {
+    // Fill with deterministic non-zero bytes so tests are reproducible.
+    for (int i = 0; i < TEST_PEPPER.length; i++) {
+      TEST_PEPPER[i] = (byte) (i + 1);
+    }
+  }
+
   private InMemoryOtpRepository repository;
   private RecordingSmsSender sms;
   private OtpService service;
@@ -32,14 +40,13 @@ class OtpServiceTest {
   void setUp() {
     repository = new InMemoryOtpRepository();
     sms = new RecordingSmsSender();
-    Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
     service =
         new OtpService(
             repository,
             sms,
             ClockProvider.fromClock(Clock.fixed(NOW, ZoneOffset.UTC)),
             new SecureRandom(),
-            argon2,
+            TEST_PEPPER,
             Duration.ofMinutes(5),
             3,
             3,
@@ -101,7 +108,7 @@ class OtpServiceTest {
             sms,
             ClockProvider.fromClock(Clock.fixed(NOW.plus(Duration.ofMinutes(10)), ZoneOffset.UTC)),
             new SecureRandom(),
-            Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id),
+            TEST_PEPPER,
             Duration.ofMinutes(5),
             3,
             3,
@@ -113,6 +120,19 @@ class OtpServiceTest {
   @Test
   void smsSendersDoNotThrowForLoggingFlavor() {
     new LoggingSmsSender().sendOtp(PHONE, "test");
+  }
+
+  @Test
+  void maskPhoneKeepsCountryPrefixAndLast4() {
+    // Normal E.164 numbers: keep '+' + first country digit + '***' + last 4 digits.
+    assertThat(OtpService.maskPhone("+15551234567")).isEqualTo("+1***4567");
+    assertThat(OtpService.maskPhone("+441234567890")).isEqualTo("+4***7890");
+    assertThat(OtpService.maskPhone("+3531234567")).isEqualTo("+3***4567");
+    // Short / edge-case inputs that cannot provide a meaningful masked form.
+    assertThat(OtpService.maskPhone("+12345")).isEqualTo("+***"); // < 7 chars
+    assertThat(OtpService.maskPhone("+1")).isEqualTo("+***");
+    assertThat(OtpService.maskPhone(null)).isEqualTo("+***");
+    assertThat(OtpService.maskPhone("abc")).isEqualTo("+***");
   }
 
   /** Captures sends so tests can pluck the dispatched code out of the message body. */

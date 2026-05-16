@@ -23,15 +23,22 @@ import io.micronaut.http.annotation.Patch;
 import io.micronaut.http.annotation.PathVariable;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.Produces;
+import io.micronaut.scheduling.TaskExecutors;
+import io.micronaut.scheduling.annotation.ExecuteOn;
 import java.util.List;
 
 /**
  * Admin controller mounting the brief §6.9 endpoints under {@code /auth/admin/**}. All
- * authenticated endpoints require the {@link PkAuthJwtFilter} to have attached a user handle to the
- * request; {@code complete-email-verification} is intentionally unauthenticated.
+ * authenticated endpoints require the {@link PkAuthJwtAuthenticationFilter} to have attached a user
+ * handle to the request; {@code complete-email-verification} is intentionally unauthenticated.
+ *
+ * <p><b>Threading.</b> pk-auth's SPI is blocking (TODO #29); this adapter dispatches every endpoint
+ * to {@link TaskExecutors#BLOCKING} so Micronaut's Netty event loop is never parked on a
+ * synchronous repository call. Hosts running on Netty event loops should keep this default.
  */
 @Controller("/auth/admin")
 @Produces(MediaType.APPLICATION_JSON)
+@ExecuteOn(TaskExecutors.BLOCKING)
 public class PkAuthAdminController {
 
   private final AdminService adminService;
@@ -42,14 +49,14 @@ public class PkAuthAdminController {
 
   @Get("/account")
   public HttpResponse<?> account(HttpRequest<?> request) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.getAccount(actor, actor));
   }
 
   @Get("/credentials")
   public HttpResponse<?> listCredentials(HttpRequest<?> request) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.listCredentials(actor, actor));
   }
@@ -57,7 +64,7 @@ public class PkAuthAdminController {
   @Patch("/credentials/{credentialIdB64}")
   public HttpResponse<?> renameCredential(
       HttpRequest<?> request, @PathVariable String credentialIdB64, @Body RenameRequest body) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     byte[] credentialId = Base64Url.decode(credentialIdB64);
     return map(adminService.renameCredential(actor, actor, credentialId, body.label()));
@@ -66,7 +73,7 @@ public class PkAuthAdminController {
   @Delete("/credentials/{credentialIdB64}")
   public HttpResponse<?> deleteCredential(
       HttpRequest<?> request, @PathVariable String credentialIdB64) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     byte[] credentialId = Base64Url.decode(credentialIdB64);
     return map(adminService.deleteCredential(actor, actor, credentialId));
@@ -74,21 +81,21 @@ public class PkAuthAdminController {
 
   @Post("/backup-codes/regenerate")
   public HttpResponse<?> regenerateBackupCodes(HttpRequest<?> request) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.regenerateBackupCodes(actor, actor));
   }
 
   @Get("/backup-codes/count")
   public HttpResponse<?> remainingBackupCodes(HttpRequest<?> request) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.remainingBackupCodes(actor, actor));
   }
 
   @Post("/email/start-verification")
   public HttpResponse<?> startEmailVerification(HttpRequest<?> request, @Body EmailRequest body) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.startEmailVerification(actor, actor, body.email()));
   }
@@ -101,7 +108,7 @@ public class PkAuthAdminController {
 
   @Post("/phone/start-verification")
   public HttpResponse<?> startPhoneVerification(HttpRequest<?> request, @Body PhoneRequest body) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.startPhoneVerification(actor, actor, body.phone()));
   }
@@ -109,7 +116,7 @@ public class PkAuthAdminController {
   @Post("/phone/complete-verification")
   public HttpResponse<?> completePhoneVerification(
       HttpRequest<?> request, @Body PhoneCompleteRequest body) {
-    UserHandle actor = PkAuthJwtFilter.attachedUserHandle(request);
+    UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     return map(adminService.completePhoneVerification(actor, actor, body.phone(), body.code()));
   }

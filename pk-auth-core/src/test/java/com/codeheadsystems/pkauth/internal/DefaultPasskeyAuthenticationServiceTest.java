@@ -378,6 +378,69 @@ class DefaultPasskeyAuthenticationServiceTest {
   }
 
   @Test
+  void finishAuthenticationRejectsCredentialOwnedByDifferentUser() {
+    // Fix #18a: start with username "alice" → finish with a credential whose userHandle is "bob".
+    // The challenge record carries USER_HANDLE (alice). The credential we return belongs to BOB.
+    UserHandle bob = UserHandle.of(filled(16, (byte) 11));
+    when(challengeStore.takeOnce(CHALLENGE_ID))
+        .thenReturn(
+            Optional.of(
+                new ChallengeRecord(
+                    CHALLENGE,
+                    ChallengeRecord.Purpose.ASSERTION,
+                    USER_HANDLE,
+                    NOW.plusSeconds(300))));
+    when(credentialRepository.findByCredentialId(CRED_ID))
+        .thenReturn(
+            Optional.of(
+                new CredentialRecord(
+                    CRED_ID,
+                    bob,
+                    stubCoseKeyBytes(),
+                    0L,
+                    "Test",
+                    null,
+                    Set.of(),
+                    true,
+                    true,
+                    NOW.minusSeconds(60),
+                    null)));
+    byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
+    AssertionResult result = service.finishAuthentication(finishAuth(cd));
+    assertThat(result).isInstanceOf(AssertionResult.UnknownCredential.class);
+    // WebAuthn4J must never see this request — we rejected at the binding check.
+    verify(credentialRepository, never()).updateSignCount(any(), anyLongValue(), any());
+  }
+
+  @Test
+  void finishAuthenticationRejectsResponseUserHandleMismatch() {
+    // Fix #18b: usernameless start (no userHandle on challenge), but the assertion response carries
+    // a userHandle that disagrees with the stored credential's owner.
+    UserHandle other = UserHandle.of(filled(16, (byte) 22));
+    when(challengeStore.takeOnce(CHALLENGE_ID))
+        .thenReturn(
+            Optional.of(
+                new ChallengeRecord(
+                    CHALLENGE, ChallengeRecord.Purpose.ASSERTION, null, NOW.plusSeconds(300))));
+    primeStoredCredentialForAssertion(); // credential's userHandle is USER_HANDLE
+    byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
+    FinishAuthenticationRequest req =
+        new FinishAuthenticationRequest(
+            CHALLENGE_ID,
+            new AuthenticationResponseJson(
+                CRED_ID,
+                CRED_ID,
+                new AuthenticatorAssertionResponseJson(
+                    cd, new byte[] {(byte) 0xa0}, new byte[] {(byte) 0xb0}, other.value()),
+                null,
+                null,
+                "public-key"));
+    AssertionResult result = service.finishAuthentication(req);
+    assertThat(result).isInstanceOf(AssertionResult.UnknownCredential.class);
+    verify(credentialRepository, never()).updateSignCount(any(), anyLongValue(), any());
+  }
+
+  @Test
   void finishAuthenticationHappyPathUpdatesSignCount() throws Exception {
     primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
     primeStoredCredentialForAssertion();

@@ -22,9 +22,9 @@ import jakarta.ws.rs.core.Response;
  *   <li>{@code RateLimited} → 429 with {@code Retry-After} header.
  * </ul>
  */
-public final class AdminResultMapper {
+public final class PkAuthAdminResultMapper {
 
-  private AdminResultMapper() {}
+  private PkAuthAdminResultMapper() {}
 
   /** Builds a Jersey {@link Response} from {@code result}. */
   public static <T> Response toResponse(AdminResult<T> result) {

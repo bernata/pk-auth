@@ -8,15 +8,15 @@ import org.springframework.http.ResponseEntity;
 
 /**
  * Maps a sealed {@link AdminResult} variant to a Spring {@link ResponseEntity}. Centralizing the
- * mapping keeps {@link AdminController} short and ensures every endpoint returns the same shape for
- * the same outcome variant — required by brief §6.10 / §6.9 ("Adapters map these to HTTP status
- * codes via a single shared {@code AdminResultMapper}"). Non-success bodies use the shared {@link
- * AdminErrorBody} record so the wire shape is identical across the Spring, Dropwizard, and
- * Micronaut adapters.
+ * mapping keeps {@link PkAuthAdminController} short and ensures every endpoint returns the same
+ * shape for the same outcome variant — required by brief §6.10 / §6.9 ("Adapters map these to HTTP
+ * status codes via a single shared {@code PkAuthAdminResultMapper}"). Non-success bodies use the
+ * shared {@link AdminErrorBody} record so the wire shape is identical across the Spring,
+ * Dropwizard, and Micronaut adapters.
  */
-public final class AdminResultMapper {
+public final class PkAuthAdminResultMapper {
 
-  private AdminResultMapper() {}
+  private PkAuthAdminResultMapper() {}
 
   /** Converts a non-void result. Success returns its payload; non-success maps to an error body. */
   public static <T> ResponseEntity<Object> toResponse(AdminResult<T> result) {

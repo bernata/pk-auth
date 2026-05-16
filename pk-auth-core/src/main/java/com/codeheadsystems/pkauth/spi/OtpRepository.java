@@ -15,7 +15,7 @@ public interface OtpRepository {
    * @param otpId opaque server-generated id
    * @param userHandle owning user
    * @param phoneE164 destination phone in E.164 format
-   * @param hashedCode Argon2id hash of the dispatched code
+   * @param hashedCode HMAC-SHA256(pepper, code) encoded as Base64 of the dispatched code
    * @param attempts how many verification attempts have been made
    * @param maxAttempts threshold above which the code is locked
    * @param consumed whether the code has been verified successfully
@@ -57,8 +57,14 @@ public interface OtpRepository {
    */
   Optional<StoredOtp> findLatestActive(UserHandle userHandle, String phoneE164);
 
-  /** Atomically increments the attempts counter for the supplied OTP id. */
-  void incrementAttempts(String otpId);
+  /**
+   * Atomically increments the attempts counter for the supplied OTP id and returns the new count.
+   * Callers must reject the verification attempt if the returned count exceeds {@code maxAttempts}.
+   *
+   * @param otpId the OTP record to increment
+   * @return the attempts value <em>after</em> the increment
+   */
+  int incrementAttempts(String otpId);
 
   /** Marks the supplied OTP id consumed. */
   void consume(String otpId);

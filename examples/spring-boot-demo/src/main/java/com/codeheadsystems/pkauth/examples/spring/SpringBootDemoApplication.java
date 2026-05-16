@@ -5,19 +5,17 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * Runnable entry point for the pk-auth Spring Boot demo. The auto-configuration in pk-auth-spring-
- * boot-starter wires every ceremony and admin endpoint; this class only provides the {@code
- * main(String[])} and a profile-conditional override for the {@code RelyingPartyConfig} (see {@link
- * DemoConfiguration}). To run:
+ * Runnable entry point for the pk-auth Spring Boot demo. The auto-configuration in
+ * pk-auth-spring-boot-starter wires every ceremony and admin endpoint; relying-party identity is
+ * configured via {@code pkauth.relying-party.*} in {@code application.yml} — no custom
+ * {@code @Bean @Primary RelyingPartyConfig} override is needed. To run:
  *
  * <pre>
- *   ./gradlew :examples:spring-boot-demo:bootRun           # JDBI persistence (Postgres if local)
- *   ./gradlew :examples:spring-boot-demo:bootRun \
- *       --args="--persistence=dynamodb"                    # DynamoDB persistence
+ *   ./gradlew :examples:spring-boot-demo:bootRun
  * </pre>
  *
- * <p>Without an explicit {@code --persistence=} flag the demo ships with the testkit's in-memory
- * SPIs (the autoconfigure defaults), so reviewers can boot the demo with no external services.
+ * <p>The demo ships with the testkit's in-memory SPIs ({@code pkauth.dev-mode=true}), so reviewers
+ * can boot the demo with no external services.
  */
 @SpringBootApplication
 public class SpringBootDemoApplication {

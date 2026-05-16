@@ -50,31 +50,34 @@ public final class DynamoDbOtpRepository implements OtpRepository {
   }
 
   @Override
-  public void incrementAttempts(String otpId) {
-    findItemById(otpId)
-        .ifPresent(
-            item -> {
-              int prior = item.getAttempts();
-              item.setAttempts(prior + 1);
-              // Optimistic concurrency: only apply the increment if the stored counter still
-              // matches what we read. A concurrent racing verify will lose the CAS and retry on
-              // the next attempt with a fresh read.
-              try {
-                table.updateItem(
-                    UpdateItemEnhancedRequest.builder(OtpItem.class)
-                        .item(item)
-                        .conditionExpression(
-                            Expression.builder()
-                                .expression("#a = :prior")
-                                .putExpressionName("#a", "attempts") // reserved word
-                                .putExpressionValue(
-                                    ":prior", AttributeValue.fromN(Integer.toString(prior)))
-                                .build())
-                        .build());
-              } catch (ConditionalCheckFailedException ignored) {
-                // Another concurrent attempt incremented first; that's fine.
-              }
-            });
+  public int incrementAttempts(String otpId) {
+    Optional<OtpItem> existing = findItemById(otpId);
+    if (existing.isEmpty()) {
+      return 0;
+    }
+    OtpItem item = existing.get();
+    int prior = item.getAttempts();
+    int next = prior + 1;
+    item.setAttempts(next);
+    // Optimistic concurrency: only apply the increment if the stored counter still
+    // matches what we read. A concurrent racing verify will lose the CAS and retry on
+    // the next attempt with a fresh read.
+    try {
+      table.updateItem(
+          UpdateItemEnhancedRequest.builder(OtpItem.class)
+              .item(item)
+              .conditionExpression(
+                  Expression.builder()
+                      .expression("#a = :prior")
+                      .putExpressionName("#a", "attempts") // reserved word
+                      .putExpressionValue(":prior", AttributeValue.fromN(Integer.toString(prior)))
+                      .build())
+              .build());
+      return next;
+    } catch (ConditionalCheckFailedException ignored) {
+      // Another concurrent attempt incremented first; re-read to return accurate count.
+      return findItemById(otpId).map(OtpItem::getAttempts).orElse(next);
+    }
   }
 
   @Override

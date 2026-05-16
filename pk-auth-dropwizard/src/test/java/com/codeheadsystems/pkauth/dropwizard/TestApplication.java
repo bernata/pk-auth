@@ -84,7 +84,9 @@ public final class TestApplication extends Application<TestConfiguration> {
             state.everything.users,
             state.clock,
             "https://example.com");
-    state.otpService = new OtpService(state.otps, new LoggingSmsSender(), state.clock);
+    byte[] otpPepper = new byte[32];
+    new java.security.SecureRandom().nextBytes(otpPepper);
+    state.otpService = new OtpService(state.otps, new LoggingSmsSender(), state.clock, otpPepper);
     state.adminService =
         DefaultAdminService.builder()
             .credentialRepository(state.everything.credentials)

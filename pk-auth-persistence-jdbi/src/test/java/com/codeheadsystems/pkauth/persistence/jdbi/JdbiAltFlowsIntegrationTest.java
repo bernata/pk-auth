@@ -41,12 +41,13 @@ class JdbiAltFlowsIntegrationTest {
 
     assertThat(backupCodes.findByUserHandle(user)).hasSize(2);
 
+    // Consuming a code soft-deletes it (sets revoked_at); active query returns only remaining code.
     backupCodes.consume("c1", now.plusSeconds(60));
-    var stored = backupCodes.findByUserHandle(user);
-    assertThat(stored)
-        .extracting(BackupCodeRepository.StoredBackupCode::consumed)
-        .containsExactlyInAnyOrder(true, false);
+    var active = backupCodes.findByUserHandle(user);
+    assertThat(active).hasSize(1);
+    assertThat(active.get(0).consumed()).isFalse();
 
+    // Soft-deleting the remaining active codes makes findByUserHandle return empty.
     backupCodes.deleteByUserHandle(user);
     assertThat(backupCodes.findByUserHandle(user)).isEmpty();
   }

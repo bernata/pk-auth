@@ -47,31 +47,21 @@ public final class JdbiUserLookup implements UserLookup {
   @Override
   public UserHandle createOrGetUserHandle(String username) {
     Objects.requireNonNull(username, "username");
-    return jdbi.inTransaction(
+    UserHandle candidate = UserHandle.random();
+    return jdbi.withHandle(
         h -> {
-          Optional<byte[]> existing =
-              h.createQuery("SELECT user_handle FROM users WHERE username = :u")
+          byte[] handle =
+              h.createQuery(
+                      "INSERT INTO users (user_handle, username, display_name) VALUES"
+                          + " (:uh, :u, :dn)"
+                          + " ON CONFLICT (username) DO UPDATE SET username = EXCLUDED.username"
+                          + " RETURNING user_handle")
+                  .bind("uh", candidate.value())
                   .bind("u", username)
+                  .bind("dn", username)
                   .mapTo(byte[].class)
-                  .findFirst();
-          if (existing.isPresent()) {
-            return UserHandle.of(existing.get());
-          }
-          UserHandle handle = UserHandle.random();
-          h.createUpdate(
-                  "INSERT INTO users (user_handle, username, display_name) VALUES"
-                      + " (:uh, :u, :dn) ON CONFLICT (username) DO NOTHING")
-              .bind("uh", handle.value())
-              .bind("u", username)
-              .bind("dn", username)
-              .execute();
-          // A racing thread may have inserted between the SELECT and the INSERT; re-read.
-          return h.createQuery("SELECT user_handle FROM users WHERE username = :u")
-              .bind("u", username)
-              .mapTo(byte[].class)
-              .findFirst()
-              .map(UserHandle::of)
-              .orElse(handle);
+                  .one();
+          return UserHandle.of(handle);
         });
   }
 

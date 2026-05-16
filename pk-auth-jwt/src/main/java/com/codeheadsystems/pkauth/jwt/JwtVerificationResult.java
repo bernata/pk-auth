@@ -60,4 +60,14 @@ public sealed interface JwtVerificationResult {
       Objects.requireNonNull(name, "name");
     }
   }
+
+  /**
+   * Token has been explicitly revoked by the configured {@link RevocationCheck}. This occurs when
+   * the token's {@code jti} or {@code sub} appears in the application's revocation store.
+   */
+  record Revoked(String jti, String subject) implements JwtVerificationResult {
+    public Revoked {
+      Objects.requireNonNull(subject, "subject");
+    }
+  }
 }

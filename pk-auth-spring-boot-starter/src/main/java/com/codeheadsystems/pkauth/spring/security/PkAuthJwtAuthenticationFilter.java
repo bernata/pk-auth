@@ -15,13 +15,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 /**
  * Validates the {@code Authorization: Bearer …} header against {@link PkAuthJwtValidator} and, on
- * success, populates the {@link SecurityContextHolder} with a {@link JwtAuthenticationToken}.
+ * success, populates the {@link SecurityContextHolder} with a {@link PkAuthJwtAuthenticationToken}.
  *
  * <p>The filter is intentionally permissive: it does <strong>not</strong> reject a request that has
  * no token or an invalid token. Endpoints that require authentication enforce that via Spring
  * Security's {@code authorizeHttpRequests} chain (configured in the autoconfiguration). Brief §6.10
  * mentions an explicit goal of "JWT validation filter that produces a {@code
- * JwtAuthenticationToken}" — that is exactly what we do here, no more.
+ * PkAuthJwtAuthenticationToken}" — that is exactly what we do here, no more.
+ *
+ * <p><b>Design note.</b> This filter intentionally bypasses Spring's {@code AuthenticationManager}
+ * for zero-overhead JWT validation (TODO #36). There is no companion {@code AuthenticationProvider}
+ * — host apps that need the canonical manager pipeline can declare their own filter + provider.
  */
 public final class PkAuthJwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -50,8 +54,8 @@ public final class PkAuthJwtAuthenticationFilter extends OncePerRequestFilter {
     }
     JwtVerificationResult result = validator.validate(token);
     if (result instanceof JwtVerificationResult.Success success) {
-      JwtAuthenticationToken auth =
-          new JwtAuthenticationToken(success.claims().userHandle(), success.claims(), token);
+      PkAuthJwtAuthenticationToken auth =
+          new PkAuthJwtAuthenticationToken(success.claims().userHandle(), success.claims(), token);
       SecurityContextHolder.getContext().setAuthentication(auth);
       LOG.debug(
           "jwt.authenticate user={} method={}",

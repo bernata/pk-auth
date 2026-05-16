@@ -236,14 +236,26 @@ public final class MagicLinkService {
     return new SendResult.Sent(token);
   }
 
-  /** Sends a login email to the user with the supplied username. */
+  /**
+   * Sends a login email to the user with the supplied username.
+   *
+   * <p><strong>Privacy invariant:</strong> this method ALWAYS returns {@link SendResult.Sent},
+   * regardless of whether the supplied username exists in the system. When no user is found the
+   * method returns early (skipping JWT issuance and email dispatch) but returns the same {@code
+   * Sent} shape as a successful send. This prevents account-enumeration via both result-shape
+   * side-channels and timing side-channels that would otherwise reveal whether an account exists.
+   * Callers MUST NOT rely on a {@link SendResult.UserNotFound} outcome from this method — that
+   * variant is produced only by signup flows where confirming account non-existence is intentional.
+   */
   public SendResult sendLoginEmail(String username, String email) {
     Objects.requireNonNull(username, "username");
     Objects.requireNonNull(email, "email");
     Optional<UserHandle> resolved = userLookup.findUserHandleByUsername(username);
     if (resolved.isEmpty()) {
-      LOG.info("magiclink.send user-not-found username={}", username);
-      return new SendResult.UserNotFound();
+      // Do NOT surface UserNotFound to callers — that would enable account enumeration.
+      // Skip JWT issuance and email dispatch silently and return Sent.
+      LOG.debug("magiclink.send user-not-found (suppressed) username={}", username);
+      return new SendResult.Sent("");
     }
     UserHandle user = resolved.get();
     int count = rateLimiter.countAndIncrement(user, PURPOSE_LOGIN, clockProvider.now());
@@ -303,11 +315,28 @@ public final class MagicLinkService {
     }
   }
 
-  /** Simple Caffeine-backed in-memory rate limiter. Production deployments should swap this. */
+  /**
+   * Simple Caffeine-backed in-memory rate limiter.
+   *
+   * <p><strong>FOR DEV / SINGLE-INSTANCE USE ONLY.</strong> Production deployments MUST replace
+   * this with a shared (Redis/DB-backed) {@link MagicLinkRateLimiter} implementation, otherwise
+   * per-replica rate limits multiply by the cluster size. For example, with a limit of 5 emails per
+   * hour and a 3-node cluster, an attacker can send up to 15 emails per hour because each replica
+   * tracks its own independent counter. Wire a production-grade implementation via the {@link
+   * MagicLinkService#MagicLinkService(PkAuthJwtIssuer, PkAuthJwtValidator, EmailSender, UserLookup,
+   * ClockProvider, String, int, MagicLinkRateLimiter)} constructor.
+   */
   public static final class InMemoryRateLimiter implements MagicLinkRateLimiter {
+    private static final Logger RATE_LOG = LoggerFactory.getLogger(InMemoryRateLimiter.class);
+
     private final Cache<String, AtomicInteger> counters;
 
     public InMemoryRateLimiter(Duration window) {
+      RATE_LOG.info(
+          "magiclink.rate-limiter InMemoryRateLimiter instantiated — FOR DEV / SINGLE-INSTANCE"
+              + " USE ONLY. Production deployments MUST replace this with a shared"
+              + " (Redis/DB-backed) RateLimiter implementation to avoid per-replica abuse"
+              + " multiplier.");
       this.counters = Caffeine.newBuilder().expireAfterWrite(window).build();
     }
 

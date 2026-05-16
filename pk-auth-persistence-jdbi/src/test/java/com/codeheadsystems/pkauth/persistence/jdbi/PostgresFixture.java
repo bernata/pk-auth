@@ -58,7 +58,7 @@ public final class PostgresFixture {
     jdbi.useHandle(
         h ->
             h.execute(
-                "TRUNCATE TABLE credentials, challenges, users, backup_codes, otp_codes"
-                    + " RESTART IDENTITY CASCADE"));
+                "TRUNCATE TABLE credentials, challenges, users, backup_codes, otp_codes,"
+                    + " pkauth_audit_events RESTART IDENTITY CASCADE"));
   }
 }

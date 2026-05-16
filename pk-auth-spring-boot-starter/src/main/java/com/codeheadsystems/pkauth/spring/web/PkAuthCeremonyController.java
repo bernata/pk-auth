@@ -14,10 +14,9 @@ import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.json.Base64Url;
-import com.codeheadsystems.pkauth.jwt.JwtClaims;
+import com.codeheadsystems.pkauth.jwt.PkAuthCeremonyJwt;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
-import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +36,9 @@ import org.springframework.web.bind.annotation.RestController;
  * PasskeyAuthenticationService#finishRegistration} already calls {@code CredentialRepository.save}
  * on success. We hold a reference to {@link CredentialRepository} only so we can look up the label
  * to echo back on a successful assertion (the response body advertises which credential was used).
+ *
+ * <p>JWT issuance for successful assertions is delegated to {@link PkAuthCeremonyJwt} so the {@code
+ * amr} claim shape stays identical across Spring, Dropwizard, and Micronaut adapters (TODO #31).
  */
 @RestController
 @RequestMapping("/auth/passkeys")
@@ -91,19 +93,20 @@ public class PkAuthCeremonyController {
   public ResponseEntity<Object> finishAuthentication(@RequestBody FinishAuthenticationRequest req) {
     AssertionResult result = service.finishAuthentication(req);
     if (result instanceof AssertionResult.Success success) {
-      CredentialRecord cred =
+      String token = PkAuthCeremonyJwt.mintForAssertion(success, jwtIssuer);
+      // The label is purely cosmetic for the response body; if the credential record was deleted
+      // between assertion and now (rare race), we fall back to a null label rather than 500.
+      String label =
           credentialRepository
               .findByCredentialId(success.credentialId())
-              .orElseThrow(() -> new IllegalStateException("credential vanished after assert"));
-      String token =
-          jwtIssuer.issue(
-              JwtClaims.forPasskey(success.userHandle(), success.credentialId(), List.of("pwk")));
+              .map(CredentialRecord::label)
+              .orElse(null);
       LOG.info(
           "auth.authentication.success user={} credentialId={} signCount={}",
           success.userHandle(),
           Base64Url.encode(success.credentialId()),
           success.signCount());
-      CeremonyResponse wire = CeremonyWireMapper.forAssertionSuccess(success, token, cred.label());
+      CeremonyResponse wire = CeremonyWireMapper.forAssertionSuccess(success, token, label);
       return ResponseEntity.status(wire.status()).body(wire.body());
     }
     CeremonyResponse wire = CeremonyWireMapper.forAssertionError(result);

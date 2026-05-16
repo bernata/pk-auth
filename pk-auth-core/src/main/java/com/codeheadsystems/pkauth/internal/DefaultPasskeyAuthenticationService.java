@@ -26,6 +26,8 @@ import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.credential.AuthenticatorData;
 import com.codeheadsystems.pkauth.credential.CredentialMetadata;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
+import com.codeheadsystems.pkauth.internal.challenge.ChallengeValidation;
+import com.codeheadsystems.pkauth.internal.challenge.ChallengeValidator;
 import com.codeheadsystems.pkauth.metrics.Metrics;
 import com.codeheadsystems.pkauth.spi.AttestationTrustPolicy;
 import com.codeheadsystems.pkauth.spi.ChallengeRecord;
@@ -72,6 +74,16 @@ import org.slf4j.LoggerFactory;
  *
  * <p>Construct via {@link com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices} (the
  * public factory in the {@code ceremony} package).
+ *
+ * <p>The two finish-ceremony methods follow a four-step shape:
+ *
+ * <pre>
+ *   validate (ChallengeValidator) → verify (WebAuthn4J) → map (sealed result) → emit (metrics)
+ * </pre>
+ *
+ * Preflight challenge / origin / ceremony-type checks live on {@link ChallengeValidator}; this
+ * class only translates {@link ChallengeValidation} variants into the ceremony's result type and
+ * runs the WebAuthn4J verification + persistence steps.
  */
 public final class DefaultPasskeyAuthenticationService implements PasskeyAuthenticationService {
 
@@ -85,12 +97,12 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
   private final UserLookup userLookup;
   private final ChallengeStore challengeStore;
   private final ClockProvider clockProvider;
-  private final OriginValidator originValidator;
   private final AttestationTrustPolicy attestationTrustPolicy;
   private final RelyingPartyConfig rpConfig;
   private final CeremonyConfig ceremonyConfig;
   private final ChallengeGenerator challengeGenerator;
   private final Metrics metrics;
+  private final ChallengeValidator challengeValidator;
 
   public DefaultPasskeyAuthenticationService(
       WebAuthnManager webAuthnManager,
@@ -112,13 +124,14 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     this.userLookup = Objects.requireNonNull(userLookup, "userLookup");
     this.challengeStore = Objects.requireNonNull(challengeStore, "challengeStore");
     this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
-    this.originValidator = Objects.requireNonNull(originValidator, "originValidator");
     this.attestationTrustPolicy =
         Objects.requireNonNull(attestationTrustPolicy, "attestationTrustPolicy");
     this.rpConfig = Objects.requireNonNull(rpConfig, "rpConfig");
     this.ceremonyConfig = Objects.requireNonNull(ceremonyConfig, "ceremonyConfig");
     this.challengeGenerator = Objects.requireNonNull(challengeGenerator, "challengeGenerator");
     this.metrics = Objects.requireNonNull(metrics, "metrics");
+    this.challengeValidator =
+        new ChallengeValidator(challengeStore, originValidator, clockProvider);
   }
 
   // -- Registration ----------------------------------------------------------------------------
@@ -179,72 +192,16 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     Objects.requireNonNull(req, "req");
     long start = System.nanoTime();
     try {
-      ClientDataJsonParser.ClientData clientData;
-      try {
-        clientData = ClientDataJsonParser.parse(req.response().response().clientDataJSON());
-      } catch (RuntimeException ex) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidPayload("malformed clientDataJSON"),
-            start);
+      ChallengeValidation validation =
+          challengeValidator.validate(
+              ChallengeValidator.Ceremony.REGISTRATION,
+              req.challengeId(),
+              req.response().response().clientDataJSON());
+      if (!(validation instanceof ChallengeValidation.Valid valid)) {
+        return outcome("registration", mapRegistrationPreflight(validation), start);
       }
-
-      if (!"webauthn.create".equals(clientData.type())) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidPayload("clientData.type must be webauthn.create"),
-            start);
-      }
-
-      if (!originValidator.isAllowed(clientData.origin())) {
-        return outcome(
-            "registration",
-            new RegistrationResult.OriginMismatch(
-                rpConfig.origins().toString(), clientData.origin()),
-            start);
-      }
-
-      ChallengeId derivedId;
-      try {
-        derivedId = ChallengeGenerator.idOf(clientData.challengeBytes());
-      } catch (RuntimeException ex) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidPayload("invalid challenge encoding"),
-            start);
-      }
-      if (!derivedId.equals(req.challengeId())) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidChallenge("challengeId / clientData.challenge mismatch"),
-            start);
-      }
-
-      Optional<ChallengeRecord> stored = challengeStore.takeOnce(req.challengeId());
-      if (stored.isEmpty()) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidChallenge(
-                "unknown, expired, or already-consumed challenge"),
-            start);
-      }
-      ChallengeRecord challengeRecord = stored.get();
-      if (challengeRecord.purpose() != ChallengeRecord.Purpose.REGISTRATION) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidChallenge("challenge bound to a different ceremony"),
-            start);
-      }
-      if (!Arrays.equals(challengeRecord.challenge(), clientData.challengeBytes())) {
-        return outcome(
-            "registration",
-            new RegistrationResult.InvalidChallenge("challenge bytes do not match stored value"),
-            start);
-      }
-      if (clockProvider.now().isAfter(challengeRecord.expiresAt())) {
-        return outcome(
-            "registration", new RegistrationResult.InvalidChallenge("challenge expired"), start);
-      }
+      ChallengeRecord challengeRecord = valid.record();
+      ClientDataJsonParser.ClientData clientData = valid.clientData();
 
       var w4jRequest = WebAuthn4JConverters.toRegistrationRequest(req.response());
       var serverProperty =
@@ -392,57 +349,16 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     Objects.requireNonNull(req, "req");
     long start = System.nanoTime();
     try {
-      ClientDataJsonParser.ClientData clientData;
-      try {
-        clientData = ClientDataJsonParser.parse(req.response().response().clientDataJSON());
-      } catch (RuntimeException ex) {
-        return outcomeAssertion(
-            new AssertionResult.InvalidChallenge("malformed clientDataJSON"), start);
+      ChallengeValidation validation =
+          challengeValidator.validate(
+              ChallengeValidator.Ceremony.AUTHENTICATION,
+              req.challengeId(),
+              req.response().response().clientDataJSON());
+      if (!(validation instanceof ChallengeValidation.Valid valid)) {
+        return outcomeAssertion(mapAssertionPreflight(validation), start);
       }
-
-      if (!"webauthn.get".equals(clientData.type())) {
-        return outcomeAssertion(
-            new AssertionResult.InvalidChallenge("clientData.type must be webauthn.get"), start);
-      }
-
-      if (!originValidator.isAllowed(clientData.origin())) {
-        return outcomeAssertion(
-            new AssertionResult.OriginMismatch(rpConfig.origins().toString(), clientData.origin()),
-            start);
-      }
-
-      ChallengeId derivedId;
-      try {
-        derivedId = ChallengeGenerator.idOf(clientData.challengeBytes());
-      } catch (RuntimeException ex) {
-        return outcomeAssertion(
-            new AssertionResult.InvalidChallenge("invalid challenge encoding"), start);
-      }
-      if (!derivedId.equals(req.challengeId())) {
-        return outcomeAssertion(
-            new AssertionResult.InvalidChallenge("challengeId / clientData.challenge mismatch"),
-            start);
-      }
-
-      Optional<ChallengeRecord> stored = challengeStore.takeOnce(req.challengeId());
-      if (stored.isEmpty()) {
-        return outcomeAssertion(
-            new AssertionResult.InvalidChallenge("unknown, expired, or already-consumed challenge"),
-            start);
-      }
-      ChallengeRecord challengeRecord = stored.get();
-      if (challengeRecord.purpose() != ChallengeRecord.Purpose.ASSERTION) {
-        return outcomeAssertion(
-            new AssertionResult.InvalidChallenge("challenge bound to a different ceremony"), start);
-      }
-      if (!Arrays.equals(challengeRecord.challenge(), clientData.challengeBytes())) {
-        return outcomeAssertion(
-            new AssertionResult.InvalidChallenge("challenge bytes do not match stored value"),
-            start);
-      }
-      if (clockProvider.now().isAfter(challengeRecord.expiresAt())) {
-        return outcomeAssertion(new AssertionResult.InvalidChallenge("challenge expired"), start);
-      }
+      ChallengeRecord challengeRecord = valid.record();
+      ClientDataJsonParser.ClientData clientData = valid.clientData();
 
       byte[] credentialId = req.response().rawId();
       Optional<CredentialRecord> credOpt = credentialRepository.findByCredentialId(credentialId);
@@ -450,6 +366,37 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
         return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
       }
       CredentialRecord cred = credOpt.get();
+
+      // Fix #18: bind the asserted credential to the start-time user handle (if the start request
+      // named a user) and to the WebAuthn response's userHandle (if the authenticator returned
+      // one).
+      // The sealed AssertionResult hierarchy has no dedicated "credential mismatch" variant; treat
+      // a wrong-owner credential as if it were unknown — same wire response, same metrics bucket.
+      if (challengeRecord.userHandle() != null
+          && !challengeRecord.userHandle().equals(cred.userHandle())) {
+        LOG.warn(
+            "authentication.finish credential userHandle does not match start-time userHandle"
+                + " credId={}",
+            shortCredId(credentialId));
+        return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
+      }
+      byte[] responseUserHandle = req.response().response().userHandle();
+      if (responseUserHandle != null && responseUserHandle.length > 0) {
+        UserHandle asserted;
+        try {
+          asserted = UserHandle.of(responseUserHandle);
+        } catch (IllegalArgumentException ex) {
+          // Malformed handle (wrong length) — treat as unknown credential rather than crash.
+          return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
+        }
+        if (!asserted.equals(cred.userHandle())) {
+          LOG.warn(
+              "authentication.finish response.userHandle does not match credential userHandle"
+                  + " credId={}",
+              shortCredId(credentialId));
+          return outcomeAssertion(new AssertionResult.UnknownCredential(credentialId), start);
+        }
+      }
 
       var w4jRequest = WebAuthn4JConverters.toAuthenticationRequest(req.response());
       var serverProperty =
@@ -500,6 +447,63 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
   }
 
   // -- Helpers ---------------------------------------------------------------------------------
+
+  /**
+   * Translates a {@link ChallengeValidation} non-{@code Valid} variant into a registration result.
+   */
+  private RegistrationResult mapRegistrationPreflight(ChallengeValidation v) {
+    return switch (v) {
+      case ChallengeValidation.Valid ignored ->
+          throw new IllegalStateException("mapRegistrationPreflight called on Valid");
+      case ChallengeValidation.MalformedClientData m ->
+          new RegistrationResult.InvalidPayload(m.detail());
+      case ChallengeValidation.CeremonyTypeMismatch t ->
+          new RegistrationResult.InvalidPayload("clientData.type must be " + t.expected());
+      case ChallengeValidation.OriginMismatch o ->
+          new RegistrationResult.OriginMismatch(rpConfig.origins().toString(), o.actual());
+      case ChallengeValidation.InvalidEncoding e ->
+          new RegistrationResult.InvalidPayload(e.detail());
+      case ChallengeValidation.IdMismatch ignored ->
+          new RegistrationResult.InvalidChallenge("challengeId / clientData.challenge mismatch");
+      case ChallengeValidation.MissingOrConsumed ignored ->
+          new RegistrationResult.InvalidChallenge(
+              "unknown, expired, or already-consumed challenge");
+      case ChallengeValidation.PurposeMismatch ignored ->
+          new RegistrationResult.InvalidChallenge("challenge bound to a different ceremony");
+      case ChallengeValidation.BytesMismatch ignored ->
+          new RegistrationResult.InvalidChallenge("challenge bytes do not match stored value");
+      case ChallengeValidation.Expired ignored ->
+          new RegistrationResult.InvalidChallenge("challenge expired");
+    };
+  }
+
+  /**
+   * Translates a {@link ChallengeValidation} non-{@code Valid} variant into an assertion result.
+   */
+  private AssertionResult mapAssertionPreflight(ChallengeValidation v) {
+    return switch (v) {
+      case ChallengeValidation.Valid ignored ->
+          throw new IllegalStateException("mapAssertionPreflight called on Valid");
+      case ChallengeValidation.MalformedClientData m ->
+          new AssertionResult.InvalidChallenge(m.detail());
+      case ChallengeValidation.CeremonyTypeMismatch t ->
+          new AssertionResult.InvalidChallenge("clientData.type must be " + t.expected());
+      case ChallengeValidation.OriginMismatch o ->
+          new AssertionResult.OriginMismatch(rpConfig.origins().toString(), o.actual());
+      case ChallengeValidation.InvalidEncoding e ->
+          new AssertionResult.InvalidChallenge(e.detail());
+      case ChallengeValidation.IdMismatch ignored ->
+          new AssertionResult.InvalidChallenge("challengeId / clientData.challenge mismatch");
+      case ChallengeValidation.MissingOrConsumed ignored ->
+          new AssertionResult.InvalidChallenge("unknown, expired, or already-consumed challenge");
+      case ChallengeValidation.PurposeMismatch ignored ->
+          new AssertionResult.InvalidChallenge("challenge bound to a different ceremony");
+      case ChallengeValidation.BytesMismatch ignored ->
+          new AssertionResult.InvalidChallenge("challenge bytes do not match stored value");
+      case ChallengeValidation.Expired ignored ->
+          new AssertionResult.InvalidChallenge("challenge expired");
+    };
+  }
 
   private AssertionResult handleCounterRegression(
       CredentialRecord cred, long received, long start) {

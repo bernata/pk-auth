@@ -232,6 +232,38 @@ class PkAuthJwtTest {
     assertThat(hs.currentKeyId()).isEqualTo("current");
   }
 
+  @Test
+  void revokedTokenIsRejected() {
+    JwtKeyset keyset = JwtKeyset.hs256(randomBytes(32));
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(config, keyset, fixedClock(NOW));
+
+    String token =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), List.of("user")));
+
+    // RevocationCheck that always revokes every token
+    RevocationCheck alwaysRevoked = (jti, sub) -> true;
+    PkAuthJwtValidator validator =
+        new PkAuthJwtValidator(config, keyset, fixedClock(NOW), alwaysRevoked);
+
+    assertThat(validator.validate(token)).isInstanceOf(JwtVerificationResult.Revoked.class);
+  }
+
+  @Test
+  void defaultAllowRevocationPassesValidToken() {
+    JwtKeyset keyset = JwtKeyset.hs256(randomBytes(32));
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(config, keyset, fixedClock(NOW));
+
+    String token =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {2}), List.of("user")));
+
+    // No-arg constructor uses RevocationCheck.allow() — token must succeed
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    assertThat(validator.validate(token)).isInstanceOf(JwtVerificationResult.Success.class);
+  }
+
   // -- helpers --
 
   private static ECKey generateEcKey(String kid) throws Exception {

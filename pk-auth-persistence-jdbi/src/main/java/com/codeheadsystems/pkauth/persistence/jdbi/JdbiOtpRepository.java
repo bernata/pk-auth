@@ -58,12 +58,17 @@ public final class JdbiOtpRepository implements OtpRepository {
   }
 
   @Override
-  public void incrementAttempts(String otpId) {
-    jdbi.useHandle(
-        h ->
-            h.createUpdate("UPDATE otp_codes SET attempts = attempts + 1 WHERE otp_id = :oid")
-                .bind("oid", otpId)
-                .execute());
+  public int incrementAttempts(String otpId) {
+    return jdbi.withHandle(
+        h -> {
+          h.createUpdate("UPDATE otp_codes SET attempts = attempts + 1 WHERE otp_id = :oid")
+              .bind("oid", otpId)
+              .execute();
+          return h.createQuery("SELECT attempts FROM otp_codes WHERE otp_id = :oid")
+              .bind("oid", otpId)
+              .mapTo(Integer.class)
+              .one();
+        });
   }
 
   @Override

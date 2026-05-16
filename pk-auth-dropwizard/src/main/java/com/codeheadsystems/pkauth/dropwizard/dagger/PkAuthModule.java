@@ -5,9 +5,9 @@ import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
-import com.codeheadsystems.pkauth.dropwizard.auth.PasskeyAuthenticator;
+import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
 import com.codeheadsystems.pkauth.dropwizard.config.PkAuthConfig;
-import com.codeheadsystems.pkauth.dropwizard.resource.PasskeyCeremonyResource;
+import com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
@@ -23,8 +23,8 @@ import java.util.Set;
 
 /**
  * The bundle's Dagger module. Provides the framework-neutral pk-auth services, the JWT
- * issuer/validator, and the {@link PasskeyAuthenticator} so Jersey resources can be constructed via
- * the generated component.
+ * issuer/validator, and the {@link PkAuthDropwizardAuthenticator} so Jersey resources can be
+ * constructed via the generated component.
  *
  * <p>Persistence SPIs are passed in via {@link PersistenceBindings}, kept out of this module so the
  * same generated component works against any backend (in-memory, JDBI, DynamoDB).
@@ -156,16 +156,16 @@ public final class PkAuthModule {
 
   @Provides
   @Singleton
-  PasskeyAuthenticator providePasskeyAuthenticator(PkAuthJwtValidator validator) {
-    return new PasskeyAuthenticator(validator);
+  PkAuthDropwizardAuthenticator providePasskeyAuthenticator(PkAuthJwtValidator validator) {
+    return new PkAuthDropwizardAuthenticator(validator);
   }
 
   @Provides
   @Singleton
-  PasskeyCeremonyResource provideCeremonyResource(
+  PkAuthCeremonyResource provideCeremonyResource(
       PasskeyAuthenticationService service,
       PkAuthJwtIssuer issuer,
       CredentialRepository credentialRepository) {
-    return new PasskeyCeremonyResource(service, issuer, credentialRepository);
+    return new PkAuthCeremonyResource(service, issuer, credentialRepository);
   }
 }

@@ -158,7 +158,11 @@ public class PkAuthFactory {
 
   @Singleton
   OtpService otpService(OtpRepository repo, SmsSender sms, ClockProvider clock) {
-    return new OtpService(repo, sms, clock);
+    // OtpService requires a pepper for hashing stored codes; generate a per-startup random pepper.
+    // Host apps that need stable peppers across restarts declare their own OtpService bean.
+    byte[] pepper = new byte[32];
+    new java.security.SecureRandom().nextBytes(pepper);
+    return new OtpService(repo, sms, clock, pepper);
   }
 
   @Singleton

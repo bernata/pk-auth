@@ -114,8 +114,11 @@ public final class DemoApplication extends Application<DemoConfiguration> {
             persistence.userLookup(),
             clock,
             "http://localhost:8080");
+    byte[] otpPepper = new byte[32];
+    new java.security.SecureRandom().nextBytes(otpPepper);
     OtpService otp =
-        new OtpService(persistence.bindings().otpRepository(), new LoggingSmsSender(), clock);
+        new OtpService(
+            persistence.bindings().otpRepository(), new LoggingSmsSender(), clock, otpPepper);
     return DefaultAdminService.builder()
         .credentialRepository(persistence.bindings().credentialRepository())
         .userLookup(persistence.userLookup())

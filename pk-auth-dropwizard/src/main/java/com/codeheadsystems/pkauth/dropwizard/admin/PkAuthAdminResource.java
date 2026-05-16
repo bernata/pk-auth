@@ -4,7 +4,7 @@ package com.codeheadsystems.pkauth.dropwizard.admin;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.api.UserHandle;
-import com.codeheadsystems.pkauth.dropwizard.auth.PasskeyPrincipal;
+import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthPasskeyPrincipal;
 import com.codeheadsystems.pkauth.json.Base64Url;
 import io.dropwizard.auth.Auth;
 import jakarta.inject.Inject;
@@ -29,7 +29,7 @@ import java.util.Objects;
 @Path("/auth/admin")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
-public class AdminResource {
+public class PkAuthAdminResource {
 
   /** Wire body for {@code PATCH /credentials/{id}}. */
   public record RenameRequest(String label) {}
@@ -49,66 +49,69 @@ public class AdminResource {
   private final AdminService adminService;
 
   @Inject
-  public AdminResource(AdminService adminService) {
+  public PkAuthAdminResource(AdminService adminService) {
     this.adminService = Objects.requireNonNull(adminService, "adminService");
   }
 
   @GET
   @Path("/account")
-  public Response getAccount(@Auth PasskeyPrincipal principal) {
+  public Response getAccount(@Auth PkAuthPasskeyPrincipal principal) {
     UserHandle user = principal.userHandle();
-    return AdminResultMapper.toResponse(adminService.getAccount(user, user));
+    return PkAuthAdminResultMapper.toResponse(adminService.getAccount(user, user));
   }
 
   @GET
   @Path("/credentials")
-  public Response listCredentials(@Auth PasskeyPrincipal principal) {
+  public Response listCredentials(@Auth PkAuthPasskeyPrincipal principal) {
     UserHandle user = principal.userHandle();
-    return AdminResultMapper.toResponse(adminService.listCredentials(user, user));
+    return PkAuthAdminResultMapper.toResponse(adminService.listCredentials(user, user));
   }
 
   @PATCH
   @Path("/credentials/{credentialId}")
   public Response renameCredential(
-      @Auth PasskeyPrincipal principal,
+      @Auth PkAuthPasskeyPrincipal principal,
       @PathParam("credentialId") String credentialIdB64Url,
       RenameRequest body) {
     UserHandle user = principal.userHandle();
     byte[] id = Base64Url.decode(credentialIdB64Url);
     String label = body == null ? null : body.label();
     AdminResult<?> result = adminService.renameCredential(user, user, id, label);
-    return AdminResultMapper.toResponse(result);
+    return PkAuthAdminResultMapper.toResponse(result);
   }
 
   @DELETE
   @Path("/credentials/{credentialId}")
   public Response deleteCredential(
-      @Auth PasskeyPrincipal principal, @PathParam("credentialId") String credentialIdB64Url) {
+      @Auth PkAuthPasskeyPrincipal principal,
+      @PathParam("credentialId") String credentialIdB64Url) {
     UserHandle user = principal.userHandle();
     byte[] id = Base64Url.decode(credentialIdB64Url);
-    return AdminResultMapper.toResponse(adminService.deleteCredential(user, user, id));
+    return PkAuthAdminResultMapper.toResponse(adminService.deleteCredential(user, user, id));
   }
 
   @POST
   @Path("/backup-codes/regenerate")
-  public Response regenerateBackupCodes(@Auth PasskeyPrincipal principal) {
+  public Response regenerateBackupCodes(@Auth PkAuthPasskeyPrincipal principal) {
     UserHandle user = principal.userHandle();
-    return AdminResultMapper.toResponse(adminService.regenerateBackupCodes(user, user));
+    return PkAuthAdminResultMapper.toResponse(adminService.regenerateBackupCodes(user, user));
   }
 
   @GET
   @Path("/backup-codes/count")
-  public Response remainingBackupCodes(@Auth PasskeyPrincipal principal) {
+  public Response remainingBackupCodes(@Auth PkAuthPasskeyPrincipal principal) {
     UserHandle user = principal.userHandle();
-    return AdminResultMapper.toResponse(adminService.remainingBackupCodes(user, user));
+    return PkAuthAdminResultMapper.toResponse(adminService.remainingBackupCodes(user, user));
   }
 
   @POST
   @Path("/email/start-verification")
-  public Response startEmailVerification(@Auth PasskeyPrincipal principal, EmailStartRequest body) {
+  public Response startEmailVerification(
+      @Auth PkAuthPasskeyPrincipal principal, EmailStartRequest body) {
     UserHandle user = principal.userHandle();
     String email = body == null ? null : body.email();
-    return AdminResultMapper.toResponse(adminService.startEmailVerification(user, user, email));
+    return PkAuthAdminResultMapper.toResponse(
+        adminService.startEmailVerification(user, user, email));
   }
 
   /** Brief §6.9 mounts the complete-verification endpoint as unauthenticated. */
@@ -116,25 +119,27 @@ public class AdminResource {
   @Path("/email/complete-verification")
   public Response completeEmailVerification(EmailCompleteRequest body) {
     String token = body == null ? null : body.token();
-    return AdminResultMapper.toResponse(adminService.completeEmailVerification(token));
+    return PkAuthAdminResultMapper.toResponse(adminService.completeEmailVerification(token));
   }
 
   @POST
   @Path("/phone/start-verification")
-  public Response startPhoneVerification(@Auth PasskeyPrincipal principal, PhoneStartRequest body) {
+  public Response startPhoneVerification(
+      @Auth PkAuthPasskeyPrincipal principal, PhoneStartRequest body) {
     UserHandle user = principal.userHandle();
     String phone = body == null ? null : body.phone();
-    return AdminResultMapper.toResponse(adminService.startPhoneVerification(user, user, phone));
+    return PkAuthAdminResultMapper.toResponse(
+        adminService.startPhoneVerification(user, user, phone));
   }
 
   @POST
   @Path("/phone/complete-verification")
   public Response completePhoneVerification(
-      @Auth PasskeyPrincipal principal, PhoneCompleteRequest body) {
+      @Auth PkAuthPasskeyPrincipal principal, PhoneCompleteRequest body) {
     UserHandle user = principal.userHandle();
     String phone = body == null ? null : body.phone();
     String code = body == null ? null : body.code();
-    return AdminResultMapper.toResponse(
+    return PkAuthAdminResultMapper.toResponse(
         adminService.completePhoneVerification(user, user, phone, code));
   }
 }

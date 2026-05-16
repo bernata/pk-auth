@@ -58,6 +58,8 @@ class DefaultAdminServiceTest {
     alice = users.register("alice", "Alice");
 
     Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
+    byte[] otpPepper = new byte[32];
+    new SecureRandom().nextBytes(otpPepper);
     backupCodeService =
         new BackupCodeService(backupCodes, CLOCK, new SecureRandom(), argon2, 1, 1024, 1, 5);
     otpService =
@@ -66,7 +68,7 @@ class DefaultAdminServiceTest {
             new LoggingSmsSender(),
             CLOCK,
             new SecureRandom(),
-            argon2,
+            otpPepper,
             Duration.ofMinutes(5),
             3,
             3,

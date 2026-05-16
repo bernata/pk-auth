@@ -31,20 +31,26 @@ public final class InMemoryOtpRepository implements OtpRepository {
   }
 
   @Override
-  public void incrementAttempts(String otpId) {
+  public int incrementAttempts(String otpId) {
+    // Use an array to capture the new attempts count from inside the lambda.
+    int[] newAttempts = {0};
     byId.computeIfPresent(
         otpId,
-        (k, existing) ->
-            new StoredOtp(
-                existing.otpId(),
-                existing.userHandle(),
-                existing.phoneE164(),
-                existing.hashedCode(),
-                existing.attempts() + 1,
-                existing.maxAttempts(),
-                existing.consumed(),
-                existing.createdAt(),
-                existing.expiresAt()));
+        (k, existing) -> {
+          int updated = existing.attempts() + 1;
+          newAttempts[0] = updated;
+          return new StoredOtp(
+              existing.otpId(),
+              existing.userHandle(),
+              existing.phoneE164(),
+              existing.hashedCode(),
+              updated,
+              existing.maxAttempts(),
+              existing.consumed(),
+              existing.createdAt(),
+              existing.expiresAt());
+        });
+    return newAttempts[0];
   }
 
   @Override

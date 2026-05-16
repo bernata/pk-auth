@@ -6,17 +6,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.jwt.AuthMethod;
 import com.codeheadsystems.pkauth.jwt.JwtClaims;
-import com.codeheadsystems.pkauth.spring.security.JwtAuthenticationToken;
+import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationToken;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-class JwtAuthenticationTokenTest {
+class PkAuthJwtAuthenticationTokenTest {
 
   @Test
   void principalAndClaimsRoundTrip() {
     UserHandle handle = UserHandle.random();
     JwtClaims claims = JwtClaims.forBackupCode(handle, List.of("bckp"));
-    JwtAuthenticationToken token = new JwtAuthenticationToken(handle, claims, "raw-token");
+    PkAuthJwtAuthenticationToken token =
+        new PkAuthJwtAuthenticationToken(handle, claims, "raw-token");
 
     assertThat(token.isAuthenticated()).isTrue();
     assertThat(token.getPrincipal()).isEqualTo(handle);

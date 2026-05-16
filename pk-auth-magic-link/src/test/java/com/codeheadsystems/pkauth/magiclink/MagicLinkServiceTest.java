@@ -95,9 +95,13 @@ class MagicLinkServiceTest {
   }
 
   @Test
-  void loginUnknownUserReturnsNotFound() {
-    assertThat(service.sendLoginEmail("nobody", "n@example.com"))
-        .isInstanceOf(MagicLinkService.SendResult.UserNotFound.class);
+  void loginUnknownUserReturnsSentToPreventEnumeration() {
+    // Privacy invariant: sendLoginEmail must return Sent even when the username does not exist,
+    // so callers cannot enumerate accounts via the result shape.
+    MagicLinkService.SendResult result = service.sendLoginEmail("nobody", "n@example.com");
+    assertThat(result).isInstanceOf(MagicLinkService.SendResult.Sent.class);
+    // No email must have been dispatched for an unknown user.
+    assertThat(emails.sent).isEmpty();
   }
 
   @Test

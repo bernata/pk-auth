@@ -17,16 +17,22 @@ import org.reactivestreams.Publisher;
  * Missing / malformed tokens are NOT rejected here — admin controller methods enforce
  * "authenticated user required" themselves. This keeps the filter pluggable and avoids Micronaut
  * Security's generic-heavy SecurityRule surface.
+ *
+ * <p><b>Threading.</b> Token validation itself is non-blocking (HS256 or RS256 verification only),
+ * so the filter does NOT dispatch to a blocking executor and is safe to run on the Netty event
+ * loop. The pk-auth SPI is blocking, but the SPI is invoked downstream from the {@code @Controller}
+ * — see {@link PkAuthCeremonyController} / {@link PkAuthAdminController}, which both carry
+ * {@code @ExecuteOn(TaskExecutors.BLOCKING)}.
  */
 @Filter("/auth/admin/**")
-public class PkAuthJwtFilter implements HttpServerFilter {
+public class PkAuthJwtAuthenticationFilter implements HttpServerFilter {
 
   /** Request attribute key for the authenticated user handle. */
   public static final String ATTR_USER_HANDLE = "pkauth.userHandle";
 
   private final PkAuthJwtValidator validator;
 
-  public PkAuthJwtFilter(PkAuthJwtValidator validator) {
+  public PkAuthJwtAuthenticationFilter(PkAuthJwtValidator validator) {
     this.validator = validator;
   }
 

@@ -1,9 +1,3 @@
-demo:
-  rp-id: example.com
-  rp-name: pk-auth Spring Boot demo (test)
-  origins:
-    - https://example.com
-  persistence: memory
 pkauth:
   dev-mode: true
   relying-party:

@@ -12,7 +12,7 @@ import com.codeheadsystems.pkauth.api.StartRegistrationRequest;
 import com.codeheadsystems.pkauth.api.StartRegistrationResponse;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
-import com.codeheadsystems.pkauth.jwt.JwtClaims;
+import com.codeheadsystems.pkauth.jwt.PkAuthCeremonyJwt;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import io.micronaut.http.HttpResponse;
@@ -21,7 +21,8 @@ import io.micronaut.http.annotation.Body;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.Produces;
-import java.util.List;
+import io.micronaut.scheduling.TaskExecutors;
+import io.micronaut.scheduling.annotation.ExecuteOn;
 import java.util.Map;
 
 /**
@@ -29,9 +30,15 @@ import java.util.Map;
  * the Spring and Dropwizard adapters. All bodies are produced by {@link CeremonyWireMapper}, the
  * single source of truth for the wire contract, so the {@code @pk-auth/passkeys-browser} SDK sees
  * byte-identical JSON regardless of which adapter is in front of it.
+ *
+ * <p><b>Threading.</b> pk-auth's SPI is blocking (JDBC, DynamoDB SDK, etc. — see TODO #29); this
+ * adapter dispatches every endpoint to {@link TaskExecutors#BLOCKING} so Micronaut's Netty event
+ * loop is never parked on a synchronous repository call. Hosts running on Netty event loops should
+ * keep this default; hosts on a servlet container can override at the method level.
  */
 @Controller("/auth/passkeys")
 @Produces(MediaType.APPLICATION_JSON)
+@ExecuteOn(TaskExecutors.BLOCKING)
 public class PkAuthCeremonyController {
 
   private final PasskeyAuthenticationService service;
@@ -72,9 +79,7 @@ public class PkAuthCeremonyController {
       @Body FinishAuthenticationRequest req) {
     AssertionResult result = service.finishAuthentication(req);
     if (result instanceof AssertionResult.Success success) {
-      String token =
-          jwtIssuer.issue(
-              JwtClaims.forPasskey(success.userHandle(), success.credentialId(), List.of("pk")));
+      String token = PkAuthCeremonyJwt.mintForAssertion(success, jwtIssuer);
       String label =
           credentialRepository
               .findByCredentialId(success.credentialId())

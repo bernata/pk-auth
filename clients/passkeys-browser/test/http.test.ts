@@ -97,4 +97,29 @@ describe("request()", () => {
     expect(e.message).toContain("500");
     expect(e.message).toContain("boom");
   });
+
+  it("PkAuthHttpError parses JSON body and exposes error/detail/outcome getters", () => {
+    const body = JSON.stringify({ error: "invalid_token", detail: "expired", outcome: "failed" });
+    const e = new PkAuthHttpError(400, body);
+    expect(e.data).toMatchObject({ error: "invalid_token", detail: "expired", outcome: "failed" });
+    expect(e.error).toBe("invalid_token");
+    expect(e.detail).toBe("expired");
+    expect(e.outcome).toBe("failed");
+    // raw body still preserved
+    expect(e.body).toBe(body);
+    expect(e.status).toBe(400);
+  });
+
+  it("PkAuthHttpError leaves data/error/detail/outcome undefined for non-JSON body", () => {
+    const e = new PkAuthHttpError(503, "Service Unavailable");
+    expect(e.data).toBeUndefined();
+    expect(e.error).toBeUndefined();
+    expect(e.detail).toBeUndefined();
+    expect(e.outcome).toBeUndefined();
+  });
+
+  it("PkAuthHttpError leaves data undefined when JSON body is not an object", () => {
+    const e = new PkAuthHttpError(400, JSON.stringify([1, 2, 3]));
+    expect(e.data).toBeUndefined();
+  });
 });

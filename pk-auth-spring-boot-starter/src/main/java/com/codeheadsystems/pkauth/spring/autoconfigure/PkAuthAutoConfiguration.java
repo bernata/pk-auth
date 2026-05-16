@@ -277,6 +277,11 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   public OtpService pkAuthOtpService(
       OtpRepository repo, SmsSender smsSender, ClockProvider clockProvider) {
-    return new OtpService(repo, smsSender, clockProvider);
+    // OtpService now requires a pepper for hashing stored codes; generate a per-startup random
+    // pepper when not supplied. Host apps that care about pepper portability across instances
+    // should declare an OtpService bean explicitly. TODO: surface this via PkAuthProperties.
+    byte[] pepper = new byte[32];
+    new SecureRandom().nextBytes(pepper);
+    return new OtpService(repo, smsSender, clockProvider, pepper);
   }
 }
