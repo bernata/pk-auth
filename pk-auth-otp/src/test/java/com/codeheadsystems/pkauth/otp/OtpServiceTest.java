@@ -55,7 +55,7 @@ class OtpServiceTest {
 
   @Test
   void sendIssuesAndDispatchesCode() {
-    OtpService.SendResult result = service.send(USER, PHONE);
+    OtpService.SendResult result = service.startVerification(USER, PHONE);
     assertThat(result).isInstanceOf(OtpService.SendResult.Sent.class);
     assertThat(sms.messages).hasSize(1);
     assertThat(sms.messages.get(0).message).contains("verification code");
@@ -63,36 +63,36 @@ class OtpServiceTest {
 
   @Test
   void verifyAcceptsMatchingCodeOnce() {
-    service.send(USER, PHONE);
+    service.startVerification(USER, PHONE);
     String code = sms.lastCode();
 
-    assertThat(service.verify(USER, PHONE, code))
+    assertThat(service.finishVerification(USER, PHONE, code))
         .isInstanceOf(OtpService.VerifyResult.Success.class);
     // After consume, no active OTP.
-    assertThat(service.verify(USER, PHONE, code))
+    assertThat(service.finishVerification(USER, PHONE, code))
         .isInstanceOf(OtpService.VerifyResult.NoActiveOtp.class);
   }
 
   @Test
   void verifyMismatchDecrementsRemainingAttempts() {
-    service.send(USER, PHONE);
-    OtpService.VerifyResult first = service.verify(USER, PHONE, "000000");
+    service.startVerification(USER, PHONE);
+    OtpService.VerifyResult first = service.finishVerification(USER, PHONE, "000000");
     assertThat(first)
         .isInstanceOfSatisfying(
             OtpService.VerifyResult.CodeMismatch.class,
             m -> assertThat(m.remainingAttempts()).isEqualTo(2));
-    service.verify(USER, PHONE, "000000");
-    service.verify(USER, PHONE, "000000");
-    assertThat(service.verify(USER, PHONE, "000000"))
+    service.finishVerification(USER, PHONE, "000000");
+    service.finishVerification(USER, PHONE, "000000");
+    assertThat(service.finishVerification(USER, PHONE, "000000"))
         .isInstanceOf(OtpService.VerifyResult.AttemptsExceeded.class);
   }
 
   @Test
   void sendRateLimits() {
-    service.send(USER, PHONE);
-    service.send(USER, PHONE);
-    service.send(USER, PHONE);
-    assertThat(service.send(USER, PHONE))
+    service.startVerification(USER, PHONE);
+    service.startVerification(USER, PHONE);
+    service.startVerification(USER, PHONE);
+    assertThat(service.startVerification(USER, PHONE))
         .isInstanceOfSatisfying(
             OtpService.SendResult.RateLimited.class,
             r -> assertThat(r.countInWindow()).isGreaterThanOrEqualTo(3));
@@ -100,7 +100,7 @@ class OtpServiceTest {
 
   @Test
   void expiredOtpIsRejected() {
-    service.send(USER, PHONE);
+    service.startVerification(USER, PHONE);
     String code = sms.lastCode();
     OtpService advanced =
         OtpService.create(
@@ -116,7 +116,7 @@ class OtpServiceTest {
                 3,
                 3,
                 Duration.ofMinutes(15)));
-    assertThat(advanced.verify(USER, PHONE, code))
+    assertThat(advanced.finishVerification(USER, PHONE, code))
         .isInstanceOf(OtpService.VerifyResult.Expired.class);
   }
 

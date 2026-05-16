@@ -91,7 +91,7 @@ class MagicLinkServiceEdgeCasesTest {
     UserHandle user = lookup.register("alice", "Alice", "alice@example.com");
     MagicLinkService service = buildService(lookup, MagicLinkService.DEFAULT_CONSUMED_JTI_TTL);
 
-    MagicLinkService.SendResult result = service.sendVerificationEmail(user, "alice@example.com");
+    MagicLinkService.SendResult result = service.startEmailVerification(user, "alice@example.com");
 
     assertThat(result).isInstanceOf(MagicLinkService.SendResult.Sent.class);
   }
@@ -103,7 +103,7 @@ class MagicLinkServiceEdgeCasesTest {
     MagicLinkService service = buildService(lookup, MagicLinkService.DEFAULT_CONSUMED_JTI_TTL);
 
     MagicLinkService.SendResult result =
-        service.sendVerificationEmail(user, "attacker@evil.example");
+        service.startEmailVerification(user, "attacker@evil.example");
 
     assertThat(result).isInstanceOf(MagicLinkService.SendResult.EmailMismatch.class);
   }
@@ -116,7 +116,7 @@ class MagicLinkServiceEdgeCasesTest {
     MagicLinkService service = buildService(lookup, MagicLinkService.DEFAULT_CONSUMED_JTI_TTL);
 
     MagicLinkService.SendResult result =
-        service.sendVerificationEmail(user, "trust-me-bro@example.com");
+        service.startEmailVerification(user, "trust-me-bro@example.com");
 
     assertThat(result).isInstanceOf(MagicLinkService.SendResult.Sent.class);
   }
@@ -128,13 +128,14 @@ class MagicLinkServiceEdgeCasesTest {
     MagicLinkService service = buildService(lookup, Duration.ofMinutes(30));
 
     String token =
-        ((MagicLinkService.SendResult.Sent) service.sendVerificationEmail(user, "a@example.com"))
+        ((MagicLinkService.SendResult.Sent) service.startEmailVerification(user, "a@example.com"))
             .tokenJti();
-    assertThat(service.consume(token)).isInstanceOf(MagicLinkService.ConsumeResult.Success.class);
+    assertThat(service.finishVerification(token))
+        .isInstanceOf(MagicLinkService.ConsumeResult.Success.class);
 
     List<MagicLinkService.ConsumeResult> attempts = new ArrayList<>();
     for (int i = 0; i < 20; i++) {
-      attempts.add(service.consume(token));
+      attempts.add(service.finishVerification(token));
     }
     assertThat(attempts).allMatch(r -> r instanceof MagicLinkService.ConsumeResult.AlreadyConsumed);
   }

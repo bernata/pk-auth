@@ -44,14 +44,20 @@ public interface AdminService {
   /**
    * Consumes a magic-link token and marks the user's email verified. Intentionally takes no {@code
    * actor} — the brief mounts this endpoint as unauthenticated.
+   *
+   * @since 0.9.1
    */
-  AdminResult<UserHandle> completeEmailVerification(String token);
+  AdminResult<UserHandle> finishEmailVerification(String token);
 
   /** Sends an SMS OTP to {@code phoneE164}. */
   AdminResult<OtpDispatchResult> startPhoneVerification(
       UserHandle actor, UserHandle target, String phoneE164);
 
-  /** Verifies an SMS OTP. */
-  AdminResult<PhoneVerificationResult> completePhoneVerification(
+  /**
+   * Verifies an SMS OTP.
+   *
+   * @since 0.9.1
+   */
+  AdminResult<PhoneVerificationResult> finishPhoneVerification(
       UserHandle actor, UserHandle target, String phoneE164, String code);
 }

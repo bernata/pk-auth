@@ -78,13 +78,13 @@ class BackupCodeServiceTest {
   }
 
   @Test
-  void regenerateAllDeletesPriorAndIssuesFreshSet() {
+  void regenerateBackupCodesDeletesPriorAndIssuesFreshSet() {
     UserHandle user = UserHandle.of(new byte[] {1, 2, 3});
     List<String> first = service.generate(user);
     service.verify(user, first.get(0));
     rateLimiter.reset();
 
-    List<String> second = service.regenerateAll(user);
+    List<String> second = service.regenerateBackupCodes(user);
     assertThat(second).hasSize(5);
     assertThat(service.remainingCount(user)).isEqualTo(5);
     // None of the first batch should verify anymore.

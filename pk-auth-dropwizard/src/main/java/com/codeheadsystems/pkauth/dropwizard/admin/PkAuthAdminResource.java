@@ -113,11 +113,11 @@ public class PkAuthAdminResource {
   /** Brief §6.9 mounts the complete-verification endpoint as unauthenticated. */
   @POST
   @Path("/email/complete-verification")
-  public Response completeEmailVerification(FinishEmailVerification body) {
+  public Response finishEmailVerification(FinishEmailVerification body) {
     String token = body == null ? null : body.token();
     return PkAuthAdminResultMapper.toResponse(
         AdminResponseMapper.toResponse(
-            adminService.completeEmailVerification(token), EmailVerificationResult::new));
+            adminService.finishEmailVerification(token), EmailVerificationResult::new));
   }
 
   @POST
@@ -132,12 +132,12 @@ public class PkAuthAdminResource {
 
   @POST
   @Path("/phone/complete-verification")
-  public Response completePhoneVerification(
+  public Response finishPhoneVerification(
       @Auth PkAuthPasskeyPrincipal principal, FinishPhoneVerification body) {
     UserHandle user = principal.userHandle();
     String phone = body == null ? null : body.phone();
     String code = body == null ? null : body.code();
     return PkAuthAdminResultMapper.toResponse(
-        adminService.completePhoneVerification(user, user, phone, code));
+        adminService.finishPhoneVerification(user, user, phone, code));
   }
 }

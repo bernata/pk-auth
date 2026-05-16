@@ -249,21 +249,21 @@ class DefaultAdminServiceTest {
   }
 
   @Test
-  void completeEmailVerificationConsumesToken() {
-    MagicLinkService.SendResult send = magicLink.sendVerificationEmail(alice, "alice@example.com");
+  void finishEmailVerificationConsumesToken() {
+    MagicLinkService.SendResult send = magicLink.startEmailVerification(alice, "alice@example.com");
     String token = ((MagicLinkService.SendResult.Sent) send).tokenJti();
-    AdminResult<UserHandle> result = admin.completeEmailVerification(token);
+    AdminResult<UserHandle> result = admin.finishEmailVerification(token);
     assertThat(result)
         .isInstanceOfSatisfying(
             AdminResult.Success.class, s -> assertThat(s.value()).isEqualTo(alice));
 
     // Second consume → Conflict.
-    assertThat(admin.completeEmailVerification(token)).isInstanceOf(AdminResult.Conflict.class);
+    assertThat(admin.finishEmailVerification(token)).isInstanceOf(AdminResult.Conflict.class);
   }
 
   @Test
-  void completeEmailVerificationInvalidToken() {
-    assertThat(admin.completeEmailVerification("not.a.jwt"))
+  void finishEmailVerificationInvalidToken() {
+    assertThat(admin.finishEmailVerification("not.a.jwt"))
         .isInstanceOf(AdminResult.ValidationFailed.class);
   }
 
@@ -292,9 +292,9 @@ class DefaultAdminServiceTest {
   }
 
   @Test
-  void completePhoneVerificationFlow() {
+  void finishPhoneVerificationFlow() {
     AdminResult<PhoneVerificationResult> miss =
-        admin.completePhoneVerification(alice, alice, "+15551234567", "000000");
+        admin.finishPhoneVerification(alice, alice, "+15551234567", "000000");
     assertThat(miss)
         .isInstanceOfSatisfying(
             AdminResult.Success.class,

@@ -182,8 +182,10 @@ public final class MagicLinkService {
    * bound value (constant-time compare) — otherwise a caller could mint a "verified" claim for an
    * arbitrary address. If the host has not implemented {@code emailFor}, the binding check is
    * skipped (with a warning log) and the send proceeds.
+   *
+   * @since 0.9.1
    */
-  public SendResult sendVerificationEmail(UserHandle user, String email) {
+  public SendResult startEmailVerification(UserHandle user, String email) {
     Objects.requireNonNull(user, "user");
     Objects.requireNonNull(email, "email");
     Optional<String> bound = userLookup.emailFor(user);
@@ -229,8 +231,10 @@ public final class MagicLinkService {
    * side-channels and timing side-channels that would otherwise reveal whether an account exists.
    * Callers MUST NOT rely on a {@link SendResult.UserNotFound} outcome from this method — that
    * variant is produced only by signup flows where confirming account non-existence is intentional.
+   *
+   * @since 0.9.1
    */
-  public SendResult sendLoginEmail(String username, String email) {
+  public SendResult startLogin(String username, String email) {
     Objects.requireNonNull(username, "username");
     Objects.requireNonNull(email, "email");
     Optional<UserHandle> resolved = userLookup.findHandleByUsername(username);
@@ -253,8 +257,13 @@ public final class MagicLinkService {
     return new SendResult.Sent(token);
   }
 
-  /** Verifies and consumes a magic-link token. */
-  public ConsumeResult consume(String token) {
+  /**
+   * Verifies and consumes a magic-link token. Used by both the email-verify and login flows; the
+   * purpose distinction lives in the JWT's {@code pkauth.purpose} claim.
+   *
+   * @since 0.9.1
+   */
+  public ConsumeResult finishVerification(String token) {
     Objects.requireNonNull(token, "token");
     JwtVerificationResult verification = validator.validate(token);
     if (!(verification instanceof JwtVerificationResult.Success success)) {

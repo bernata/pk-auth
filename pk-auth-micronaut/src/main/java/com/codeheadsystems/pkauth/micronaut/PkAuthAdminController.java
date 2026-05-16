@@ -117,10 +117,10 @@ public class PkAuthAdminController {
 
   /** Unauthenticated. */
   @Post("/email/complete-verification")
-  public HttpResponse<?> completeEmailVerification(@Body FinishEmailVerification body) {
+  public HttpResponse<?> finishEmailVerification(@Body FinishEmailVerification body) {
     return toMicronaut(
         AdminResponseMapper.toResponse(
-            adminService.completeEmailVerification(body.token()), EmailVerificationResult::new));
+            adminService.finishEmailVerification(body.token()), EmailVerificationResult::new));
   }
 
   @Post("/phone/start-verification")
@@ -132,11 +132,11 @@ public class PkAuthAdminController {
   }
 
   @Post("/phone/complete-verification")
-  public HttpResponse<?> completePhoneVerification(
+  public HttpResponse<?> finishPhoneVerification(
       HttpRequest<?> request, @Body FinishPhoneVerification body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    return map(adminService.completePhoneVerification(actor, actor, body.phone(), body.code()));
+    return map(adminService.finishPhoneVerification(actor, actor, body.phone(), body.code()));
   }
 
   /**

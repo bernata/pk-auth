@@ -294,8 +294,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   (base64url string) in `PkAuthObjectMappers`; switch the record fields to the
   value classes; delete the manual encodings.
 
-### ⚠️ 23. Standardize on `start*/finish*` across every feature service
-**Blocked:** not attempted in this run — deferred per user pause.
+### ✅ 23. Standardize on `start*/finish*` across every feature service
+**Completed:** 2026-05-16 — `OtpService.send`/`verify` → `startVerification`/`finishVerification`; `MagicLinkService.sendVerificationEmail` → `startEmailVerification`, `sendLoginEmail` → `startLogin`, `consume` → `finishVerification`; `AdminService.completeEmailVerification` → `finishEmailVerification`, `completePhoneVerification` → `finishPhoneVerification`; `BackupCodeService.regenerateAll` → `regenerateBackupCodes`. All call sites + tests + adapter controllers updated; HTTP URL paths left unchanged (wire contract).
 - Severity: **Med** — [API #9], [API #13]
 - Files: ceremony (already `start*`/`finish*`), OTP (`send`/`verify`),
   magic-link (`send*`/`consume`), admin (`start*`/`complete*`),
@@ -367,8 +367,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: force callers to supply `counterStatus` explicitly, or expose
   `Success.ok(...)` as a static factory.
 
-### ⚠️ 31. Stamp `@since 0.9.1` on every new/modified public element this sweep
-**Blocked:** stamps were applied to every element each prior agent touched, but a final sweep + CONTRIBUTING.md update was not run. Deferred per user pause.
+### ✅ 31. Stamp `@since 0.9.1` on every new/modified public element this sweep
+**Completed:** 2026-05-16 — final sweep run; renamed methods from item #23 each carry `@since 0.9.1`. CONTRIBUTING.md §7 now codifies the policy (every new/modified public element gets `@since`; rename = new `@since` on the new shape, no history retained pre-1.0).
 - Severity: **Med** — [API #21]
 - Issue: zero `@since` tags across `pk-auth-core`, `pk-auth-admin-api`, `pk-auth-jwt`,
   `pk-auth-otp`, `pk-auth-magic-link`, `pk-auth-backup-codes`.

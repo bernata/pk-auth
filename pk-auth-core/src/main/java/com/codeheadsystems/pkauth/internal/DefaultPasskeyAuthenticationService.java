@@ -213,7 +213,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
    * always a (possibly empty) list — never {@code null}. Emitting {@code null} for brand-new
    * usernames while emitting a populated list for existing users on this {@code permitAll} endpoint
    * would create an account-enumeration oracle. Mirrors the same privacy guard in {@code
-   * MagicLinkService.sendLoginEmail}.
+   * MagicLinkService.startLogin}.
    *
    * @since 0.9.1
    */
@@ -423,7 +423,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
    * always a (possibly empty) list — never {@code null}. Emitting {@code null} for unknown
    * usernames while emitting a populated list for known users on this {@code permitAll} endpoint
    * would create an account-enumeration oracle. Mirrors the same privacy guard in {@code
-   * MagicLinkService.sendLoginEmail}.
+   * MagicLinkService.startLogin}.
    *
    * @since 0.9.1
    */

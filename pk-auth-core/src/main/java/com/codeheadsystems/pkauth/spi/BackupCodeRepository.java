@@ -53,7 +53,7 @@ public interface BackupCodeRepository {
    */
   boolean consume(UserHandle userHandle, String codeId, Instant consumedAt);
 
-  /** Deletes every backup code for a user — used by {@code regenerateAll}. */
+  /** Deletes every backup code for a user — used by {@code regenerateBackupCodes}. */
   void deleteByUserHandle(UserHandle userHandle);
 
   /**

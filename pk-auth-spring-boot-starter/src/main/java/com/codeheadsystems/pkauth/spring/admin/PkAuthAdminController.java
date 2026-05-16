@@ -103,11 +103,10 @@ public class PkAuthAdminController {
 
   /** Unauthenticated per brief §6.9 ("token identifies the user"). */
   @PostMapping("/email/complete-verification")
-  public ResponseEntity<Object> completeEmailVerification(
-      @RequestBody FinishEmailVerification body) {
+  public ResponseEntity<Object> finishEmailVerification(@RequestBody FinishEmailVerification body) {
     return PkAuthAdminResultMapper.toResponseEntity(
         AdminResponseMapper.toResponse(
-            adminService.completeEmailVerification(body == null ? "" : body.token()),
+            adminService.finishEmailVerification(body == null ? "" : body.token()),
             EmailVerificationResult::new));
   }
 
@@ -121,11 +120,10 @@ public class PkAuthAdminController {
   }
 
   @PostMapping("/phone/complete-verification")
-  public ResponseEntity<Object> completePhoneVerification(
-      @RequestBody FinishPhoneVerification body) {
+  public ResponseEntity<Object> finishPhoneVerification(@RequestBody FinishPhoneVerification body) {
     UserHandle user = currentUser();
     return PkAuthAdminResultMapper.toResponse(
-        adminService.completePhoneVerification(
+        adminService.finishPhoneVerification(
             user, user, body == null ? "" : body.phone(), body == null ? "" : body.code()));
   }
 

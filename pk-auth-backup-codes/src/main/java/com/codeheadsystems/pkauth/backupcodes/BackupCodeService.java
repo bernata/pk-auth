@@ -274,9 +274,12 @@ public final class BackupCodeService {
 
   /**
    * Deletes every existing code for the user and issues a fresh set in a single atomic operation
-   * via {@link BackupCodeRepository#replaceAll}.
+   * via {@link BackupCodeRepository#replaceAll}. Named to align with {@code
+   * AdminService.regenerateBackupCodes}.
+   *
+   * @since 0.9.1
    */
-  public List<String> regenerateAll(UserHandle user) {
+  public List<String> regenerateBackupCodes(UserHandle user) {
     Objects.requireNonNull(user, "user");
     List<String> plaintext = new ArrayList<>(codeCount);
     List<StoredBackupCode> records = new ArrayList<>(codeCount);
@@ -294,7 +297,7 @@ public final class BackupCodeService {
       records.add(new StoredBackupCode(UUID.randomUUID().toString(), user, hash, false, now, null));
     }
     repository.replaceAll(user, records);
-    LOG.info("backup-codes.regenerateAll user={} count={}", user, codeCount);
+    LOG.info("backup-codes.regenerateBackupCodes user={} count={}", user, codeCount);
     return List.copyOf(plaintext);
   }
 

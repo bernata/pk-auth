@@ -136,7 +136,7 @@ public final class DefaultAdminService implements AdminService {
   public AdminResult<BackupCodesGenerated> regenerateBackupCodes(
       UserHandle actor, UserHandle target) {
     if (!authorize(actor, target)) return new AdminResult.Forbidden<>();
-    List<String> plaintext = backupCodeService.regenerateAll(target);
+    List<String> plaintext = backupCodeService.regenerateBackupCodes(target);
     return new AdminResult.Success<>(new BackupCodesGenerated(plaintext));
   }
 
@@ -155,7 +155,7 @@ public final class DefaultAdminService implements AdminService {
     if (email == null || email.isBlank()) {
       return new AdminResult.ValidationFailed<>("email must be non-blank");
     }
-    SendResult send = magicLinkService.sendVerificationEmail(target, email);
+    SendResult send = magicLinkService.startEmailVerification(target, email);
     if (send instanceof SendResult.RateLimited) {
       return new AdminResult.RateLimited<>(Duration.ofHours(1));
     }
@@ -167,11 +167,11 @@ public final class DefaultAdminService implements AdminService {
   }
 
   @Override
-  public AdminResult<UserHandle> completeEmailVerification(String token) {
+  public AdminResult<UserHandle> finishEmailVerification(String token) {
     if (token == null || token.isBlank()) {
       return new AdminResult.ValidationFailed<>("token must be non-blank");
     }
-    ConsumeResult result = magicLinkService.consume(token);
+    ConsumeResult result = magicLinkService.finishVerification(token);
     if (result instanceof ConsumeResult.Success success) {
       // Host apps own the users table; we report success and let the adapter persist the
       // emailVerified flag via UserLookup's host-app-specific update path (out of scope here).
@@ -193,7 +193,7 @@ public final class DefaultAdminService implements AdminService {
     if (phoneE164 == null || !phoneE164.startsWith("+")) {
       return new AdminResult.ValidationFailed<>("phone must be E.164 format");
     }
-    OtpService.SendResult send = otpService.send(target, phoneE164);
+    OtpService.SendResult send = otpService.startVerification(target, phoneE164);
     if (send instanceof OtpService.SendResult.RateLimited) {
       return new AdminResult.RateLimited<>(Duration.ofMinutes(15));
     }
@@ -202,13 +202,13 @@ public final class DefaultAdminService implements AdminService {
   }
 
   @Override
-  public AdminResult<PhoneVerificationResult> completePhoneVerification(
+  public AdminResult<PhoneVerificationResult> finishPhoneVerification(
       UserHandle actor, UserHandle target, String phoneE164, String code) {
     if (!authorize(actor, target)) return new AdminResult.Forbidden<>();
     if (phoneE164 == null || code == null) {
       return new AdminResult.ValidationFailed<>("phone and code are required");
     }
-    OtpService.VerifyResult result = otpService.verify(target, phoneE164, code);
+    OtpService.VerifyResult result = otpService.finishVerification(target, phoneE164, code);
     return new AdminResult.Success<>(
         switch (result) {
           case OtpService.VerifyResult.Success s -> new PhoneVerificationResult.Verified();

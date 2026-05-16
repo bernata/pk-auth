@@ -141,8 +141,12 @@ public final class OtpService {
     return new OtpService(deps, Config.defaults(pepper));
   }
 
-  /** Generates a new OTP, persists it, and hands it to the {@link SmsSender}. */
-  public SendResult send(UserHandle user, String phoneE164) {
+  /**
+   * Generates a new OTP, persists it, and hands it to the {@link SmsSender}.
+   *
+   * @since 0.9.1
+   */
+  public SendResult startVerification(UserHandle user, String phoneE164) {
     Objects.requireNonNull(user, "user");
     Objects.requireNonNull(phoneE164, "phoneE164");
 
@@ -166,8 +170,12 @@ public final class OtpService {
     return new SendResult.Sent(otpId);
   }
 
-  /** Verifies a candidate code against the most recent active OTP for (user, phone). */
-  public VerifyResult verify(UserHandle user, String phoneE164, String candidate) {
+  /**
+   * Verifies a candidate code against the most recent active OTP for (user, phone).
+   *
+   * @since 0.9.1
+   */
+  public VerifyResult finishVerification(UserHandle user, String phoneE164, String candidate) {
     Objects.requireNonNull(user, "user");
     Objects.requireNonNull(phoneE164, "phoneE164");
     Objects.requireNonNull(candidate, "candidate");

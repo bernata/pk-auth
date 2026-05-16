@@ -149,7 +149,7 @@ class PkAuthAdminIntegrationTest {
   }
 
   @Test
-  void completeEmailVerificationWithBlankTokenReturns400() throws Exception {
+  void finishEmailVerificationWithBlankTokenReturns400() throws Exception {
     mockMvc
         .perform(
             post("/auth/admin/email/complete-verification")

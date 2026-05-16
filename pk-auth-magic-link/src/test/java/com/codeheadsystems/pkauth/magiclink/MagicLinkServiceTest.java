@@ -58,13 +58,13 @@ class MagicLinkServiceTest {
   @Test
   void verificationEmailDispatchesAndTokenConsumesOnce() {
     UserHandle user = UserHandle.random();
-    MagicLinkService.SendResult send = service.sendVerificationEmail(user, "alice@example.com");
+    MagicLinkService.SendResult send = service.startEmailVerification(user, "alice@example.com");
     assertThat(send).isInstanceOf(MagicLinkService.SendResult.Sent.class);
     String token = ((MagicLinkService.SendResult.Sent) send).tokenJti();
     assertThat(emails.sent).hasSize(1);
     assertThat(emails.sent.get(0).subject).isEqualTo("Verify your email");
 
-    MagicLinkService.ConsumeResult consumed = service.consume(token);
+    MagicLinkService.ConsumeResult consumed = service.finishVerification(token);
     assertThat(consumed)
         .isInstanceOfSatisfying(
             MagicLinkService.ConsumeResult.Success.class,
@@ -75,7 +75,7 @@ class MagicLinkServiceTest {
             });
 
     // Single-use: consuming the same token again must fail.
-    assertThat(service.consume(token))
+    assertThat(service.finishVerification(token))
         .isInstanceOf(MagicLinkService.ConsumeResult.AlreadyConsumed.class);
   }
 
@@ -83,11 +83,11 @@ class MagicLinkServiceTest {
   void loginEmailRoundTrip() {
     UserHandle user = users.register("alice", "Alice");
 
-    MagicLinkService.SendResult send = service.sendLoginEmail("alice", "alice@example.com");
+    MagicLinkService.SendResult send = service.startLogin("alice", "alice@example.com");
     String token = ((MagicLinkService.SendResult.Sent) send).tokenJti();
     assertThat(emails.sent.get(0).subject).isEqualTo("Sign in");
 
-    MagicLinkService.ConsumeResult consumed = service.consume(token);
+    MagicLinkService.ConsumeResult consumed = service.finishVerification(token);
     assertThat(consumed)
         .isInstanceOfSatisfying(
             MagicLinkService.ConsumeResult.Success.class,
@@ -99,9 +99,9 @@ class MagicLinkServiceTest {
 
   @Test
   void loginUnknownUserReturnsSentToPreventEnumeration() {
-    // Privacy invariant: sendLoginEmail must return Sent even when the username does not exist,
+    // Privacy invariant: startLogin must return Sent even when the username does not exist,
     // so callers cannot enumerate accounts via the result shape.
-    MagicLinkService.SendResult result = service.sendLoginEmail("nobody", "n@example.com");
+    MagicLinkService.SendResult result = service.startLogin("nobody", "n@example.com");
     assertThat(result).isInstanceOf(MagicLinkService.SendResult.Sent.class);
     // No email must have been dispatched for an unknown user.
     assertThat(emails.sent).isEmpty();
@@ -111,19 +111,19 @@ class MagicLinkServiceTest {
   void rateLimitsAfterConfiguredCount() {
     UserHandle user = UserHandle.random();
     for (int i = 0; i < 5; i++) {
-      service.sendVerificationEmail(user, "a@example.com");
+      service.startEmailVerification(user, "a@example.com");
     }
-    assertThat(service.sendVerificationEmail(user, "a@example.com"))
+    assertThat(service.startEmailVerification(user, "a@example.com"))
         .isInstanceOf(MagicLinkService.SendResult.RateLimited.class);
   }
 
   @Test
   void tamperedTokenRejected() {
     UserHandle user = UserHandle.random();
-    MagicLinkService.SendResult send = service.sendVerificationEmail(user, "a@example.com");
+    MagicLinkService.SendResult send = service.startEmailVerification(user, "a@example.com");
     String token = ((MagicLinkService.SendResult.Sent) send).tokenJti();
     String tampered = token.substring(0, token.length() - 4) + "AAAA";
-    assertThat(service.consume(tampered))
+    assertThat(service.finishVerification(tampered))
         .isInstanceOf(MagicLinkService.ConsumeResult.Invalid.class);
   }
 
