@@ -60,14 +60,20 @@ public interface OtpRepository {
   /**
    * Atomically increments the attempts counter for the supplied OTP id and returns the new count.
    * Callers must reject the verification attempt if the returned count exceeds {@code maxAttempts}.
+   * The {@code userHandle} addresses the row directly so implementations can avoid full-table
+   * scans.
    *
+   * @param userHandle owner of the OTP record
    * @param otpId the OTP record to increment
-   * @return the attempts value <em>after</em> the increment
+   * @return the attempts value <em>after</em> the increment, or 0 if the row does not exist
    */
-  int incrementAttempts(String otpId);
+  int incrementAttempts(UserHandle userHandle, String otpId);
 
-  /** Marks the supplied OTP id consumed. */
-  void consume(String otpId);
+  /**
+   * Marks the supplied OTP id consumed for the given user. Implementations should treat
+   * double-consume as a no-op.
+   */
+  void consume(UserHandle userHandle, String otpId);
 
   /**
    * Returns how many OTPs were issued for the supplied (user, phone) since {@code since}. Used by

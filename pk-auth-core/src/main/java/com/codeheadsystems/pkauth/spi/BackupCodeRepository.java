@@ -33,9 +33,11 @@ public interface BackupCodeRepository {
   List<StoredBackupCode> findByUserHandle(UserHandle userHandle);
 
   /**
-   * Marks the supplied code id as consumed. Implementations should treat double-consume as a no-op.
+   * Marks the supplied code id as consumed for the given user. The {@code userHandle} is the
+   * partition under which the code lives; implementations use it to address the row directly
+   * instead of scanning. Implementations should treat double-consume as a no-op.
    */
-  void consume(String codeId, Instant consumedAt);
+  void consume(UserHandle userHandle, String codeId, Instant consumedAt);
 
   /** Deletes every backup code for a user — used by {@code regenerateAll}. */
   void deleteByUserHandle(UserHandle userHandle);

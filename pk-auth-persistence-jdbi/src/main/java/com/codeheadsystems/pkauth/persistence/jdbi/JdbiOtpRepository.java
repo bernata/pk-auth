@@ -58,7 +58,7 @@ public final class JdbiOtpRepository implements OtpRepository {
   }
 
   @Override
-  public int incrementAttempts(String otpId) {
+  public int incrementAttempts(UserHandle userHandle, String otpId) {
     return jdbi.withHandle(
         h -> {
           // Guard: only increment when attempts < max_attempts (defense-in-depth against buggy
@@ -66,28 +66,32 @@ public final class JdbiOtpRepository implements OtpRepository {
           int updated =
               h.createUpdate(
                       "UPDATE otp_codes SET attempts = attempts + 1"
-                          + " WHERE otp_id = :oid AND attempts < max_attempts")
+                          + " WHERE user_handle = :uh AND otp_id = :oid"
+                          + "       AND attempts < max_attempts")
+                  .bind("uh", userHandle.value())
                   .bind("oid", otpId)
                   .execute();
-          if (updated == 0) {
-            // Already at cap (or row missing) — return the current attempts value unchanged.
-            return h.createQuery("SELECT attempts FROM otp_codes WHERE otp_id = :oid")
-                .bind("oid", otpId)
-                .mapTo(Integer.class)
-                .one();
-          }
-          return h.createQuery("SELECT attempts FROM otp_codes WHERE otp_id = :oid")
-              .bind("oid", otpId)
-              .mapTo(Integer.class)
-              .one();
+          Optional<Integer> current =
+              h.createQuery(
+                      "SELECT attempts FROM otp_codes"
+                          + " WHERE user_handle = :uh AND otp_id = :oid")
+                  .bind("uh", userHandle.value())
+                  .bind("oid", otpId)
+                  .mapTo(Integer.class)
+                  .findFirst();
+          // Returning 0 for a missing row preserves the SPI contract documented on the interface.
+          return current.orElse(updated == 0 ? 0 : updated);
         });
   }
 
   @Override
-  public void consume(String otpId) {
+  public void consume(UserHandle userHandle, String otpId) {
     jdbi.useHandle(
         h ->
-            h.createUpdate("UPDATE otp_codes SET consumed = TRUE WHERE otp_id = :oid")
+            h.createUpdate(
+                    "UPDATE otp_codes SET consumed = TRUE"
+                        + " WHERE user_handle = :uh AND otp_id = :oid")
+                .bind("uh", userHandle.value())
                 .bind("oid", otpId)
                 .execute());
   }

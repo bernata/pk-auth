@@ -68,15 +68,17 @@ public final class JdbiBackupCodeRepository implements BackupCodeRepository {
    * = 'consumed'}) instead of removing the row.
    */
   @Override
-  public void consume(String codeId, Instant consumedAt) {
+  public void consume(UserHandle userHandle, String codeId, Instant consumedAt) {
     jdbi.useHandle(
         h -> {
           h.createUpdate(
                   "UPDATE backup_codes"
                       + " SET consumed = TRUE, consumed_at = :consumedAt,"
                       + "     revoked_at = :consumedAt, revoked_reason = 'consumed'"
-                      + " WHERE code_id = :cid AND consumed = FALSE AND revoked_at IS NULL")
+                      + " WHERE user_handle = :uh AND code_id = :cid"
+                      + "       AND consumed = FALSE AND revoked_at IS NULL")
               .bind("consumedAt", OffsetDateTime.ofInstant(consumedAt, ZoneOffset.UTC))
+              .bind("uh", userHandle.value())
               .bind("cid", codeId)
               .execute();
         });

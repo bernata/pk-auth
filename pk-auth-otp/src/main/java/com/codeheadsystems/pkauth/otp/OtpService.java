@@ -192,7 +192,7 @@ public final class OtpService {
     }
 
     // Increment first to close the TOCTOU window: the returned count is authoritative.
-    int newAttempts = repository.incrementAttempts(active.otpId());
+    int newAttempts = repository.incrementAttempts(user, active.otpId());
     if (newAttempts > active.maxAttempts()) {
       return new VerifyResult.AttemptsExceeded();
     }
@@ -204,7 +204,7 @@ public final class OtpService {
             active.hashedCode().getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
     if (matches) {
-      repository.consume(active.otpId());
+      repository.consume(user, active.otpId());
       LOG.info("otp.verify success user={} otpId={}", user, active.otpId());
       return new VerifyResult.Success();
     }

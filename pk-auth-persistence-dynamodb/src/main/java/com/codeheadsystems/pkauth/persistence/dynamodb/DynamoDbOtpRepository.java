@@ -6,27 +6,35 @@ import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.spi.OtpRepository;
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient;
 import software.amazon.awssdk.enhanced.dynamodb.DynamoDbTable;
-import software.amazon.awssdk.enhanced.dynamodb.Expression;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
-import software.amazon.awssdk.enhanced.dynamodb.model.UpdateItemEnhancedRequest;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
+import software.amazon.awssdk.services.dynamodb.model.ReturnValue;
+import software.amazon.awssdk.services.dynamodb.model.UpdateItemRequest;
+import software.amazon.awssdk.services.dynamodb.model.UpdateItemResponse;
 
 /** {@link OtpRepository} backed by the single-table per ADR 0008. */
 public final class DynamoDbOtpRepository implements OtpRepository {
 
   private final DynamoDbTable<OtpItem> table;
+  private final DynamoDbClient client;
+  private final String tableName;
 
-  public DynamoDbOtpRepository(DynamoDbEnhancedClient enhanced, PkAuthDynamoTables tables) {
+  public DynamoDbOtpRepository(
+      DynamoDbEnhancedClient enhanced, DynamoDbClient client, PkAuthDynamoTables tables) {
     Objects.requireNonNull(enhanced, "enhanced");
     Objects.requireNonNull(tables, "tables");
-    this.table = enhanced.table(tables.core(), TableSchema.fromBean(OtpItem.class));
+    this.client = Objects.requireNonNull(client, "client");
+    this.tableName = tables.core();
+    this.table = enhanced.table(tableName, TableSchema.fromBean(OtpItem.class));
   }
 
   @Override
@@ -50,59 +58,62 @@ public final class DynamoDbOtpRepository implements OtpRepository {
   }
 
   @Override
-  public int incrementAttempts(String otpId) {
-    Optional<OtpItem> existing = findItemById(otpId);
-    if (existing.isEmpty()) {
-      return 0;
-    }
-    OtpItem item = existing.get();
-    int prior = item.getAttempts();
-    int next = prior + 1;
-    item.setAttempts(next);
-    // Optimistic concurrency: only apply the increment if the stored counter still
-    // matches what we read. A concurrent racing verify will lose the CAS and retry on
-    // the next attempt with a fresh read.
+  public int incrementAttempts(UserHandle userHandle, String otpId) {
+    // Atomic counter increment on the exact (pk, sk). No read, no scan. Two concurrent
+    // verifies both succeed and each observes a distinct post-increment value via
+    // UPDATED_NEW; the per-attempt cap check in OtpService remains the authority on lockout.
+    String userB64 = Base64Url.encode(userHandle.value());
     try {
-      table.updateItem(
-          UpdateItemEnhancedRequest.builder(OtpItem.class)
-              .item(item)
-              .conditionExpression(
-                  Expression.builder()
-                      .expression("#a = :prior")
-                      .putExpressionName("#a", "attempts") // reserved word
-                      .putExpressionValue(":prior", AttributeValue.fromN(Integer.toString(prior)))
-                      .build())
-              .build());
-      return next;
-    } catch (ConditionalCheckFailedException ignored) {
-      // Another concurrent attempt incremented first; re-read to return accurate count.
-      return findItemById(otpId).map(OtpItem::getAttempts).orElse(next);
+      UpdateItemResponse resp =
+          client.updateItem(
+              UpdateItemRequest.builder()
+                  .tableName(tableName)
+                  .key(
+                      Map.of(
+                          "pk", AttributeValue.fromS("USER#" + userB64),
+                          "sk", AttributeValue.fromS("OTP#" + otpId)))
+                  .updateExpression("SET #a = if_not_exists(#a, :zero) + :one")
+                  .conditionExpression("attribute_exists(pk)")
+                  .expressionAttributeNames(Map.of("#a", "attempts"))
+                  .expressionAttributeValues(
+                      Map.of(
+                          ":zero", AttributeValue.fromN("0"),
+                          ":one", AttributeValue.fromN("1")))
+                  .returnValues(ReturnValue.UPDATED_NEW)
+                  .build());
+      AttributeValue updated = resp.attributes().get("attempts");
+      return updated == null ? 0 : Integer.parseInt(updated.n());
+    } catch (ConditionalCheckFailedException missing) {
+      // OTP not found for this user — caller treats 0 as "no active record".
+      return 0;
     }
   }
 
   @Override
-  public void consume(String otpId) {
-    // Like backup-code consume, two concurrent verifies must NOT both succeed. The conditional
-    // makes DynamoDB enforce single-use server-side.
-    findItemById(otpId)
-        .ifPresent(
-            item -> {
-              item.setConsumed(true);
-              try {
-                table.updateItem(
-                    UpdateItemEnhancedRequest.builder(OtpItem.class)
-                        .item(item)
-                        .conditionExpression(
-                            Expression.builder()
-                                .expression("#c = :false")
-                                .putExpressionName("#c", "consumed") // reserved word
-                                .putExpressionValue(":false", AttributeValue.fromBool(false))
-                                .build())
-                        .build());
-              } catch (ConditionalCheckFailedException ignored) {
-                // Another concurrent verify already consumed this OTP; race lost cleanly.
-              }
-            });
+  public void consume(UserHandle userHandle, String otpId) {
+    // Like backup-code consume, two concurrent verifies must NOT both succeed. The
+    // conditional makes DynamoDB enforce single-use server-side. attribute_exists(pk)
+    // prevents creating a phantom row if the (userHandle, otpId) pair doesn't exist.
+    String userB64 = Base64Url.encode(userHandle.value());
+    try {
+      client.updateItem(
+          UpdateItemRequest.builder()
+              .tableName(tableName)
+              .key(
+                  Map.of(
+                      "pk", AttributeValue.fromS("USER#" + userB64),
+                      "sk", AttributeValue.fromS("OTP#" + otpId)))
+              .updateExpression("SET #c = :true")
+              .conditionExpression("attribute_exists(pk) AND #c = :false")
+              .expressionAttributeNames(Map.of("#c", "consumed"))
+              .expressionAttributeValues(
+                  Map.of(
+                      ":true", AttributeValue.fromBool(true),
+                      ":false", AttributeValue.fromBool(false)))
+              .build());
+    } catch (ConditionalCheckFailedException ignored) {
+      // Either the OTP doesn't exist for this user, or it was already consumed.
+    }
   }
 
   @Override
@@ -118,9 +129,5 @@ public final class DynamoDbOtpRepository implements OtpRepository {
             .filter(i -> phoneE164.equals(i.getPhoneE164()))
             .filter(i -> !Instant.parse(i.getCreatedAt()).isBefore(since))
             .count();
-  }
-
-  private Optional<OtpItem> findItemById(String otpId) {
-    return table.scan().items().stream().filter(i -> otpId.equals(i.getOtpId())).findFirst();
   }
 }

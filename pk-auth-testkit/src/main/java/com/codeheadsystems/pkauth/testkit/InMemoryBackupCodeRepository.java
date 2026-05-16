@@ -26,17 +26,21 @@ public final class InMemoryBackupCodeRepository implements BackupCodeRepository 
   }
 
   @Override
-  public void consume(String codeId, Instant consumedAt) {
+  public void consume(UserHandle userHandle, String codeId, Instant consumedAt) {
     byId.computeIfPresent(
         codeId,
-        (k, existing) ->
-            new StoredBackupCode(
-                existing.codeId(),
-                existing.userHandle(),
-                existing.hashedCode(),
-                true,
-                existing.createdAt(),
-                consumedAt));
+        (k, existing) -> {
+          if (!existing.userHandle().equals(userHandle)) {
+            return existing;
+          }
+          return new StoredBackupCode(
+              existing.codeId(),
+              existing.userHandle(),
+              existing.hashedCode(),
+              true,
+              existing.createdAt(),
+              consumedAt);
+        });
   }
 
   @Override

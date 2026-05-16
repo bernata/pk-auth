@@ -29,8 +29,8 @@ class DynamoDbAltFlowsIntegrationTest {
     PkAuthDynamoTables tables =
         new PkAuthDynamoTables("PkAuthCore_" + suffix, "PkAuthUsers_" + suffix);
     new DynamoDbSchemaBootstrapper(client, tables).bootstrap();
-    backupCodes = new DynamoDbBackupCodeRepository(enhanced, tables);
-    otp = new DynamoDbOtpRepository(enhanced, tables);
+    backupCodes = new DynamoDbBackupCodeRepository(enhanced, client, tables);
+    otp = new DynamoDbOtpRepository(enhanced, client, tables);
   }
 
   @Test
@@ -43,7 +43,7 @@ class DynamoDbAltFlowsIntegrationTest {
         new BackupCodeRepository.StoredBackupCode("c2", user, "hash2", false, now, null));
 
     assertThat(backupCodes.findByUserHandle(user)).hasSize(2);
-    backupCodes.consume("c1", now.plusSeconds(60));
+    backupCodes.consume(user, "c1", now.plusSeconds(60));
     assertThat(backupCodes.findByUserHandle(user))
         .filteredOn(BackupCodeRepository.StoredBackupCode::consumed)
         .hasSize(1);
@@ -74,13 +74,13 @@ class DynamoDbAltFlowsIntegrationTest {
     var active = otp.findLatestActive(user, "+15551234567").orElseThrow();
     assertThat(active.otpId()).isEqualTo("o2");
 
-    otp.incrementAttempts("o2");
+    otp.incrementAttempts(user, "o2");
     var refreshed = otp.findLatestActive(user, "+15551234567").orElseThrow();
     assertThat(refreshed.attempts()).isEqualTo(1);
 
     assertThat(otp.countSince(user, "+15551234567", t0.minusSeconds(10))).isEqualTo(2);
 
-    otp.consume("o2");
+    otp.consume(user, "o2");
     assertThat(otp.findLatestActive(user, "+15551234567"))
         .hasValueSatisfying(o -> assertThat(o.otpId()).isEqualTo("o1"));
   }

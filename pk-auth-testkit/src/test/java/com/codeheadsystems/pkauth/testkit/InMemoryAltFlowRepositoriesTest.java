@@ -21,7 +21,7 @@ class InMemoryAltFlowRepositoriesTest {
     repo.save(new StoredBackupCode("c2", user, "h2", false, now, null));
     assertThat(repo.findByUserHandle(user)).hasSize(2);
 
-    repo.consume("c1", now.plusSeconds(60));
+    repo.consume(user, "c1", now.plusSeconds(60));
     assertThat(repo.findByUserHandle(user)).filteredOn(StoredBackupCode::consumed).hasSize(1);
 
     repo.deleteByUserHandle(user);
@@ -41,15 +41,15 @@ class InMemoryAltFlowRepositoriesTest {
     assertThat(repo.findLatestActive(user, "+15551234567"))
         .hasValueSatisfying(o -> assertThat(o.otpId()).isEqualTo("o2"));
 
-    repo.incrementAttempts("o2");
-    repo.incrementAttempts("o2");
+    repo.incrementAttempts(user, "o2");
+    repo.incrementAttempts(user, "o2");
     assertThat(repo.findLatestActive(user, "+15551234567"))
         .hasValueSatisfying(o -> assertThat(o.attempts()).isEqualTo(2));
 
     assertThat(repo.countSince(user, "+15551234567", t0.minusSeconds(10))).isEqualTo(2);
     assertThat(repo.countSince(user, "+15551234567", t0.plusSeconds(120))).isZero();
 
-    repo.consume("o2");
+    repo.consume(user, "o2");
     assertThat(repo.findLatestActive(user, "+15551234567"))
         .hasValueSatisfying(o -> assertThat(o.otpId()).isEqualTo("o1"));
   }

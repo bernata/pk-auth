@@ -42,7 +42,7 @@ class JdbiAltFlowsIntegrationTest {
     assertThat(backupCodes.findByUserHandle(user)).hasSize(2);
 
     // Consuming a code soft-deletes it (sets revoked_at); active query returns only remaining code.
-    backupCodes.consume("c1", now.plusSeconds(60));
+    backupCodes.consume(user, "c1", now.plusSeconds(60));
     var active = backupCodes.findByUserHandle(user);
     assertThat(active).hasSize(1);
     assertThat(active.get(0).consumed()).isFalse();
@@ -61,7 +61,7 @@ class JdbiAltFlowsIntegrationTest {
         new OtpRepository.StoredOtp(
             "o-cap", user, "+15559990000", "hash", 3, 3, false, t0, t0.plusSeconds(300)));
 
-    int result = otp.incrementAttempts("o-cap");
+    int result = otp.incrementAttempts(user, "o-cap");
 
     // Guard must prevent advancing past cap; returned value must remain 3.
     assertThat(result).isEqualTo(3);
@@ -77,7 +77,7 @@ class JdbiAltFlowsIntegrationTest {
         new OtpRepository.StoredOtp(
             "o-inc", user, "+15558880000", "hash", 2, 3, false, t0, t0.plusSeconds(300)));
 
-    int result = otp.incrementAttempts("o-inc");
+    int result = otp.incrementAttempts(user, "o-inc");
 
     assertThat(result).isEqualTo(3);
     var stored = otp.findLatestActive(user, "+15558880000").orElseThrow();
@@ -106,15 +106,15 @@ class JdbiAltFlowsIntegrationTest {
     var active = otp.findLatestActive(user, "+15551234567").orElseThrow();
     assertThat(active.otpId()).isEqualTo("o2");
 
-    otp.incrementAttempts("o2");
-    otp.incrementAttempts("o2");
+    otp.incrementAttempts(user, "o2");
+    otp.incrementAttempts(user, "o2");
     var refreshed = otp.findLatestActive(user, "+15551234567").orElseThrow();
     assertThat(refreshed.attempts()).isEqualTo(2);
 
     assertThat(otp.countSince(user, "+15551234567", t0.minusSeconds(10))).isEqualTo(2);
     assertThat(otp.countSince(user, "+15551234567", t0.plusSeconds(120))).isZero();
 
-    otp.consume("o2");
+    otp.consume(user, "o2");
     var noActive = otp.findLatestActive(user, "+15551234567");
     assertThat(noActive).hasValueSatisfying(o -> assertThat(o.otpId()).isEqualTo("o1"));
   }

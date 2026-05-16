@@ -289,7 +289,7 @@ public final class BackupCodeService {
     }
 
     if (matchedCode != null) {
-      repository.consume(matchedCode.codeId(), now);
+      repository.consume(user, matchedCode.codeId(), now);
       LOG.info("backup-codes.verify outcome=success user={} codeId={}", user, matchedCode.codeId());
       return new VerifyResult.Success();
     }

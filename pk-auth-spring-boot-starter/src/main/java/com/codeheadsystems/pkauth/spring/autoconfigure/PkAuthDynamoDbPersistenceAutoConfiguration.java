@@ -64,14 +64,14 @@ public class PkAuthDynamoDbPersistenceAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public BackupCodeRepository pkAuthDynamoBackupCodeRepository(
-      DynamoDbEnhancedClient enhanced, PkAuthDynamoTables tables) {
-    return new DynamoDbBackupCodeRepository(enhanced, tables);
+      DynamoDbEnhancedClient enhanced, DynamoDbClient client, PkAuthDynamoTables tables) {
+    return new DynamoDbBackupCodeRepository(enhanced, client, tables);
   }
 
   @Bean
   @ConditionalOnMissingBean
   public OtpRepository pkAuthDynamoOtpRepository(
-      DynamoDbEnhancedClient enhanced, PkAuthDynamoTables tables) {
-    return new DynamoDbOtpRepository(enhanced, tables);
+      DynamoDbEnhancedClient enhanced, DynamoDbClient client, PkAuthDynamoTables tables) {
+    return new DynamoDbOtpRepository(enhanced, client, tables);
   }
 }
