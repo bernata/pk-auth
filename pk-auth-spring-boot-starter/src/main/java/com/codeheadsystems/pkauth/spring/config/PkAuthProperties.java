@@ -17,7 +17,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param ceremony tunables for challenge TTL, user-verification, etc.
  */
 @ConfigurationProperties("pkauth")
-public record PkAuthProperties(RelyingParty relyingParty, Jwt jwt, Ceremony ceremony) {
+public record PkAuthProperties(RelyingParty relyingParty, Jwt jwt, Ceremony ceremony, Otp otp) {
 
   /** Apply defaults for unset blocks so the host app only overrides what it cares about. */
   public PkAuthProperties {
@@ -29,6 +29,9 @@ public record PkAuthProperties(RelyingParty relyingParty, Jwt jwt, Ceremony cere
     }
     if (ceremony == null) {
       ceremony = Ceremony.defaults();
+    }
+    if (otp == null) {
+      otp = Otp.defaults();
     }
   }
 
@@ -74,6 +77,22 @@ public record PkAuthProperties(RelyingParty relyingParty, Jwt jwt, Ceremony cere
 
     public static Ceremony defaults() {
       return new Ceremony(Duration.ofMinutes(5));
+    }
+  }
+
+  /**
+   * OTP service tunables.
+   *
+   * @param pepper Base64-encoded server-side HMAC pepper for OTP code hashing. Decoded bytes must
+   *     be at least 16 bytes (32+ recommended). Required in production. When unset, the starter
+   *     will only auto-generate a per-startup random pepper if {@code pkauth.dev-mode=true}. A
+   *     per-startup pepper invalidates outstanding OTPs across restarts and across cluster
+   *     instances, which is unsafe in production.
+   */
+  public record Otp(@Nullable String pepper) {
+
+    public static Otp defaults() {
+      return new Otp(null);
     }
   }
 }

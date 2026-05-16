@@ -12,10 +12,11 @@ class PkAuthPropertiesTest {
 
   @Test
   void blanksFallToDefaults() {
-    PkAuthProperties props = new PkAuthProperties(null, null, null);
+    PkAuthProperties props = new PkAuthProperties(null, null, null, null);
     assertThat(props.relyingParty().id()).isEqualTo("localhost");
     assertThat(props.jwt().issuer()).isEqualTo("pk-auth");
     assertThat(props.ceremony().challengeTtl()).isEqualTo(Duration.ofMinutes(5));
+    assertThat(props.otp().pepper()).isNull();
   }
 
   @Test
@@ -26,10 +27,12 @@ class PkAuthPropertiesTest {
                 "example.com", "Example", Set.of("https://example.com")),
             new PkAuthProperties.Jwt(
                 "iss", "aud", "secret-that-is-long-enough-32b!!", Duration.ofMinutes(30)),
-            new PkAuthProperties.Ceremony(Duration.ofMinutes(2)));
+            new PkAuthProperties.Ceremony(Duration.ofMinutes(2)),
+            new PkAuthProperties.Otp("dGVzdC1wZXBwZXItYmFzZTY0LWVuY29kZWQ="));
     assertThat(props.relyingParty().id()).isEqualTo("example.com");
     assertThat(props.jwt().tokenTtl()).isEqualTo(Duration.ofMinutes(30));
     assertThat(props.ceremony().challengeTtl()).isEqualTo(Duration.ofMinutes(2));
+    assertThat(props.otp().pepper()).isEqualTo("dGVzdC1wZXBwZXItYmFzZTY0LWVuY29kZWQ=");
   }
 
   @Test
@@ -39,5 +42,6 @@ class PkAuthPropertiesTest {
     assertThat(PkAuthProperties.Jwt.defaults().secret()).isNull();
     assertThat(PkAuthProperties.Ceremony.defaults().challengeTtl())
         .isEqualTo(Duration.ofMinutes(5));
+    assertThat(PkAuthProperties.Otp.defaults().pepper()).isNull();
   }
 }

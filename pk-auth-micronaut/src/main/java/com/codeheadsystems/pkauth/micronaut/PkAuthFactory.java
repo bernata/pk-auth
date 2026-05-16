@@ -157,12 +157,60 @@ public class PkAuthFactory {
   }
 
   @Singleton
-  OtpService otpService(OtpRepository repo, SmsSender sms, ClockProvider clock) {
-    // OtpService requires a pepper for hashing stored codes; generate a per-startup random pepper.
-    // Host apps that need stable peppers across restarts declare their own OtpService bean.
-    byte[] pepper = new byte[32];
-    new java.security.SecureRandom().nextBytes(pepper);
+  OtpService otpService(
+      OtpRepository repo,
+      SmsSender sms,
+      ClockProvider clock,
+      PkAuthConfiguration config,
+      io.micronaut.context.env.Environment env) {
+    byte[] pepper = resolveOtpPepper(config, env);
     return new OtpService(repo, sms, clock, pepper);
+  }
+
+  /**
+   * Resolves the OTP pepper according to the configured policy:
+   *
+   * <ul>
+   *   <li>{@code pkauth.otp.pepper} set → decode as Base64 and use (≥ 16 bytes required).
+   *   <li>Unset AND {@code pkauth.dev-mode=true} → generate a per-startup random pepper and log a
+   *       loud warning. A per-startup pepper invalidates OTPs across restarts / instances.
+   *   <li>Unset AND {@code pkauth.dev-mode} false/unset → fail fast at startup.
+   * </ul>
+   */
+  private static byte[] resolveOtpPepper(
+      PkAuthConfiguration config, io.micronaut.context.env.Environment env) {
+    String configured = config.getOtp().getPepper();
+    if (configured != null && !configured.isBlank()) {
+      byte[] decoded;
+      try {
+        decoded = java.util.Base64.getDecoder().decode(configured.trim());
+      } catch (IllegalArgumentException e) {
+        throw new IllegalStateException(
+            "pkauth.otp.pepper must be a valid Base64 string (≥ 16 decoded bytes).", e);
+      }
+      if (decoded.length < 16) {
+        throw new IllegalStateException(
+            "pkauth.otp.pepper decoded to "
+                + decoded.length
+                + " bytes; at least 16 bytes required (32+ recommended).");
+      }
+      return decoded;
+    }
+    boolean devMode = env.getProperty("pkauth.dev-mode", Boolean.class).orElse(false);
+    if (!devMode) {
+      throw new IllegalStateException(
+          "pkauth.otp.pepper is not configured. Set a Base64-encoded ≥32-byte secret in"
+              + " configuration, or enable pkauth.dev-mode=true to auto-generate a per-startup"
+              + " random pepper (dev only — invalidates OTPs across restarts / cluster"
+              + " instances).");
+    }
+    byte[] random = new byte[32];
+    new java.security.SecureRandom().nextBytes(random);
+    LOG.warn(
+        "pkauth.dev-mode=true and pkauth.otp.pepper not set: generated a one-shot random OTP"
+            + " pepper. Outstanding OTPs will not survive a restart and will not validate on"
+            + " other instances. DO NOT use this configuration in production.");
+    return random;
   }
 
   @Singleton

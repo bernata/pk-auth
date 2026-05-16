@@ -276,12 +276,58 @@ public class PkAuthAutoConfiguration {
   @Bean
   @ConditionalOnMissingBean
   public OtpService pkAuthOtpService(
-      OtpRepository repo, SmsSender smsSender, ClockProvider clockProvider) {
-    // OtpService now requires a pepper for hashing stored codes; generate a per-startup random
-    // pepper when not supplied. Host apps that care about pepper portability across instances
-    // should declare an OtpService bean explicitly. TODO: surface this via PkAuthProperties.
-    byte[] pepper = new byte[32];
-    new SecureRandom().nextBytes(pepper);
+      OtpRepository repo,
+      SmsSender smsSender,
+      ClockProvider clockProvider,
+      PkAuthProperties props,
+      org.springframework.core.env.Environment env) {
+    byte[] pepper = resolveOtpPepper(props, env);
     return new OtpService(repo, smsSender, clockProvider, pepper);
+  }
+
+  /**
+   * Resolves the OTP pepper according to the configured policy:
+   *
+   * <ul>
+   *   <li>{@code pkauth.otp.pepper} set → decode as Base64 and use (≥ 16 bytes required).
+   *   <li>Unset AND {@code pkauth.dev-mode=true} → generate a per-startup random pepper and log a
+   *       loud warning. A per-startup pepper invalidates OTPs across restarts / instances.
+   *   <li>Unset AND {@code pkauth.dev-mode} false/unset → fail fast at startup.
+   * </ul>
+   */
+  private static byte[] resolveOtpPepper(
+      PkAuthProperties props, org.springframework.core.env.Environment env) {
+    String configured = props.otp().pepper();
+    if (configured != null && !configured.isBlank()) {
+      byte[] decoded;
+      try {
+        decoded = java.util.Base64.getDecoder().decode(configured.trim());
+      } catch (IllegalArgumentException e) {
+        throw new IllegalStateException(
+            "pkauth.otp.pepper must be a valid Base64 string (≥ 16 decoded bytes).", e);
+      }
+      if (decoded.length < 16) {
+        throw new IllegalStateException(
+            "pkauth.otp.pepper decoded to "
+                + decoded.length
+                + " bytes; at least 16 bytes required (32+ recommended).");
+      }
+      return decoded;
+    }
+    boolean devMode = Boolean.parseBoolean(env.getProperty("pkauth.dev-mode", "false"));
+    if (!devMode) {
+      throw new IllegalStateException(
+          "pkauth.otp.pepper is not configured. Set a Base64-encoded ≥32-byte secret in"
+              + " configuration, or enable pkauth.dev-mode=true to auto-generate a per-startup"
+              + " random pepper (dev only — invalidates OTPs across restarts / cluster"
+              + " instances).");
+    }
+    byte[] random = new byte[32];
+    new SecureRandom().nextBytes(random);
+    LOG.warn(
+        "pkauth.dev-mode=true and pkauth.otp.pepper not set: generated a one-shot random OTP"
+            + " pepper. Outstanding OTPs will not survive a restart and will not validate on"
+            + " other instances. DO NOT use this configuration in production.");
+    return random;
   }
 }
