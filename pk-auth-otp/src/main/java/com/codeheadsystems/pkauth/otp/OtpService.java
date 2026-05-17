@@ -6,6 +6,7 @@ import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.MessageFormatter;
 import com.codeheadsystems.pkauth.spi.OtpRepository;
 import com.codeheadsystems.pkauth.spi.OtpRepository.StoredOtp;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -182,6 +183,12 @@ public final class OtpService {
 
     Optional<StoredOtp> activeOpt = repository.findLatestActive(user, phoneE164);
     if (activeOpt.isEmpty()) {
+      // Run a throwaway HMAC + constant-time compare so the no-active-OTP branch takes
+      // approximately the same wall-clock time as the matching/mismatching branches below.
+      // Mirrors the dummy-Argon2 pattern in BackupCodeService.verify.
+      String dummyHash = hmacHash(candidate);
+      MessageDigest.isEqual(
+          dummyHash.getBytes(StandardCharsets.UTF_8), dummyHash.getBytes(StandardCharsets.UTF_8));
       return new VerifyResult.NoActiveOtp();
     }
     StoredOtp active = activeOpt.get();
@@ -208,8 +215,8 @@ public final class OtpService {
     String candidateHash = hmacHash(candidate);
     boolean matches =
         MessageDigest.isEqual(
-            candidateHash.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-            active.hashedCode().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            candidateHash.getBytes(StandardCharsets.UTF_8),
+            active.hashedCode().getBytes(StandardCharsets.UTF_8));
 
     if (matches) {
       // consume() is guarded server-side; two concurrent verifies cannot both observe true.
@@ -246,7 +253,7 @@ public final class OtpService {
     try {
       Mac mac = Mac.getInstance(HMAC_ALGORITHM);
       mac.init(new SecretKeySpec(pepper, HMAC_ALGORITHM));
-      byte[] digest = mac.doFinal(code.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+      byte[] digest = mac.doFinal(code.getBytes(StandardCharsets.UTF_8));
       return Base64.getEncoder().encodeToString(digest);
     } catch (NoSuchAlgorithmException | InvalidKeyException e) {
       throw new IllegalStateException("HMAC-SHA256 unavailable", e);

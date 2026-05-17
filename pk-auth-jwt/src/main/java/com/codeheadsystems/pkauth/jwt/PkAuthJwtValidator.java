@@ -20,6 +20,7 @@ import com.nimbusds.jwt.SignedJWT;
 import java.text.ParseException;
 import java.time.Instant;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -269,7 +270,7 @@ public final class PkAuthJwtValidator {
   }
 
   private static Map<String, Object> removeKnownClaims(Map<String, Object> raw) {
-    Map<String, Object> copy = new java.util.LinkedHashMap<>(raw);
+    Map<String, Object> copy = new LinkedHashMap<>(raw);
     copy.remove("iss");
     copy.remove("sub");
     copy.remove("aud");

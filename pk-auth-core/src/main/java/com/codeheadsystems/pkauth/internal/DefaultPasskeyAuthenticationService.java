@@ -240,9 +240,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     // shape is indistinguishable from an existing user with no exclusions. Prevents account
     // enumeration on the public start-registration endpoint.
     List<PublicKeyCredentialDescriptor> excludeCredentials =
-        credentialRepository.findByUserHandle(userHandle).stream()
-            .map(this::toExcludeDescriptor)
-            .toList();
+        credentialRepository.findByUserHandle(userHandle).stream().map(this::toDescriptor).toList();
 
     UserVerificationRequirement uv =
         req.userVerification() == null ? ceremonyConfig.userVerification() : req.userVerification();
@@ -444,7 +442,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
         resolvedHandle = handle.get();
         allowCredentials =
             credentialRepository.findByUserHandle(resolvedHandle).stream()
-                .map(this::toAllowDescriptor)
+                .map(this::toDescriptor)
                 .toList();
       }
     }
@@ -734,12 +732,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     return new RegistrationResult.InvalidPayload(messageOf(ex));
   }
 
-  private PublicKeyCredentialDescriptor toExcludeDescriptor(CredentialRecord cred) {
-    return new PublicKeyCredentialDescriptor(
-        "public-key", cred.credentialId().value(), transportWireNames(cred));
-  }
-
-  private PublicKeyCredentialDescriptor toAllowDescriptor(CredentialRecord cred) {
+  private PublicKeyCredentialDescriptor toDescriptor(CredentialRecord cred) {
     return new PublicKeyCredentialDescriptor(
         "public-key", cred.credentialId().value(), transportWireNames(cred));
   }

@@ -18,7 +18,8 @@ class ConfigTest {
     RelyingPartyConfig rp =
         new RelyingPartyConfig("example.com", "Example", Set.of("https://example.com"));
     assertThat(rp.id()).isEqualTo("example.com");
-    assertThat(rp.icon()).isNull();
+    assertThat(rp.name()).isEqualTo("Example");
+    assertThat(rp.origins()).containsExactly("https://example.com");
   }
 
   @Test

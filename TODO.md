@@ -391,10 +391,12 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: a framework-neutral construction recipe in core; each adapter exposes
   it as beans/factories.
 
-### 34. Extract `mintCodes(...)` to remove `BackupCodeService.generate` ↔ `regenerateAll` duplication
+### ✅ 34. Extract `mintCodes(...)` to remove `BackupCodeService.generate` ↔ `regenerateAll` duplication
+**Completed:** 2026-05-16 — `mintCodes(user, plaintextSink)` centralises the Argon2id hash+wipe loop; `generate` saves one-by-one and `regenerateBackupCodes` calls `replaceAll`.
 - Severity: **Med** — [Maint #5]
 
-### 35. Narrow `MagicLinkService.jtiOf` `catch (Exception)` (and similar in `FakeAuthenticator`)
+### ✅ 35. Narrow `MagicLinkService.jtiOf` `catch (Exception)` (and similar in `FakeAuthenticator`)
+**Completed:** 2026-05-16 — `jtiOf` now catches only `ParseException`; `FakeAuthenticator.generateEcKeyPair` catches `NoSuchAlgorithmException | InvalidAlgorithmParameterException`.
 - Severity: **Med** — [Maint #12]
 - Files: `MagicLinkService.java:310-316`, `FakeAuthenticator.java:225`.
 
@@ -405,10 +407,12 @@ These pre-answer questions that would otherwise come up mid-implementation:
 ### 37. Replace metric-tag string concatenation with a `Ceremony` enum
 - Severity: **Med** — [Maint #13]
 
-### 38. Collapse `toExcludeDescriptor` / `toAllowDescriptor` to one helper
+### ✅ 38. Collapse `toExcludeDescriptor` / `toAllowDescriptor` to one helper
+**Completed:** 2026-05-16 — merged into a single `toDescriptor(CredentialRecord)`; both call sites updated.
 - Severity: **Med** — [Maint #14]
 
-### 39. Validate `MagicLinkService` `baseUrl` for scheme + CRLF
+### ✅ 39. Validate `MagicLinkService` `baseUrl` for scheme + CRLF
+**Completed:** 2026-05-16 — `Config` compact constructor rejects any `baseUrl` lacking an `http(s)://` prefix or carrying whitespace / CRLF.
 - Severity: **Low** — [Web #4]
 - Fix: reject any `baseUrl` that isn't `https://` (or `http://` in dev mode), or
   that contains `\r\n` / whitespace, in the constructor.
@@ -440,25 +444,30 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: store `expiresAt` as numeric epoch-millis; cleanest fix also enables
   DynamoDB attribute TTL.
 
-### 45. Run dummy HMAC on OTP "no active OTP" branch to remove timing leak
+### ✅ 45. Run dummy HMAC on OTP "no active OTP" branch to remove timing leak
+**Completed:** 2026-05-16 — `OtpService.finishVerification` now performs a throwaway `hmacHash` + constant-time compare on the no-active-OTP branch.
 - Severity: **Low** — [Crypto #7]
 - Pattern already used by `BackupCodeService` for consumed rows.
 
-### 46. Reduce dev-mode SPI fallback logs from ERROR to WARN
+### ✅ 46. Reduce dev-mode SPI fallback logs from ERROR to WARN
+**Completed:** 2026-05-16 — all seven `LOG.error` calls in Spring `PkAuthAutoConfiguration` lowered to `LOG.warn`.
 - Severity: **Low** — [API #32]
 - File: `PkAuthAutoConfiguration.java:118, 126, 134, 142, 150, 238, 249`.
 
-### 47. Document `WebAuthnManager` non-strict mode's attestation-statement guarantee
+### ✅ 47. Document `WebAuthnManager` non-strict mode's attestation-statement guarantee
+**Completed:** 2026-05-16 — `AttestationTrustPolicy` Javadoc now states the `format` field is informational under `AttestationConveyance.NONE`; only `DIRECT` (or stricter) triggers webauthn4j's format-specific verifier.
 - Severity: **Low** (intended behavior) — [Crypto #9]
 - Fix: add explicit Javadoc on `AttestationTrustPolicy` that the `format` field
   is not cryptographically verified when `conveyance == NONE`.
 
-### 48. Enforce HS256 secret length at keyset construction
+### ✅ 48. Enforce HS256 secret length at keyset construction
+**Completed:** 2026-05-16 — `JwtKeyset.hs256` now rejects secrets shorter than 32 bytes with a clear error message.
 - Severity: **Info** — [Crypto #11]
 - Fix: `if (secret.length < 32) throw new IllegalArgumentException(...)` in
   `JwtKeyset.hs256(...)`.
 
-### 49. Migrate fully-qualified JDK class references to imports
+### ✅ 49. Migrate fully-qualified JDK class references to imports
+**Completed:** 2026-05-16 — replaced FQ `java.util.HashMap` / `java.util.Map` / `java.security.MessageDigest` / `java.nio.charset.StandardCharsets` / `java.util.LinkedHashMap` references in `MagicLinkService`, `OtpService`, and `PkAuthJwtValidator` with imports.
 - Severity: **Low** — [Maint #11]
 - Files: `MagicLinkService.java:212, 296, 312`, `PkAuthAutoConfiguration.java:192, 304`,
   `PkAuthFactory.java:165, 181, 199, 208`.
@@ -501,7 +510,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 ### 56. Rename `PasskeyAuthenticationServices.Builder` setters from `v` to descriptive names
 - Severity: **Low** — [API #26]
 
-### 57. Drop the deprecated `icon` field from `RelyingPartyConfig`
+### ✅ 57. Drop the deprecated `icon` field from `RelyingPartyConfig`
+**Completed:** 2026-05-16 — `icon` and the 4-arg / 3-arg constructor pair removed; record is now a 3-component record. Tests updated.
 - Severity: **Low** — [API #31]
 
 ### 58. Add explicit no-validation note (or accept) `CounterRegression`'s missing compact ctor

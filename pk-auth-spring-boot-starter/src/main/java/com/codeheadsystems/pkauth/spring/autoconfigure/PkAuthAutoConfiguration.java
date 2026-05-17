@@ -123,7 +123,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public CredentialRepository pkAuthCredentialRepository() {
-    LOG.error(DEV_MODE_WARNING, "credentials");
+    LOG.warn(DEV_MODE_WARNING, "credentials");
     return new InMemoryCredentialRepository();
   }
 
@@ -131,7 +131,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public UserLookup pkAuthUserLookup() {
-    LOG.error(DEV_MODE_WARNING, "users");
+    LOG.warn(DEV_MODE_WARNING, "users");
     return new InMemoryUserLookup();
   }
 
@@ -139,7 +139,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public ChallengeStore pkAuthChallengeStore() {
-    LOG.error(DEV_MODE_WARNING, "challenges");
+    LOG.warn(DEV_MODE_WARNING, "challenges");
     return new InMemoryChallengeStore();
   }
 
@@ -147,7 +147,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public BackupCodeRepository pkAuthBackupCodeRepository() {
-    LOG.error(DEV_MODE_WARNING, "backup-codes");
+    LOG.warn(DEV_MODE_WARNING, "backup-codes");
     return new InMemoryBackupCodeRepository();
   }
 
@@ -155,7 +155,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public OtpRepository pkAuthOtpRepository() {
-    LOG.error(DEV_MODE_WARNING, "otp");
+    LOG.warn(DEV_MODE_WARNING, "otp");
     return new InMemoryOtpRepository();
   }
 
@@ -254,7 +254,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public EmailSender pkAuthEmailSender() {
-    LOG.error(
+    LOG.warn(
         "pkauth.dev-mode=true: using LoggingEmailSender — magic-link tokens will be written to"
             + " the application log. DO NOT use in production.");
     return new LoggingEmailSender();
@@ -264,7 +264,7 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   @ConditionalOnProperty(prefix = "pkauth", name = "dev-mode", havingValue = "true")
   public SmsSender pkAuthSmsSender() {
-    LOG.error(
+    LOG.warn(
         "pkauth.dev-mode=true: using LoggingSmsSender — OTP codes will be written to the"
             + " application log. DO NOT use in production.");
     return new LoggingSmsSender();

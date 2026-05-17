@@ -3,7 +3,6 @@ package com.codeheadsystems.pkauth.config;
 
 import java.util.Objects;
 import java.util.Set;
-import org.jspecify.annotations.Nullable;
 
 /**
  * Relying-party identity used when issuing WebAuthn options.
@@ -11,10 +10,8 @@ import org.jspecify.annotations.Nullable;
  * @param id the RP ID (eTLD+1, e.g. {@code "example.com"})
  * @param name human-readable RP name shown to the user during ceremonies
  * @param origins the set of acceptable client-reported origins ({@code https://example.com}, …)
- * @param icon optional RP icon URL; the field is deprecated in WebAuthn L3 but still common
  */
-public record RelyingPartyConfig(
-    String id, String name, Set<String> origins, @Nullable String icon) {
+public record RelyingPartyConfig(String id, String name, Set<String> origins) {
 
   public RelyingPartyConfig {
     Objects.requireNonNull(id, "id");
@@ -30,10 +27,5 @@ public record RelyingPartyConfig(
       throw new IllegalArgumentException("origins must contain at least one entry");
     }
     origins = Set.copyOf(origins);
-  }
-
-  /** Convenience constructor without an icon. */
-  public RelyingPartyConfig(String id, String name, Set<String> origins) {
-    this(id, name, origins, null);
   }
 }

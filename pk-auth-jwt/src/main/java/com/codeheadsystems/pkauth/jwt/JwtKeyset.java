@@ -40,6 +40,12 @@ public final class JwtKeyset {
    */
   public static JwtKeyset hs256(byte[] secret) {
     Objects.requireNonNull(secret, "secret");
+    if (secret.length < 32) {
+      throw new IllegalArgumentException(
+          "HS256 secret must be at least 256 bits (32 bytes) per RFC 7518 §3.2; got "
+              + secret.length
+              + " bytes");
+    }
     OctetSequenceKey key =
         new OctetSequenceKey.Builder(secret).algorithm(JWSAlgorithm.HS256).build();
     return new JwtKeyset(key, JWSAlgorithm.HS256, List.of(key));

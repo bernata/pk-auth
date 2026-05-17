@@ -25,6 +25,7 @@ import com.webauthn4j.data.extension.authenticator.AuthenticationExtensionsAuthe
 import com.webauthn4j.data.extension.authenticator.RegistrationExtensionAuthenticatorOutput;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
@@ -224,7 +225,7 @@ public final class FakeAuthenticator {
       KeyPairGenerator g = KeyPairGenerator.getInstance("EC");
       g.initialize(new ECGenParameterSpec("secp256r1"));
       return g.generateKeyPair();
-    } catch (Exception e) {
+    } catch (NoSuchAlgorithmException | InvalidAlgorithmParameterException e) {
       throw new IllegalStateException("Unable to generate EC keypair", e);
     }
   }

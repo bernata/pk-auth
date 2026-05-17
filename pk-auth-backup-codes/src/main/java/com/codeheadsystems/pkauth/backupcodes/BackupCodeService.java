@@ -178,19 +178,9 @@ public final class BackupCodeService {
   public List<String> generate(UserHandle user) {
     Objects.requireNonNull(user, "user");
     List<String> plaintext = new ArrayList<>(codeCount);
-    var now = clockProvider.now();
-    for (int i = 0; i < codeCount; i++) {
-      String code = newCode();
-      plaintext.add(code);
-      char[] codeChars = code.toCharArray();
-      String hash;
-      try {
-        hash = argon2.hash(iterations, memory, parallelism, codeChars, StandardCharsets.UTF_8);
-      } finally {
-        argon2.wipeArray(codeChars);
-      }
-      repository.save(
-          new StoredBackupCode(UUID.randomUUID().toString(), user, hash, false, now, null));
+    List<StoredBackupCode> records = mintCodes(user, plaintext);
+    for (StoredBackupCode record : records) {
+      repository.save(record);
     }
     LOG.info("backup-codes.generate user={} count={}", user, codeCount);
     return List.copyOf(plaintext);
@@ -282,11 +272,24 @@ public final class BackupCodeService {
   public List<String> regenerateBackupCodes(UserHandle user) {
     Objects.requireNonNull(user, "user");
     List<String> plaintext = new ArrayList<>(codeCount);
+    List<StoredBackupCode> records = mintCodes(user, plaintext);
+    repository.replaceAll(user, records);
+    LOG.info("backup-codes.regenerateBackupCodes user={} count={}", user, codeCount);
+    return List.copyOf(plaintext);
+  }
+
+  /**
+   * Mints {@link #codeCount} fresh codes for {@code user}, appending each plaintext code to {@code
+   * plaintextSink} and returning the matching {@link StoredBackupCode} records (one per plaintext,
+   * in the same order). Centralises the Argon2id hash + wipe pattern shared by {@link #generate}
+   * and {@link #regenerateBackupCodes}.
+   */
+  private List<StoredBackupCode> mintCodes(UserHandle user, List<String> plaintextSink) {
+    Instant now = clockProvider.now();
     List<StoredBackupCode> records = new ArrayList<>(codeCount);
-    var now = clockProvider.now();
     for (int i = 0; i < codeCount; i++) {
       String code = newCode();
-      plaintext.add(code);
+      plaintextSink.add(code);
       char[] codeChars = code.toCharArray();
       String hash;
       try {
@@ -296,9 +299,7 @@ public final class BackupCodeService {
       }
       records.add(new StoredBackupCode(UUID.randomUUID().toString(), user, hash, false, now, null));
     }
-    repository.replaceAll(user, records);
-    LOG.info("backup-codes.regenerateBackupCodes user={} count={}", user, codeCount);
-    return List.copyOf(plaintext);
+    return records;
   }
 
   private String newCode() {

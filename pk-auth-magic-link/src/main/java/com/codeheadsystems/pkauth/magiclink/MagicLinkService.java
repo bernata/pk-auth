@@ -13,10 +13,14 @@ import com.codeheadsystems.pkauth.spi.MessageFormatter;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
+import com.nimbusds.jwt.SignedJWT;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -192,7 +196,7 @@ public final class MagicLinkService {
     if (bound.isPresent()) {
       byte[] expected = bound.get().getBytes(StandardCharsets.UTF_8);
       byte[] actual = email.getBytes(StandardCharsets.UTF_8);
-      if (!java.security.MessageDigest.isEqual(expected, actual)) {
+      if (!MessageDigest.isEqual(expected, actual)) {
         LOG.warn("magiclink.send email-mismatch user={} purpose={}", user, PURPOSE_EMAIL_VERIFY);
         return new SendResult.EmailMismatch();
       }
@@ -288,7 +292,7 @@ public final class MagicLinkService {
   }
 
   private String issue(UserHandle user, String purpose, Map<String, String> extras) {
-    java.util.Map<String, Object> additional = new java.util.HashMap<>(extras);
+    Map<String, Object> additional = new HashMap<>(extras);
     additional.put(CLAIM_PURPOSE, purpose);
     JwtClaims claims = new JwtClaims(user, AuthMethod.MAGIC_LINK, null, List.of("eml"), additional);
     return issuer.issue(claims);
@@ -304,8 +308,8 @@ public final class MagicLinkService {
 
   private static String jtiOf(String token) {
     try {
-      return com.nimbusds.jwt.SignedJWT.parse(token).getJWTClaimsSet().getJWTID();
-    } catch (Exception e) {
+      return SignedJWT.parse(token).getJWTClaimsSet().getJWTID();
+    } catch (ParseException e) {
       throw new IllegalStateException("Unable to extract jti from verified token", e);
     }
   }
@@ -379,11 +383,31 @@ public final class MagicLinkService {
    */
   public record Config(
       String baseUrl, int rateLimit, MagicLinkRateLimiter rateLimiter, Duration consumedJtiTtl) {
-    /** Compact constructor — enforces non-null on every field. */
+    /**
+     * Compact constructor — enforces non-null on every field, and rejects a {@code baseUrl} that
+     * isn't an http(s) URL or that carries whitespace / CRLF (which would enable header-splitting
+     * if the value flowed into a response header). Hosts running in dev mode may pass {@code
+     * http://}; production deployments are expected to pass {@code https://}.
+     */
     public Config {
       Objects.requireNonNull(baseUrl, "baseUrl");
       Objects.requireNonNull(rateLimiter, "rateLimiter");
       Objects.requireNonNull(consumedJtiTtl, "consumedJtiTtl");
+      validateBaseUrl(baseUrl);
+    }
+
+    private static void validateBaseUrl(String baseUrl) {
+      if (!(baseUrl.startsWith("https://") || baseUrl.startsWith("http://"))) {
+        throw new IllegalArgumentException(
+            "baseUrl must start with https:// (or http:// in dev mode): " + baseUrl);
+      }
+      for (int i = 0; i < baseUrl.length(); i++) {
+        char c = baseUrl.charAt(i);
+        if (c == '\r' || c == '\n' || Character.isWhitespace(c)) {
+          throw new IllegalArgumentException(
+              "baseUrl must not contain whitespace or CRLF characters");
+        }
+      }
     }
 
     /**
