@@ -8,7 +8,7 @@ exposes, and the conventions the codebase follows.
 For specific topics:
 
 - **What it does + how to run a demo** — [`README.md`](./README.md).
-- **Per-decision rationale** — [`docs/adr/`](./docs/adr/) (10 ADRs,
+- **Per-decision rationale** — [`docs/adr/`](./docs/adr/) (12 ADRs,
   numbered).
 - **Running it in production** — [`docs/operator-guide.md`](./docs/operator-guide.md).
 - **Security posture** — [`docs/threat-model.md`](./docs/threat-model.md).
@@ -212,8 +212,8 @@ surface. They are intentionally narrow.
 | `ChallengeStore` | **Yes** | `create(...)`, `takeOnce(challengeId)` — atomic single-use. |
 | `BackupCodeRepository` | Only if backup codes are enabled | Hashed-storage CRUD + atomic claim. |
 | `OtpRepository` | Only if phone OTP is enabled | Same shape as backup codes. |
-| `EmailSender` | Only if magic-link is enabled | `send(toEmail, link)`. |
-| `SmsSender` | Only if phone OTP is enabled | `send(phone, code)`. |
+| `EmailSender` | Only if magic-link is enabled | `send(to, subject, body)`. |
+| `SmsSender` | Only if phone OTP is enabled | `send(phoneE164, body)`. |
 | `AttestationTrustPolicy` | Optional | Default policy is `none`. Override to enforce MDS3 / specific AAGUID lists. |
 | `OriginValidator` | Optional | Default is config-driven exact-match. Override for tenancy-aware origins. |
 | `ClockProvider` | Optional | Default is `Clock.systemUTC()`. Override in tests. |
@@ -292,12 +292,17 @@ SPIs.
 - Migrations under `pk-auth-persistence-jdbi/src/main/resources/db/migration/`
   (Flyway). The schema is hand-tuned for the SPI access patterns;
   no JPA / Hibernate.
-- Tables: `pkauth_users`, `pkauth_credentials`, `pkauth_challenges`,
-  `pkauth_backup_codes`, `pkauth_otp_codes`. (Magic-link tokens are not
-  persisted — the JWT itself is the credential; consumed JTIs live in
-  a per-process TTL-bounded cache.) All FK-cascade on user delete.
-- Atomic-claim operations (`takeOnce`, `claimBackupCode`) use
-  conditional `UPDATE ... WHERE consumed_at IS NULL RETURNING ...`.
+- Tables: `users`, `credentials`, `challenges`, `backup_codes`, `otp_codes`
+  (V1–V5, no `pkauth_` prefix), plus the append-only `pkauth_audit_events`
+  table from V6. Magic-link tokens are not persisted — the JWT itself is the
+  credential; consumed JTIs live in a `ConsumedJtiStore` (in-memory by default,
+  swap in a shared backend for multi-replica deployments).
+- Atomic-claim operations (`takeOnce`, `BackupCodeRepository.consume`,
+  `OtpRepository.consume`) use conditional `UPDATE ... WHERE consumed_at IS NULL`
+  / `consumed = FALSE` and return `boolean` so the caller can detect a
+  race-lost claim. Credential delete is a hard delete (V7 dropped
+  `revoked_at` / `revoked_reason`); audit history lives in the
+  `pkauth.credential.deleted` structured log event.
 
 ### DynamoDB single-table ([ADR 0008](./docs/adr/0008-dynamodb-single-table-design.md))
 

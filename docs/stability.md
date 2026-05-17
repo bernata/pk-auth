@@ -43,6 +43,8 @@ These are the surfaces most likely to evolve before 1.0:
 | `EmailSender` | `pk-auth-magic-link` | Dispatch magic-link emails |
 | `SmsSender` | `pk-auth-otp` | Dispatch phone OTP messages |
 | `RevocationCheck` | `pk-auth-jwt` | Determine whether a valid JWT has been revoked |
+| `ConsumedJtiStore` | `pk-auth-core` | Mark magic-link JTIs consumed across replicas; in-memory default ships as Caffeine cache |
+| `CeremonyRateLimiter` | `pk-auth-core` | Per-IP / per-username throttle on WebAuthn `start*` / `finish*` endpoints; in-memory default ships |
 
 ### `@apiNote experimental` convention
 

@@ -35,9 +35,17 @@ variables (`PKAUTH_JWT_SECRET`, `PKAUTH_OTP_PEPPER`). The adapters bind both.
 
 - Flyway resources live in `pk-auth-persistence-jdbi/src/main/resources/db/migration`.
 - Migrations run automatically when the SPI is wired (see ADR 0003).
-- `V1__pkauth_baseline.sql` creates `pkauth_credentials`, `pkauth_users`,
-  `pkauth_backup_codes`, `pkauth_otp_codes`, and `pkauth_magic_links` with FK
-  cascades on user delete.
+- The shipped baseline is split across `V1__credentials.sql`,
+  `V2__challenges.sql`, `V3__backup_codes.sql`, `V4__otp_codes.sql`, and
+  `V5__example_users.sql` — five tables (`credentials`, `challenges`,
+  `backup_codes`, `otp_codes`, `users`) with no `pkauth_` prefix.
+  `V6__audit_soft_delete.sql` adds the append-only `pkauth_audit_events` table.
+  `V7__credentials_hard_delete.sql` drops the `revoked_at` / `revoked_reason`
+  columns on `credentials` — credential delete is a hard delete, with the
+  audit record captured as a structured log event (`pkauth.credential.deleted`).
+- Magic-link tokens are not persisted: the JWT is the credential, and the
+  consumed-JTI store is in-memory by default (see `ConsumedJtiStore` SPI for a
+  multi-replica override).
 - The unique key on credential ID is byte-array shaped — do **not** introduce a
   string-encoded column without a migration.
 

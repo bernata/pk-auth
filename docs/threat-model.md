@@ -65,8 +65,8 @@ Boundaries cross-checked in this model:
 
 | Threat | Mitigation |
 |---|---|
-| Flood challenges | Challenges expire in 5 minutes by default and are stored by `ChallengeId` — flooding inflates state proportional to attack volume but does not block legitimate users. Apply rate limiting at the host's WAF / API gateway. pk-auth does not ship a rate limiter. |
-| Hash-burn via repeated OTP / backup-code attempts | Argon2id is intentionally CPU-heavy. The SPIs ship per-credential attempt counters; pair with a host-level rate limiter (`429 Retry-After`). |
+| Flood challenges | Challenges expire in 5 minutes by default and are stored by `ChallengeId`. pk-auth ships a `CeremonyRateLimiter` SPI (with an in-memory Caffeine-backed default) keyed on client IP and username; the `start*` / `finish*` endpoints short-circuit with `429 Retry-After` when the limiter denies. For multi-replica deployments, replace the default with a shared-store implementation. Heavy floods should still be filtered at the host's WAF / API gateway upstream of the adapter. |
+| Hash-burn via repeated OTP / backup-code attempts | Argon2id is intentionally CPU-heavy. The SPIs ship per-credential attempt counters; the magic-link and backup-code modules also ship per-user sliding-window rate limiters (in-memory defaults, override for multi-replica). |
 | Exhaust DB connections | Connection pooling is the host's responsibility. Recommend HikariCP for JDBI, the AWS SDK's default for DynamoDB. |
 
 ### Elevation of Privilege
@@ -75,7 +75,7 @@ Boundaries cross-checked in this model:
 |---|---|
 | Use a backup code to register a new passkey for someone else's account | Backup codes authenticate the holder; the admin API still requires a JWT for the *acting* user, and rename/delete enforce `actor == owner`. A backup code alone cannot register a passkey on a different account — only re-bootstrap the existing one. |
 | Use a stolen JWT to act as another user | JWTs are stateless and bearer; mitigation lives at the transport layer (HTTPS) and TTL (default 1 hour). Do not extend TTL without offsetting it with explicit revocation. Hosts requiring revocation (logout-all, account-disable) should implement the `RevocationCheck` SPI in `pk-auth-jwt`. |
-| Delete every passkey to lock yourself in / out | `pkauth_admin.deleteCredential` enforces a "last-credential guard" returning 409 Conflict when a delete would leave zero credentials. Backup codes remain available as a recovery path. |
+| Delete every passkey to lock yourself in / out | `AdminService.deleteCredential` enforces a "last-credential guard" returning 409 Conflict when a delete would leave zero credentials. Backup codes remain available as a recovery path. |
 | Cross-tenant access | The library is single-tenant. Multi-tenant deployments need an outer key (e.g. `tenantId`) routed at the host. pk-auth does not provide one. |
 
 ## Known limitations (in scope but not solved)
