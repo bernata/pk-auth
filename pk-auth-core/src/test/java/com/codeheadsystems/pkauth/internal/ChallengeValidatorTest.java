@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-package com.codeheadsystems.pkauth.internal.challenge;
+package com.codeheadsystems.pkauth.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.lenient;

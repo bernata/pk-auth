@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.backupcodes;
 
 import com.codeheadsystems.pkauth.api.UserHandle;
+import com.codeheadsystems.pkauth.ratelimit.InMemoryWindowCounter;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository.StoredBackupCode;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
@@ -13,11 +14,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -383,22 +381,23 @@ public final class BackupCodeService {
   }
 
   /**
-   * Simple in-process rate limiter backed by a {@link ConcurrentHashMap}.
+   * Simple in-process rate limiter backed by {@link InMemoryWindowCounter}.
    *
    * <p><strong>FOR DEV / SINGLE-INSTANCE USE ONLY.</strong> Production multi-instance deployments
    * MUST replace this with a shared (Redis/DB-backed) {@link BackupCodeRateLimiter} implementation;
    * otherwise the per-replica limit multiplies by the cluster size.
+   *
+   * @since 0.9.1
    */
   public static final class InMemoryBackupCodeRateLimiter implements BackupCodeRateLimiter {
 
     private static final Logger RL_LOG =
         LoggerFactory.getLogger(InMemoryBackupCodeRateLimiter.class);
 
-    private final long windowMillis;
-    private final Map<String, WindowCounter> counters = new ConcurrentHashMap<>();
+    private final InMemoryWindowCounter counter;
 
     public InMemoryBackupCodeRateLimiter(Duration window) {
-      this.windowMillis = Objects.requireNonNull(window, "window").toMillis();
+      this.counter = new InMemoryWindowCounter(Objects.requireNonNull(window, "window"));
       RL_LOG.info(
           "backup-codes.rate-limiter InMemoryBackupCodeRateLimiter instantiated — FOR DEV /"
               + " SINGLE-INSTANCE USE ONLY. Production deployments MUST replace this with a"
@@ -407,34 +406,12 @@ public final class BackupCodeService {
 
     @Override
     public int countAndIncrement(UserHandle user, Instant now) {
-      String key = user.toString();
-      long nowMs = now.toEpochMilli();
-      WindowCounter wc =
-          counters.compute(
-              key,
-              (k, existing) -> {
-                if (existing == null || nowMs - existing.windowStart > windowMillis) {
-                  return new WindowCounter(nowMs, new AtomicInteger(1));
-                }
-                existing.count.incrementAndGet();
-                return existing;
-              });
-      return wc.count.get();
+      return counter.countAndIncrement(user.toString());
     }
 
     /** Test helper: clears all counters. */
     public void reset() {
-      counters.clear();
-    }
-
-    private static final class WindowCounter {
-      final long windowStart;
-      final AtomicInteger count;
-
-      WindowCounter(long windowStart, AtomicInteger count) {
-        this.windowStart = windowStart;
-        this.count = count;
-      }
+      counter.reset();
     }
   }
 }

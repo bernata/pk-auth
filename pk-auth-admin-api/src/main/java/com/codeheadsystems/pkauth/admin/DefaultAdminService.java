@@ -5,6 +5,7 @@ import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
+import com.codeheadsystems.pkauth.json.Base64Url;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService.ConsumeResult;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService.SendResult;
@@ -127,6 +128,12 @@ public final class DefaultAdminService implements AdminService {
       }
     }
     credentialRepository.delete(credentialId);
+    // Structured deletion event — replaces the per-implementation audit-table writes the
+    // soft-delete path used to emit. Hosts capture this through their normal log pipeline.
+    LOG.info(
+        "pkauth.credential.deleted credential_id_b64={} user_handle_b64={}",
+        Base64Url.encode(credentialId.value()),
+        Base64Url.encode(target.value()));
     return new AdminResult.Success<>(null);
   }
 

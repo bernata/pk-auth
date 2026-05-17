@@ -7,12 +7,11 @@ import com.codeheadsystems.pkauth.jwt.JwtClaims;
 import com.codeheadsystems.pkauth.jwt.JwtVerificationResult;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.ratelimit.InMemoryWindowCounter;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
 import com.codeheadsystems.pkauth.spi.ConsumedJtiStore;
 import com.codeheadsystems.pkauth.spi.MessageFormatter;
 import com.codeheadsystems.pkauth.spi.UserLookup;
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.nimbusds.jwt.SignedJWT;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -21,13 +20,11 @@ import java.text.ParseException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -425,7 +422,7 @@ public final class MagicLinkService {
   }
 
   /**
-   * Simple Caffeine-backed in-memory rate limiter.
+   * Simple in-memory rate limiter backed by {@link InMemoryWindowCounter}.
    *
    * <p><strong>FOR DEV / SINGLE-INSTANCE USE ONLY.</strong> Production deployments MUST replace
    * this with a shared (Redis/DB-backed) {@link MagicLinkRateLimiter} implementation, otherwise
@@ -433,11 +430,13 @@ public final class MagicLinkService {
    * hour and a 3-node cluster, an attacker can send up to 15 emails per hour because each replica
    * tracks its own independent counter. Wire a production-grade implementation via the {@link
    * Config} record passed to {@link #create(Dependencies, Config)}.
+   *
+   * @since 0.9.1
    */
   public static final class InMemoryRateLimiter implements MagicLinkRateLimiter {
     private static final Logger RATE_LOG = LoggerFactory.getLogger(InMemoryRateLimiter.class);
 
-    private final Cache<String, AtomicInteger> counters;
+    private final InMemoryWindowCounter counter;
 
     public InMemoryRateLimiter(Duration window) {
       RATE_LOG.info(
@@ -445,24 +444,22 @@ public final class MagicLinkService {
               + " USE ONLY. Production deployments MUST replace this with a shared"
               + " (Redis/DB-backed) RateLimiter implementation to avoid per-replica abuse"
               + " multiplier.");
-      this.counters = Caffeine.newBuilder().expireAfterWrite(window).build();
+      this.counter = new InMemoryWindowCounter(Objects.requireNonNull(window, "window"));
     }
 
     @Override
     public int countAndIncrement(UserHandle user, String purpose, Instant now) {
-      String key = user + "|" + purpose;
-      AtomicInteger counter = counters.get(key, k -> new AtomicInteger());
-      return counter.incrementAndGet();
+      return counter.countAndIncrement(user + "|" + purpose);
     }
 
     /** Test helper to clear counters between cases. */
     public void reset() {
-      counters.invalidateAll();
+      counter.reset();
     }
 
     /** Exposed for diagnostics — tracks active counter keys. */
     public Set<String> keys() {
-      return new HashSet<>(counters.asMap().keySet());
+      return counter.keys();
     }
   }
 }

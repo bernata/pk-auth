@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.spring.autoconfigure;
 
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
+import com.codeheadsystems.pkauth.composition.PkAuthComposition;
 import com.codeheadsystems.pkauth.json.PkAuthObjectMappers;
 import com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
@@ -115,7 +116,7 @@ public class PkAuthWebAutoConfiguration {
       PasskeyAuthenticationService service,
       PkAuthJwtIssuer jwtIssuer,
       CredentialRepository credentialRepository) {
-    return new CeremonyOrchestrator(service, jwtIssuer, credentialRepository);
+    return PkAuthComposition.ceremonyOrchestrator(service, jwtIssuer, credentialRepository);
   }
 
   @Bean

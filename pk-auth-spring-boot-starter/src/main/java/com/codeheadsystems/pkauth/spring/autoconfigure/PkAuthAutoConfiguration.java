@@ -7,7 +7,7 @@ import com.codeheadsystems.pkauth.api.UserVerificationRequirement;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
 import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
-import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices;
+import com.codeheadsystems.pkauth.composition.PkAuthComposition;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.CounterRegressionPolicy;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
@@ -49,8 +49,8 @@ import org.springframework.context.annotation.Bean;
  * Top-level autoconfiguration for the pk-auth Spring Boot starter. Wires:
  *
  * <ul>
- *   <li>Core service ({@code PasskeyAuthenticationService}) via the {@link
- *       PasskeyAuthenticationServices} factory.
+ *   <li>Core service ({@code PasskeyAuthenticationService}) via the {@link PkAuthComposition}
+ *       framework-neutral wiring helper.
  *   <li>SPI implementations — {@code CredentialRepository} / {@code UserLookup} / {@code
  *       ChallengeStore} / {@code BackupCodeRepository} / {@code OtpRepository}. Each is provided
  *       only when no host-app bean of the same type exists ({@link ConditionalOnMissingBean}) AND
@@ -182,15 +182,14 @@ public class PkAuthAutoConfiguration {
       RelyingPartyConfig rp,
       CeremonyConfig ceremonyConfig,
       CeremonyRateLimiter ceremonyRateLimiter) {
-    return PasskeyAuthenticationServices.builder()
-        .credentialRepository(credentialRepository)
-        .userLookup(userLookup)
-        .challengeStore(challengeStore)
-        .clockProvider(clockProvider)
-        .relyingPartyConfig(rp)
-        .ceremonyConfig(ceremonyConfig)
-        .ceremonyRateLimiter(ceremonyRateLimiter)
-        .build();
+    return PkAuthComposition.passkeyAuthenticationService(
+        credentialRepository,
+        userLookup,
+        challengeStore,
+        clockProvider,
+        rp,
+        ceremonyConfig,
+        ceremonyRateLimiter);
   }
 
   // -- JWT -------------------------------------------------------------------------------------

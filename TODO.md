@@ -385,7 +385,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Severity: **Med** — [Maint #9]
 - Fix: parameterise `ChallengeValidation.toResult(...)` on the sum type itself.
 
-### 33. Lift adapter DI wiring recipes into a `PkAuthComposition` builder
+### ✅ 33. Lift adapter DI wiring recipes into a `PkAuthComposition` builder
+**Completed:** 2026-05-16 — New `com.codeheadsystems.pkauth.composition.PkAuthComposition` (in pk-auth-jwt, since the orchestrator helper references both core ceremony types and JWT types). Static factories collapse the genuinely-duplicated wiring: `passkeyAuthenticationService(...)` wraps the 7-arg `PasskeyAuthenticationServices.builder()` call; `ceremonyOrchestrator(...)` wraps the 3-arg constructor; `jwtPair(...)` returns a `JwtPair` record with the issuer + validator. All three adapters (`PkAuthAutoConfiguration` + `PkAuthWebAutoConfiguration` for Spring, `PkAuthFactory` for Micronaut, `PkAuthModule` for Dropwizard) now route those constructions through the helper. CeremonyConfig / JwtConfig merge-with-defaults logic deliberately stays per-adapter because the three frameworks bind from different configuration shapes (Spring uses `PREFERRED` user verification, Micronaut/Dropwizard use `CeremonyConfig.defaults()` which is `REQUIRED`) — see PkAuthComposition class Javadoc.
 - Severity: **Med** — [Maint #8]
 - Files: `PkAuthAutoConfiguration.java` (333 lines), `PkAuthFactory.java` (227),
   `PkAuthModule.java` (171) all wire the same dozen beans.
@@ -425,7 +426,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: replace the token field with the parsed `JwtClaims`-only view, or override
   `eraseCredentials()` to null the token post-set.
 
-### 41. Guard against accidental cookie auth on `/auth/**`
+### ✅ 41. Guard against accidental cookie auth on `/auth/**`
+**Completed:** 2026-05-16 — `PkAuthJwtAuthenticationFilter` already consulted only the `Authorization: Bearer …` header (cookies are never read), so the runtime behaviour was already safe. Made the policy explicit in the class Javadoc ("Header-only by design… Cookies are never read for authentication, which is why the pk-auth filter chain disables CSRF") and added `PkAuthJwtAuthenticationFilterTest` covering cookie-only, missing-header, non-Bearer, and empty-Bearer requests — locks the contract against regression.
 - Severity: **Low** — [Web #5]
 - Fix: in `PkAuthJwtAuthenticationFilter`, refuse to authenticate when only a
   cookie is present (the CSRF-disabled config is correct only for header-bearer).
@@ -478,7 +480,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Files: `MagicLinkService.java:212, 296, 312`, `PkAuthAutoConfiguration.java:192, 304`,
   `PkAuthFactory.java:165, 181, 199, 208`.
 
-### 50. Add a single in-memory rate-limiter type used by both backup-codes and magic-link
+### ✅ 50. Add a single in-memory rate-limiter type used by both backup-codes and magic-link
+**Completed:** 2026-05-16 — New `com.codeheadsystems.pkauth.ratelimit.InMemoryWindowCounter` (pk-auth-core) owns the Caffeine cache, key-keyed sliding window, and reset/keys diagnostics. `BackupCodeService.InMemoryBackupCodeRateLimiter` and `MagicLinkService.InMemoryRateLimiter` both keep their feature-specific SPI signatures (one keys on `UserHandle`, the other on `user + "|" + purpose`) but now delegate to the shared counter. The per-replica WARN log policy is unchanged; only the storage implementation is unified.
 - Severity: **Low** — [Maint #20]
 - Issue: `InMemoryBackupCodeRateLimiter` (45 lines) and
   `MagicLinkService.InMemoryRateLimiter` solve the same problem with
@@ -490,10 +493,12 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: a `@Test` that reflectively walks the `api` / `admin` packages and
   asserts every record/sealed-variant appears in `@Introspected`.
 
-### 52. Pick a rule for `pk-auth-core/internal/` package depth (move `ChallengeValidator` up or `ChallengeGenerator` down)
+### ✅ 52. Pick a rule for `pk-auth-core/internal/` package depth (move `ChallengeValidator` up or `ChallengeGenerator` down)
+**Completed:** 2026-05-16 — Rule: `pk-auth-core/internal/` is flat. Moved `ChallengeValidator` and `ChallengeValidation` (and their test) up to `com.codeheadsystems.pkauth.internal`, deleted the `internal/challenge/` sub-package. `DefaultPasskeyAuthenticationService` imports drop accordingly.
 - Severity: **Low** — [Maint #25]
 
-### 53. Standardize constructor injection annotations across adapters
+### ✅ 53. Standardize constructor injection annotations across adapters
+**Completed:** 2026-05-16 — Documented policy in CONTRIBUTING.md §9: Spring + Micronaut detect a single non-default constructor automatically (no `@Autowired`/`@Inject`); Dropwizard's Dagger 2 path requires `@Inject` and keeps it. The asymmetry is by DI framework, not by style preference.
 - Severity: **Low** — [Maint #21]
 - Spring/Micronaut single-ctor injection is implicit; Dropwizard marks `@Inject`.
   Document the policy or annotate consistently.
@@ -503,17 +508,9 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Severity: **Low** — [API #27]
 - Fix: rename enum value to `AUTHENTICATION` (least disruptive).
 
-### 55. Make `CredentialRepository.delete` a hard delete in all impls; emit a deletion log event
+### ✅ 55. Make `CredentialRepository.delete` a hard delete in all impls; emit a deletion log event
+**Completed:** 2026-05-16 — `JdbiCredentialRepository.delete` now issues `DELETE FROM credentials WHERE credential_id = :cid`; the `revoked_at IS NULL` filters on `findByCredentialId` / `findByUserHandle` / `updateSignCount` / `updateLabel` are gone with no behavior change (the soft-delete columns were the only thing keeping them around). Flyway V7 drops `credentials.revoked_at` and `credentials.revoked_reason` (backup-codes columns of the same name are left intact — they still drive consume / regenerate-all). `DefaultAdminService.deleteCredential` now emits `pkauth.credential.deleted credential_id_b64=… user_handle_b64=…` as an INFO log around the delete. SPI Javadoc on `CredentialRepository.delete` documents the hard-delete contract and points at the structured log event for audit history. DynamoDB and InMemory impls already hard-deleted.
 - Severity: **Low** — [API #28]
-- Files: `JdbiCredentialRepository.java:28-30, 34` (currently soft-delete via
-  `revoked_at`); `DynamoDbCredentialRepository.java`; `InMemoryCredentialRepository.java:77-79`.
-- Decision: hard delete everywhere; pk-auth emits a structured log event
-  (`pkauth.credential.deleted` with credential_id_b64 + user_handle_b64 +
-  timestamp) at the service layer when a credential is removed. Drop the
-  `revoked_at` column from the JDBI schema (Flyway migration) and the
-  associated `revoked_at IS NULL` guards in queries.
-- Document on the SPI: `delete` is hard delete; audit history is the host
-  log pipeline's responsibility.
 
 ### ✅ 56. Rename `PasskeyAuthenticationServices.Builder` setters from `v` to descriptive names
 **Completed:** 2026-05-16 — all 13 builder setters in `PasskeyAuthenticationServices.Builder` now take the parameter under its real field name (e.g. `Builder.webAuthnManager(WebAuthnManager webAuthnManager)`) instead of `v`.
@@ -527,10 +524,12 @@ These pre-answer questions that would otherwise come up mid-implementation:
 **Completed:** 2026-05-16 — `AssertionResult.CounterRegression` Javadoc now states the record intentionally has no compact constructor and explains why (inputs already validated at the single construction site in `handleCounterRegression`; record fields are informational telemetry).
 - Severity: **Low** — [API #25]
 
-### 59. Audit `package-info.java` per package for stability/SPI markers
+### ✅ 59. Audit `package-info.java` per package for stability/SPI markers
+**Completed:** 2026-05-16 — Added `@org.jspecify.annotations.NullMarked` to all six Spring Boot starter / Dropwizard `package-info.java` files; the other modules already carried it. SPI stability convention (`@apiNote experimental` until 1.0) is captured in `docs/stability.md` §SPI surfaces.
 - Severity: **Low** — [Maint #28]
 
-### 60. Sweep ADRs for staleness; add ADRs for the Spring Boot 4 / Jackson 3 / Micronaut 4 pins
+### ✅ 60. Sweep ADRs for staleness; add ADRs for the Spring Boot 4 / Jackson 3 / Micronaut 4 pins
+**Completed:** 2026-05-16 — Walked 0001–0010 (all still Accepted, no stale claims). Jackson 3 already has ADR 0009. Added ADR 0011 (Spring Boot 4 / Security 7) and ADR 0012 (Micronaut 4) to cover the remaining two framework pins.
 - Severity: **Low** — [Maint #27]
 
 ---

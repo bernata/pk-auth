@@ -29,13 +29,14 @@ import org.jdbi.v3.core.mapper.RowMapper;
 /**
  * {@link CredentialRepository} backed by the Phase 5 {@code credentials} table.
  *
- * <p>Since V6, credential deletion is a soft-delete: the row is retained with {@code revoked_at}
- * and {@code revoked_reason} set and an audit-event written to {@code pkauth_audit_events}. All
- * active-credential queries filter on {@code revoked_at IS NULL}.
+ * <p>{@link #delete(CredentialId)} is a hard delete (since V7): the row is removed outright. Audit
+ * history is the responsibility of the service layer's structured log pipeline ({@code
+ * pkauth.credential.deleted} event emitted by {@code DefaultAdminService}); this repository no
+ * longer writes to {@code pkauth_audit_events} for credential deletions.
+ *
+ * @since 0.9.1
  */
 public final class JdbiCredentialRepository implements CredentialRepository {
-
-  private static final String DEFAULT_REVOKE_REASON = "user_request";
 
   private final Jdbi jdbi;
 
@@ -87,7 +88,6 @@ public final class JdbiCredentialRepository implements CredentialRepository {
     }
   }
 
-  /** Finds an active (not revoked) credential by id. */
   @Override
   public Optional<CredentialRecord> findByCredentialId(CredentialId credentialId) {
     return wrap(
@@ -95,15 +95,12 @@ public final class JdbiCredentialRepository implements CredentialRepository {
         () ->
             jdbi.withHandle(
                 h ->
-                    h.createQuery(
-                            "SELECT * FROM credentials"
-                                + " WHERE credential_id = :cid AND revoked_at IS NULL")
+                    h.createQuery("SELECT * FROM credentials WHERE credential_id = :cid")
                         .bind("cid", credentialId.value())
                         .map(MAPPER)
                         .findFirst()));
   }
 
-  /** Returns only active (not revoked) credentials for the given user handle. */
   @Override
   public List<CredentialRecord> findByUserHandle(UserHandle userHandle) {
     return wrap(
@@ -113,7 +110,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
                 h ->
                     h.createQuery(
                             "SELECT * FROM credentials"
-                                + " WHERE user_handle = :uh AND revoked_at IS NULL"
+                                + " WHERE user_handle = :uh"
                                 + " ORDER BY created_at")
                         .bind("uh", userHandle.value())
                         .map(MAPPER)
@@ -132,8 +129,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
               h ->
                   h.createUpdate(
                           "UPDATE credentials SET sign_count = :sc, last_used_at = :lua"
-                              + " WHERE credential_id = :cid AND sign_count < :sc"
-                              + "   AND revoked_at IS NULL")
+                              + " WHERE credential_id = :cid AND sign_count < :sc")
                       .bind("sc", newCount)
                       .bind("lua", OffsetDateTime.ofInstant(lastUsedAt, ZoneOffset.UTC))
                       .bind("cid", credentialId.value())
@@ -149,9 +145,7 @@ public final class JdbiCredentialRepository implements CredentialRepository {
         () -> {
           jdbi.useHandle(
               h ->
-                  h.createUpdate(
-                          "UPDATE credentials SET label = :label"
-                              + " WHERE credential_id = :cid AND revoked_at IS NULL")
+                  h.createUpdate("UPDATE credentials SET label = :label WHERE credential_id = :cid")
                       .bind("label", label)
                       .bind("cid", credentialId.value())
                       .execute());
@@ -160,53 +154,21 @@ public final class JdbiCredentialRepository implements CredentialRepository {
   }
 
   /**
-   * Soft-deletes the credential with the default reason {@code "user_request"} and writes an
-   * audit-event row.
+   * Hard-deletes the credential row. Audit history is the service layer's responsibility — {@code
+   * DefaultAdminService.deleteCredential} emits a {@code pkauth.credential.deleted} structured log
+   * event around this call.
    */
   @Override
   public void delete(CredentialId credentialId) {
-    delete(credentialId, DEFAULT_REVOKE_REASON);
-  }
-
-  /**
-   * Soft-deletes the credential with the supplied {@code reason} (max 64 chars) and writes an
-   * audit-event row.
-   */
-  public void delete(CredentialId credentialId, String reason) {
-    String safeReason = reason == null ? DEFAULT_REVOKE_REASON : reason;
     byte[] credIdBytes = credentialId.value();
     wrap(
         "credentials.delete",
         () -> {
           jdbi.useHandle(
-              h -> {
-                // Lookup user_handle before revoking so we can populate the audit event.
-                byte[] userHandle =
-                    h.createQuery(
-                            "SELECT user_handle FROM credentials"
-                                + " WHERE credential_id = :cid AND revoked_at IS NULL")
-                        .bind("cid", credIdBytes)
-                        .mapTo(byte[].class)
-                        .findFirst()
-                        .orElse(null);
-
-                h.createUpdate(
-                        "UPDATE credentials"
-                            + " SET revoked_at = NOW(), revoked_reason = :reason"
-                            + " WHERE credential_id = :cid AND revoked_at IS NULL")
-                    .bind("reason", safeReason)
-                    .bind("cid", credIdBytes)
-                    .execute();
-
-                h.createUpdate(
-                        "INSERT INTO pkauth_audit_events"
-                            + " (event_type, user_handle, subject_id, detail)"
-                            + " VALUES ('credential_revoked', :uh, :subjectId, :detail)")
-                    .bind("uh", userHandle)
-                    .bind("subjectId", credentialIdHex(credIdBytes))
-                    .bind("detail", "reason=" + safeReason)
-                    .execute();
-              });
+              h ->
+                  h.createUpdate("DELETE FROM credentials WHERE credential_id = :cid")
+                      .bind("cid", credIdBytes)
+                      .execute());
           return null;
         });
   }
@@ -229,20 +191,6 @@ public final class JdbiCredentialRepository implements CredentialRepository {
     } catch (JdbiException e) {
       throw new PkAuthPersistenceException(op, e.getMessage(), e);
     }
-  }
-
-  /** Returns a hex string representation of the credential id for use as a readable subject_id. */
-  private static String credentialIdHex(byte[] credentialId) {
-    if (credentialId == null) {
-      return null;
-    }
-    StringBuilder sb = new StringBuilder(credentialId.length * 2);
-    for (byte b : credentialId) {
-      sb.append(String.format("%02x", b));
-    }
-    // subject_id is VARCHAR(255); truncate if the credential id is unusually long.
-    String hex = sb.toString();
-    return hex.length() <= 255 ? hex : hex.substring(0, 255);
   }
 
   private static final RowMapper<CredentialRecord> MAPPER = (rs, ctx) -> readRow(rs);

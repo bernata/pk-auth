@@ -28,8 +28,6 @@ import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.credential.AuthenticatorData;
 import com.codeheadsystems.pkauth.credential.CredentialMetadata;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
-import com.codeheadsystems.pkauth.internal.challenge.ChallengeValidation;
-import com.codeheadsystems.pkauth.internal.challenge.ChallengeValidator;
 import com.codeheadsystems.pkauth.metrics.Metrics;
 import com.codeheadsystems.pkauth.spi.AttestationTrustPolicy;
 import com.codeheadsystems.pkauth.spi.CeremonyRateLimitedException;

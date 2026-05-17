@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
-package com.codeheadsystems.pkauth.internal.challenge;
+package com.codeheadsystems.pkauth.internal;
 
-import com.codeheadsystems.pkauth.internal.ClientDataJsonParser;
 import com.codeheadsystems.pkauth.spi.ChallengeRecord;
 import java.util.Objects;
 

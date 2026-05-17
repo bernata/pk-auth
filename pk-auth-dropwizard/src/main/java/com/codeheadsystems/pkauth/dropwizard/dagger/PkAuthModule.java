@@ -3,12 +3,13 @@ package com.codeheadsystems.pkauth.dropwizard.dagger;
 
 import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
-import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices;
+import com.codeheadsystems.pkauth.composition.PkAuthComposition;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
 import com.codeheadsystems.pkauth.dropwizard.config.PkAuthConfig;
 import com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource;
+import com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
@@ -126,15 +127,8 @@ public final class PkAuthModule {
       ChallengeStore challengeStore,
       ClockProvider clock,
       CeremonyRateLimiter rateLimiter) {
-    return PasskeyAuthenticationServices.builder()
-        .relyingPartyConfig(rp)
-        .ceremonyConfig(cc)
-        .credentialRepository(credentials)
-        .userLookup(userLookup)
-        .challengeStore(challengeStore)
-        .clockProvider(clock)
-        .ceremonyRateLimiter(rateLimiter)
-        .build();
+    return PkAuthComposition.passkeyAuthenticationService(
+        credentials, userLookup, challengeStore, clock, rp, cc, rateLimiter);
   }
 
   @Provides
@@ -179,18 +173,16 @@ public final class PkAuthModule {
 
   @Provides
   @Singleton
-  com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator provideCeremonyOrchestrator(
+  CeremonyOrchestrator provideCeremonyOrchestrator(
       PasskeyAuthenticationService service,
       PkAuthJwtIssuer issuer,
       CredentialRepository credentialRepository) {
-    return new com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator(
-        service, issuer, credentialRepository);
+    return PkAuthComposition.ceremonyOrchestrator(service, issuer, credentialRepository);
   }
 
   @Provides
   @Singleton
-  PkAuthCeremonyResource provideCeremonyResource(
-      com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator orchestrator) {
+  PkAuthCeremonyResource provideCeremonyResource(CeremonyOrchestrator orchestrator) {
     return new PkAuthCeremonyResource(orchestrator);
   }
 }

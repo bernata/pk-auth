@@ -25,5 +25,15 @@ public interface CredentialRepository {
 
   void updateLabel(CredentialId credentialId, String label);
 
+  /**
+   * Hard-deletes the credential row. Implementations must remove the row outright; soft-delete
+   * (e.g. a {@code revoked_at} marker) is no longer permitted on this SPI.
+   *
+   * <p>Audit history for credential deletions is the responsibility of the host's structured log
+   * pipeline. pk-auth's {@code DefaultAdminService.deleteCredential} emits a {@code
+   * pkauth.credential.deleted} INFO log event (containing the base64url credential id and user
+   * handle) around every call to this method; consume that signal rather than persisting deletion
+   * tombstones inside the credentials table.
+   */
   void delete(CredentialId credentialId);
 }

@@ -23,9 +23,15 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * mentions an explicit goal of "JWT validation filter that produces a {@code
  * PkAuthJwtAuthenticationToken}" — that is exactly what we do here, no more.
  *
+ * <p><b>Header-only by design.</b> Only the {@code Authorization: Bearer …} header is consulted.
+ * Cookies are never read for authentication, which is why the pk-auth filter chain disables CSRF —
+ * that posture is correct only as long as no auth path treats a cookie as proof of identity. Do not
+ * add a cookie fallback here; host apps that want session-cookie auth should layer their own filter
+ * ahead of this one and accept the CSRF responsibilities that come with it.
+ *
  * <p><b>Design note.</b> This filter intentionally bypasses Spring's {@code AuthenticationManager}
- * for zero-overhead JWT validation (TODO #36). There is no companion {@code AuthenticationProvider}
- * — host apps that need the canonical manager pipeline can declare their own filter + provider.
+ * for zero-overhead JWT validation. There is no companion {@code AuthenticationProvider} — host
+ * apps that need the canonical manager pipeline can declare their own filter + provider.
  */
 public final class PkAuthJwtAuthenticationFilter extends OncePerRequestFilter {
 

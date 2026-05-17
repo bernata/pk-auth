@@ -5,4 +5,5 @@
  * ceremony endpoints under {@code /auth/passkeys}, with optional admin endpoints under {@code
  * /auth/admin} when the {@code pk-auth-admin-api} module is on the classpath.
  */
+@org.jspecify.annotations.NullMarked
 package com.codeheadsystems.pkauth.dropwizard;

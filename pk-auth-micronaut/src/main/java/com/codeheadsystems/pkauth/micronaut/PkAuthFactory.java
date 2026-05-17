@@ -6,7 +6,6 @@ import com.codeheadsystems.pkauth.admin.DefaultAdminService;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
 import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
-import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationServices;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
@@ -116,7 +115,7 @@ public class PkAuthFactory {
       PasskeyAuthenticationService service,
       PkAuthJwtIssuer issuer,
       CredentialRepository credentialRepository) {
-    return new com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator(
+    return com.codeheadsystems.pkauth.composition.PkAuthComposition.ceremonyOrchestrator(
         service, issuer, credentialRepository);
   }
 
@@ -146,15 +145,8 @@ public class PkAuthFactory {
       CeremonyConfig ceremonyConfig,
       ClockProvider clock,
       CeremonyRateLimiter rateLimiter) {
-    return PasskeyAuthenticationServices.builder()
-        .credentialRepository(credentialRepository)
-        .userLookup(userLookup)
-        .challengeStore(challengeStore)
-        .relyingPartyConfig(rp)
-        .ceremonyConfig(ceremonyConfig)
-        .clockProvider(clock)
-        .ceremonyRateLimiter(rateLimiter)
-        .build();
+    return com.codeheadsystems.pkauth.composition.PkAuthComposition.passkeyAuthenticationService(
+        credentialRepository, userLookup, challengeStore, clock, rp, ceremonyConfig, rateLimiter);
   }
 
   @Singleton
