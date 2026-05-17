@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.spring.config;
 
 import java.time.Duration;
+import java.util.Map;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -58,12 +59,22 @@ public record PkAuthProperties(
    * adapters needing ES256 wire a {@code JwtKeyset} bean explicitly.
    *
    * @param issuer the {@code iss} claim (required)
-   * @param audience the {@code aud} claim (required)
+   * @param audience the default {@code aud} claim, used when {@link
+   *     com.codeheadsystems.pkauth.jwt.JwtClaims#audience()} is unset at issue time (required)
    * @param secret HS256 shared secret; must be ≥ 32 bytes when UTF-8 encoded (required)
-   * @param tokenTtl how long an issued token is valid; null falls back to {@link
-   *     com.codeheadsystems.pkauth.jwt.JwtConfig#DEFAULT_TOKEN_TTL}
+   * @param defaultTtl access-token TTL applied to audiences not present in {@code ttlsByAudience};
+   *     null falls back to {@link com.codeheadsystems.pkauth.jwt.JwtConfig#DEFAULT_TOKEN_TTL}
+   * @param ttlsByAudience per-audience access-token TTL overrides (e.g. {@code web=PT15M,
+   *     cli=PT1H}). Empty/null means every audience uses {@code defaultTtl}. Keys here also extend
+   *     the validator's accepted-audience set via {@link
+   *     com.codeheadsystems.pkauth.jwt.TokenTtlPolicy#knownAudiences()}.
    */
-  public record Jwt(String issuer, String audience, String secret, @Nullable Duration tokenTtl) {}
+  public record Jwt(
+      String issuer,
+      String audience,
+      String secret,
+      @Nullable Duration defaultTtl,
+      @Nullable Map<String, Duration> ttlsByAudience) {}
 
   /**
    * Ceremony tunables forwarded to {@code CeremonyConfig}.

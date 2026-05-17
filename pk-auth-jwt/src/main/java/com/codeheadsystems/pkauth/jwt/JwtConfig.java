@@ -2,20 +2,32 @@
 package com.codeheadsystems.pkauth.jwt;
 
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Configuration for pk-auth's JWT issuance and validation.
  *
+ * <p>The {@code defaultAudience} is the audience the issuer uses when {@link JwtClaims#audience()}
+ * is null on a call to {@link PkAuthJwtIssuer#issue(JwtClaims)}, and is always accepted by the
+ * validator. Additional accepted audiences come from {@link TokenTtlPolicy#knownAudiences()} — see
+ * {@link #allowedAudiences()} for the resolved set.
+ *
  * @param issuer the {@code iss} claim value
- * @param audience the {@code aud} claim value
- * @param tokenTtl how long an issued token is valid
+ * @param defaultAudience the audience used when {@link JwtClaims#audience()} is absent at issue
+ *     time; always part of {@link #allowedAudiences()}
+ * @param ttlPolicy per-audience access-token TTL dispatch
  * @param notBeforeSkew the {@code nbf} claim is set to {@code iat - notBeforeSkew} (small negative
  *     skew helps clients with slightly fast clocks accept tokens immediately)
  * @param clockSkew leniency window applied to {@code exp} and {@code nbf} during validation
  */
 public record JwtConfig(
-    String issuer, String audience, Duration tokenTtl, Duration notBeforeSkew, Duration clockSkew) {
+    String issuer,
+    String defaultAudience,
+    TokenTtlPolicy ttlPolicy,
+    Duration notBeforeSkew,
+    Duration clockSkew) {
 
   /** Default token TTL: 1 hour. */
   public static final Duration DEFAULT_TOKEN_TTL = Duration.ofHours(1);
@@ -31,14 +43,11 @@ public record JwtConfig(
     if (issuer.isBlank()) {
       throw new IllegalArgumentException("issuer must be non-blank");
     }
-    Objects.requireNonNull(audience, "audience");
-    if (audience.isBlank()) {
-      throw new IllegalArgumentException("audience must be non-blank");
+    Objects.requireNonNull(defaultAudience, "defaultAudience");
+    if (defaultAudience.isBlank()) {
+      throw new IllegalArgumentException("defaultAudience must be non-blank");
     }
-    Objects.requireNonNull(tokenTtl, "tokenTtl");
-    if (tokenTtl.isZero() || tokenTtl.isNegative()) {
-      throw new IllegalArgumentException("tokenTtl must be positive");
-    }
+    Objects.requireNonNull(ttlPolicy, "ttlPolicy");
     Objects.requireNonNull(notBeforeSkew, "notBeforeSkew");
     if (notBeforeSkew.isNegative()) {
       throw new IllegalArgumentException("notBeforeSkew must be non-negative");
@@ -49,8 +58,30 @@ public record JwtConfig(
     }
   }
 
-  /** Convenience constructor with the documented defaults. */
+  /**
+   * Returns the audiences the validator accepts for an issued token: the {@link #defaultAudience()}
+   * union {@link TokenTtlPolicy#knownAudiences()}. Always contains {@link #defaultAudience()}.
+   */
+  public Set<String> allowedAudiences() {
+    Set<String> known = ttlPolicy.knownAudiences();
+    if (known.isEmpty()) {
+      return Set.of(defaultAudience);
+    }
+    Set<String> all = new HashSet<>(known);
+    all.add(defaultAudience);
+    return Set.copyOf(all);
+  }
+
+  /**
+   * Convenience constructor with the documented defaults — a single-TTL policy and the standard
+   * skew values.
+   */
   public static JwtConfig defaults(String issuer, String audience) {
-    return new JwtConfig(issuer, audience, DEFAULT_TOKEN_TTL, DEFAULT_NBF_SKEW, DEFAULT_CLOCK_SKEW);
+    return new JwtConfig(
+        issuer,
+        audience,
+        TokenTtlPolicy.single(DEFAULT_TOKEN_TTL),
+        DEFAULT_NBF_SKEW,
+        DEFAULT_CLOCK_SKEW);
   }
 }

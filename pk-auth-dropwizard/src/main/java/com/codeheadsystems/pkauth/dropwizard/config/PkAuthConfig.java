@@ -2,7 +2,9 @@
 package com.codeheadsystems.pkauth.dropwizard.config;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import org.jspecify.annotations.Nullable;
@@ -78,12 +80,21 @@ public record PkAuthConfig(
    * tokens at the end of a successful authentication ceremony.
    *
    * @param issuer iss claim value.
-   * @param audience aud claim value.
+   * @param audience the default {@code aud} claim used when {@link
+   *     com.codeheadsystems.pkauth.jwt.JwtClaims#audience()} is unset at issue time.
    * @param secret Raw HMAC secret bytes; must be at least 32 bytes for HS256.
-   * @param tokenTtl How long an issued JWT remains valid; null defers to the {@link
-   *     com.codeheadsystems.pkauth.jwt.JwtConfig} default of one hour.
+   * @param defaultTtl access-token TTL applied to audiences without an override; null defers to
+   *     {@link com.codeheadsystems.pkauth.jwt.JwtConfig#DEFAULT_TOKEN_TTL}.
+   * @param ttlsByAudience per-audience access-token TTL overrides (e.g. {@code web: PT15M, cli:
+   *     PT1H}). The keys here also extend the validator's accepted-audience set via {@link
+   *     com.codeheadsystems.pkauth.jwt.TokenTtlPolicy#knownAudiences()}.
    */
-  public record Jwt(String issuer, String audience, byte[] secret, @Nullable Duration tokenTtl) {
+  public record Jwt(
+      String issuer,
+      String audience,
+      byte[] secret,
+      @Nullable Duration defaultTtl,
+      @Nullable Map<String, Duration> ttlsByAudience) {
     public Jwt {
       Objects.requireNonNull(issuer, "issuer");
       Objects.requireNonNull(audience, "audience");
@@ -94,6 +105,17 @@ public record PkAuthConfig(
       }
       // Defensive copy to keep callers from mutating the byte[] under us.
       secret = secret.clone();
+      if (ttlsByAudience != null) {
+        ttlsByAudience = Map.copyOf(new LinkedHashMap<>(ttlsByAudience));
+      }
+    }
+
+    /**
+     * Four-arg constructor for hosts that do not configure per-audience overrides. Equivalent to
+     * passing {@code null} for {@code ttlsByAudience}.
+     */
+    public Jwt(String issuer, String audience, byte[] secret, @Nullable Duration defaultTtl) {
+      this(issuer, audience, secret, defaultTtl, null);
     }
 
     /** Returns a fresh defensive copy of the underlying secret. */

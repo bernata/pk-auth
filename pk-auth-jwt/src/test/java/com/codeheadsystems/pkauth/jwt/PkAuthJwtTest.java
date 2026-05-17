@@ -22,6 +22,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -88,7 +89,11 @@ class PkAuthJwtTest {
     JwtKeyset keyset = JwtKeyset.hs256(randomBytes(32));
     JwtConfig config =
         new JwtConfig(
-            ISSUER, AUDIENCE, Duration.ofMinutes(1), Duration.ZERO, Duration.ofSeconds(5));
+            ISSUER,
+            AUDIENCE,
+            TokenTtlPolicy.single(Duration.ofMinutes(1)),
+            Duration.ZERO,
+            Duration.ofSeconds(5));
     PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(config, keyset, fixedClock(NOW));
     String token =
         issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), List.of("user")));
@@ -113,7 +118,11 @@ class PkAuthJwtTest {
 
     JwtConfig validationConfig =
         new JwtConfig(
-            ISSUER, AUDIENCE, Duration.ofMinutes(5), Duration.ZERO, Duration.ofSeconds(5));
+            ISSUER,
+            AUDIENCE,
+            TokenTtlPolicy.single(Duration.ofMinutes(5)),
+            Duration.ZERO,
+            Duration.ofSeconds(5));
     PkAuthJwtValidator validator =
         new PkAuthJwtValidator(validationConfig, keyset, fixedClock(NOW));
     assertThat(validator.validate(token)).isInstanceOf(JwtVerificationResult.NotYetValid.class);
@@ -211,24 +220,138 @@ class PkAuthJwtTest {
 
   @Test
   void jwtConfigValidations() {
-    assertThatThrownBy(
-            () -> new JwtConfig("", "a", Duration.ofMinutes(1), Duration.ZERO, Duration.ZERO))
+    TokenTtlPolicy ok = TokenTtlPolicy.single(Duration.ofMinutes(1));
+    assertThatThrownBy(() -> new JwtConfig("", "a", ok, Duration.ZERO, Duration.ZERO))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(
-            () -> new JwtConfig("i", "", Duration.ofMinutes(1), Duration.ZERO, Duration.ZERO))
+    assertThatThrownBy(() -> new JwtConfig("i", "", ok, Duration.ZERO, Duration.ZERO))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new JwtConfig("i", "a", Duration.ZERO, Duration.ZERO, Duration.ZERO))
+    assertThatThrownBy(() -> TokenTtlPolicy.single(Duration.ZERO))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(
-            () ->
-                new JwtConfig(
-                    "i", "a", Duration.ofMinutes(1), Duration.ofSeconds(-1), Duration.ZERO))
+    assertThatThrownBy(() -> new JwtConfig("i", "a", ok, Duration.ofSeconds(-1), Duration.ZERO))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(
-            () ->
-                new JwtConfig(
-                    "i", "a", Duration.ofMinutes(1), Duration.ZERO, Duration.ofSeconds(-1)))
+    assertThatThrownBy(() -> new JwtConfig("i", "a", ok, Duration.ZERO, Duration.ofSeconds(-1)))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void perAudienceTtlPolicyDispatches() {
+    JwtKeyset keyset = JwtKeyset.hs256(randomBytes(32));
+    TokenTtlPolicy policy =
+        TokenTtlPolicy.fixed(
+            Duration.ofHours(1),
+            Map.of(
+                "web", Duration.ofMinutes(15),
+                "cli", Duration.ofHours(8)));
+    JwtConfig config =
+        new JwtConfig(
+            ISSUER, AUDIENCE, policy, JwtConfig.DEFAULT_NBF_SKEW, JwtConfig.DEFAULT_CLOCK_SKEW);
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(config, keyset, fixedClock(NOW));
+
+    String webToken =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), "web", List.of("u")));
+    String cliToken =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), "cli", List.of("u")));
+
+    Instant webExp = parsedExp(webToken);
+    Instant cliExp = parsedExp(cliToken);
+
+    // Web TTL is 15m, CLI TTL is 8h — verify durations differ by ~7h45m.
+    assertThat(Duration.between(webExp, cliExp))
+        .isCloseTo(Duration.ofMinutes(465), Duration.ofSeconds(2));
+    assertThat(Duration.between(NOW, webExp))
+        .isCloseTo(Duration.ofMinutes(15), Duration.ofSeconds(2));
+    assertThat(Duration.between(NOW, cliExp)).isCloseTo(Duration.ofHours(8), Duration.ofSeconds(2));
+  }
+
+  @Test
+  void audienceAbsentFromClaimsUsesDefaultAudienceAndDefaultTtl() {
+    JwtKeyset keyset = JwtKeyset.hs256(randomBytes(32));
+    TokenTtlPolicy policy =
+        TokenTtlPolicy.fixed(Duration.ofMinutes(30), Map.of("web", Duration.ofMinutes(5)));
+    JwtConfig config =
+        new JwtConfig(
+            ISSUER, AUDIENCE, policy, JwtConfig.DEFAULT_NBF_SKEW, JwtConfig.DEFAULT_CLOCK_SKEW);
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(config, keyset, fixedClock(NOW));
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    // No audience on the claims → uses defaultAudience and the default TTL (30m).
+    String token =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), List.of("u")));
+    assertThat(Duration.between(NOW, parsedExp(token)))
+        .isCloseTo(Duration.ofMinutes(30), Duration.ofSeconds(2));
+
+    JwtVerificationResult result = validator.validate(token);
+    assertThat(result).isInstanceOf(JwtVerificationResult.Success.class);
+    assertThat(((JwtVerificationResult.Success) result).claims().audience()).isEqualTo(AUDIENCE);
+  }
+
+  @Test
+  void validatorAcceptsAudiencesDeclaredByPolicy() {
+    JwtKeyset keyset = JwtKeyset.hs256(randomBytes(32));
+    TokenTtlPolicy policy =
+        TokenTtlPolicy.fixed(
+            Duration.ofMinutes(30),
+            Map.of("web", Duration.ofMinutes(15), "cli", Duration.ofHours(1)));
+    JwtConfig config =
+        new JwtConfig(
+            ISSUER, AUDIENCE, policy, JwtConfig.DEFAULT_NBF_SKEW, JwtConfig.DEFAULT_CLOCK_SKEW);
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(config, keyset, fixedClock(NOW));
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(config, keyset, fixedClock(NOW));
+
+    String cliToken =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), "cli", List.of("u")));
+    JwtVerificationResult result = validator.validate(cliToken);
+    assertThat(result).isInstanceOf(JwtVerificationResult.Success.class);
+    assertThat(((JwtVerificationResult.Success) result).claims().audience()).isEqualTo("cli");
+  }
+
+  @Test
+  void validatorRejectsUnknownAudienceEvenIfIssuedBySameKey() throws Exception {
+    JwtKeyset keyset = JwtKeyset.hs256(randomBytes(32));
+    // Issuer-side knows about "rogue"; validator-side does not.
+    TokenTtlPolicy issuerPolicy =
+        TokenTtlPolicy.fixed(Duration.ofMinutes(30), Map.of("rogue", Duration.ofMinutes(5)));
+    JwtConfig issuerConfig =
+        new JwtConfig(
+            ISSUER,
+            AUDIENCE,
+            issuerPolicy,
+            JwtConfig.DEFAULT_NBF_SKEW,
+            JwtConfig.DEFAULT_CLOCK_SKEW);
+    JwtConfig validatorConfig = JwtConfig.defaults(ISSUER, AUDIENCE);
+
+    PkAuthJwtIssuer issuer = new PkAuthJwtIssuer(issuerConfig, keyset, fixedClock(NOW));
+    PkAuthJwtValidator validator = new PkAuthJwtValidator(validatorConfig, keyset, fixedClock(NOW));
+
+    String token =
+        issuer.issue(JwtClaims.forBackupCode(UserHandle.of(new byte[] {1}), "rogue", List.of("u")));
+    assertThat(validator.validate(token)).isInstanceOf(JwtVerificationResult.WrongAudience.class);
+  }
+
+  @Test
+  void allowedAudiencesIncludesDefaultPlusPolicyKnownAudiences() {
+    TokenTtlPolicy policy =
+        TokenTtlPolicy.fixed(
+            Duration.ofMinutes(30),
+            Map.of("web", Duration.ofMinutes(15), "cli", Duration.ofHours(1)));
+    JwtConfig config =
+        new JwtConfig(
+            ISSUER, AUDIENCE, policy, JwtConfig.DEFAULT_NBF_SKEW, JwtConfig.DEFAULT_CLOCK_SKEW);
+    assertThat(config.allowedAudiences()).containsExactlyInAnyOrder(AUDIENCE, "web", "cli");
+  }
+
+  @Test
+  void allowedAudiencesOnSinglePolicyIsJustDefault() {
+    JwtConfig config = JwtConfig.defaults(ISSUER, AUDIENCE);
+    assertThat(config.allowedAudiences()).containsExactly(AUDIENCE);
+  }
+
+  private static Instant parsedExp(String token) {
+    try {
+      return SignedJWT.parse(token).getJWTClaimsSet().getExpirationTime().toInstant();
+    } catch (java.text.ParseException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   @Test
