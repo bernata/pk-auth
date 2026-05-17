@@ -13,6 +13,7 @@ import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.JwtSecretResolver;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.jwt.TokenTtlPolicy;
 import com.codeheadsystems.pkauth.magiclink.EmailSender;
 import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
@@ -30,7 +31,9 @@ import com.codeheadsystems.pkauth.spi.UserLookup;
 import io.micronaut.context.annotation.Factory;
 import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
+import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,7 +94,15 @@ public class PkAuthFactory {
           "pkauth.jwt.{issuer,audience} are required. Set them explicitly in configuration —"
               + " there are no defaults.");
     }
-    return JwtConfig.defaults(issuer, audience);
+    Duration defaultTtl =
+        jwt.getDefaultTtl() == null ? JwtConfig.DEFAULT_TOKEN_TTL : jwt.getDefaultTtl();
+    Map<String, Duration> overrides = jwt.getTtlsByAudience();
+    TokenTtlPolicy ttlPolicy =
+        overrides == null || overrides.isEmpty()
+            ? TokenTtlPolicy.single(defaultTtl)
+            : TokenTtlPolicy.fixed(defaultTtl, overrides);
+    return new JwtConfig(
+        issuer, audience, ttlPolicy, JwtConfig.DEFAULT_NBF_SKEW, JwtConfig.DEFAULT_CLOCK_SKEW);
   }
 
   @Singleton

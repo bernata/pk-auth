@@ -41,18 +41,23 @@ public final class PkAuthJwtIssuer {
     this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
   }
 
-  /** Issues a signed JWT for the supplied claims. */
+  /**
+   * Issues a signed JWT for the supplied claims. The {@code aud} claim is taken from {@link
+   * JwtClaims#audience()} when set, falling back to {@link JwtConfig#defaultAudience()}; the
+   * access-token TTL is then looked up via {@link JwtConfig#ttlPolicy()} keyed by that audience.
+   */
   public String issue(JwtClaims claims) {
     Objects.requireNonNull(claims, "claims");
     Instant now = clockProvider.now();
+    String audience = claims.audience() != null ? claims.audience() : config.defaultAudience();
     JWTClaimsSet.Builder body =
         new JWTClaimsSet.Builder()
             .issuer(config.issuer())
-            .audience(config.audience())
+            .audience(audience)
             .subject(Base64Url.encode(claims.userHandle().value()))
             .issueTime(Date.from(now))
             .notBeforeTime(Date.from(now.minus(config.notBeforeSkew())))
-            .expirationTime(Date.from(now.plus(config.tokenTtl())))
+            .expirationTime(Date.from(now.plus(config.ttlPolicy().accessTtl(audience))))
             .jwtID(UUID.randomUUID().toString())
             .claim(CLAIM_METHOD, claims.method().wireValue())
             .claim(CLAIM_AMR, List.copyOf(claims.amr()));

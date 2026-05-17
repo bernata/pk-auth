@@ -16,6 +16,7 @@ import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.JwtSecretResolver;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.jwt.TokenTtlPolicy;
 import com.codeheadsystems.pkauth.magiclink.EmailSender;
 import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
@@ -37,6 +38,7 @@ import com.codeheadsystems.pkauth.testkit.InMemoryCredentialRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryOtpRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryUserLookup;
 import java.time.Duration;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -198,11 +200,16 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   public JwtConfig pkAuthJwtConfig(PkAuthProperties props) {
     PkAuthProperties.Jwt jwt = requireJwt(props);
-    Duration ttl = jwt.tokenTtl();
+    Duration defaultTtl = jwt.defaultTtl() == null ? JwtConfig.DEFAULT_TOKEN_TTL : jwt.defaultTtl();
+    Map<String, Duration> overrides = jwt.ttlsByAudience();
+    TokenTtlPolicy ttlPolicy =
+        overrides == null || overrides.isEmpty()
+            ? TokenTtlPolicy.single(defaultTtl)
+            : TokenTtlPolicy.fixed(defaultTtl, overrides);
     return new JwtConfig(
         jwt.issuer(),
         jwt.audience(),
-        ttl == null ? JwtConfig.DEFAULT_TOKEN_TTL : ttl,
+        ttlPolicy,
         JwtConfig.DEFAULT_NBF_SKEW,
         JwtConfig.DEFAULT_CLOCK_SKEW);
   }

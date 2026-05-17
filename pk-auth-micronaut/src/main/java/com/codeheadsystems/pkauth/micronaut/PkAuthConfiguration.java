@@ -4,6 +4,7 @@ package com.codeheadsystems.pkauth.micronaut;
 import io.micronaut.context.annotation.ConfigurationProperties;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -134,12 +135,20 @@ public final class PkAuthConfiguration {
   /**
    * JWT issuance and validation config. {@code issuer}, {@code audience}, and {@code secret} are
    * all required — there are no adapter defaults. {@link PkAuthFactory} validates them at startup.
+   *
+   * <p>{@code defaultTtl} sets the access-token TTL applied to audiences not listed in {@code
+   * ttlsByAudience}; null defers to {@link
+   * com.codeheadsystems.pkauth.jwt.JwtConfig#DEFAULT_TOKEN_TTL}. Keys present in {@code
+   * ttlsByAudience} are recognised by the validator via {@link
+   * com.codeheadsystems.pkauth.jwt.TokenTtlPolicy#knownAudiences()}.
    */
   @ConfigurationProperties("jwt")
   public static final class Jwt {
     private @Nullable String issuer;
     private @Nullable String audience;
     private @Nullable String secret;
+    private @Nullable Duration defaultTtl;
+    private @Nullable Map<String, Duration> ttlsByAudience;
 
     public @Nullable String getIssuer() {
       return issuer;
@@ -163,6 +172,22 @@ public final class PkAuthConfiguration {
 
     public void setSecret(@Nullable String secret) {
       this.secret = secret;
+    }
+
+    public @Nullable Duration getDefaultTtl() {
+      return defaultTtl;
+    }
+
+    public void setDefaultTtl(@Nullable Duration defaultTtl) {
+      this.defaultTtl = defaultTtl;
+    }
+
+    public @Nullable Map<String, Duration> getTtlsByAudience() {
+      return ttlsByAudience;
+    }
+
+    public void setTtlsByAudience(@Nullable Map<String, Duration> ttlsByAudience) {
+      this.ttlsByAudience = ttlsByAudience;
     }
   }
 

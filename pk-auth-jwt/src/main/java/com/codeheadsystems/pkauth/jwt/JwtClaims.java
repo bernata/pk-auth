@@ -18,13 +18,16 @@ import org.jspecify.annotations.Nullable;
  * @param credentialId WebAuthn credential id; required iff {@link AuthMethod#PASSKEY}, else null
  * @param amr RFC 8176-compatible authentication-method-reference values
  * @param additionalClaims optional extra claims merged into the JWT body
+ * @param audience the audience this token is for; when {@code null} the issuer uses {@link
+ *     JwtConfig#defaultAudience()}. Drives per-audience TTL lookup via {@link TokenTtlPolicy}.
  */
 public record JwtClaims(
     UserHandle userHandle,
     AuthMethod method,
     byte @Nullable [] credentialId,
     List<String> amr,
-    @Nullable Map<String, Object> additionalClaims) {
+    @Nullable Map<String, Object> additionalClaims,
+    @Nullable String audience) {
 
   public JwtClaims {
     Objects.requireNonNull(userHandle, "userHandle");
@@ -36,6 +39,9 @@ public record JwtClaims(
     if (method != AuthMethod.PASSKEY && credentialId != null) {
       throw new IllegalArgumentException("credentialId must be null when method != PASSKEY");
     }
+    if (audience != null && audience.isBlank()) {
+      throw new IllegalArgumentException("audience must be non-blank when present");
+    }
     if (credentialId != null) {
       credentialId = credentialId.clone();
     }
@@ -45,19 +51,48 @@ public record JwtClaims(
     }
   }
 
-  /** Convenience factory for passkey-issued tokens. */
+  /**
+   * Five-arg constructor preserved for callers that pre-date the per-audience TTL work; audience
+   * defaults to {@code null} (issuer uses {@link JwtConfig#defaultAudience()}).
+   */
+  public JwtClaims(
+      UserHandle userHandle,
+      AuthMethod method,
+      byte @Nullable [] credentialId,
+      List<String> amr,
+      @Nullable Map<String, Object> additionalClaims) {
+    this(userHandle, method, credentialId, amr, additionalClaims, null);
+  }
+
+  /** Convenience factory for passkey-issued tokens (uses {@code defaultAudience} at issue time). */
   public static JwtClaims forPasskey(UserHandle userHandle, byte[] credentialId, List<String> amr) {
-    return new JwtClaims(userHandle, AuthMethod.PASSKEY, credentialId, amr, null);
+    return new JwtClaims(userHandle, AuthMethod.PASSKEY, credentialId, amr, null, null);
   }
 
-  /** Convenience factory for backup-code-issued tokens. */
+  /** Convenience factory for passkey-issued tokens scoped to a specific audience. */
+  public static JwtClaims forPasskey(
+      UserHandle userHandle, byte[] credentialId, String audience, List<String> amr) {
+    return new JwtClaims(userHandle, AuthMethod.PASSKEY, credentialId, amr, null, audience);
+  }
+
+  /** Convenience factory for backup-code-issued tokens (uses {@code defaultAudience}). */
   public static JwtClaims forBackupCode(UserHandle userHandle, List<String> amr) {
-    return new JwtClaims(userHandle, AuthMethod.BACKUP_CODE, null, amr, null);
+    return new JwtClaims(userHandle, AuthMethod.BACKUP_CODE, null, amr, null, null);
   }
 
-  /** Convenience factory for magic-link-issued tokens. */
+  /** Convenience factory for backup-code-issued tokens scoped to a specific audience. */
+  public static JwtClaims forBackupCode(UserHandle userHandle, String audience, List<String> amr) {
+    return new JwtClaims(userHandle, AuthMethod.BACKUP_CODE, null, amr, null, audience);
+  }
+
+  /** Convenience factory for magic-link-issued tokens (uses {@code defaultAudience}). */
   public static JwtClaims forMagicLink(UserHandle userHandle, List<String> amr) {
-    return new JwtClaims(userHandle, AuthMethod.MAGIC_LINK, null, amr, null);
+    return new JwtClaims(userHandle, AuthMethod.MAGIC_LINK, null, amr, null, null);
+  }
+
+  /** Convenience factory for magic-link-issued tokens scoped to a specific audience. */
+  public static JwtClaims forMagicLink(UserHandle userHandle, String audience, List<String> amr) {
+    return new JwtClaims(userHandle, AuthMethod.MAGIC_LINK, null, amr, null, audience);
   }
 
   @Override
@@ -72,12 +107,14 @@ public record JwtClaims(
         && method == other.method
         && Arrays.equals(credentialId, other.credentialId)
         && amr.equals(other.amr)
-        && Objects.equals(additionalClaims, other.additionalClaims);
+        && Objects.equals(additionalClaims, other.additionalClaims)
+        && Objects.equals(audience, other.audience);
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(userHandle, method, Arrays.hashCode(credentialId), amr, additionalClaims);
+    return Objects.hash(
+        userHandle, method, Arrays.hashCode(credentialId), amr, additionalClaims, audience);
   }
 
   @Override
@@ -90,6 +127,8 @@ public record JwtClaims(
         + (credentialId == null ? "null" : HexFormat.of().formatHex(credentialId))
         + ", amr="
         + amr
+        + ", audience="
+        + audience
         + "]";
   }
 }

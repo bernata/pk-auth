@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -100,9 +101,19 @@ public final class PkAuthJwtValidator {
     }
 
     List<String> aud = body.getAudience();
-    if (aud == null || !aud.contains(config.audience())) {
+    Set<String> allowed = config.allowedAudiences();
+    String matchedAudience = null;
+    if (aud != null) {
+      for (String a : aud) {
+        if (allowed.contains(a)) {
+          matchedAudience = a;
+          break;
+        }
+      }
+    }
+    if (matchedAudience == null) {
       return new JwtVerificationResult.WrongAudience(
-          config.audience(), aud == null ? "" : String.join(",", aud));
+          String.join(",", allowed), aud == null ? "" : String.join(",", aud));
     }
 
     Instant now = clockProvider.now();
@@ -170,7 +181,12 @@ public final class PkAuthJwtValidator {
     Map<String, Object> remaining = removeKnownClaims(body.toJSONObject());
     return new JwtVerificationResult.Success(
         new JwtClaims(
-            userHandle, method, credentialId, amr, remaining.isEmpty() ? null : remaining));
+            userHandle,
+            method,
+            credentialId,
+            amr,
+            remaining.isEmpty() ? null : remaining,
+            matchedAudience));
   }
 
   /**
