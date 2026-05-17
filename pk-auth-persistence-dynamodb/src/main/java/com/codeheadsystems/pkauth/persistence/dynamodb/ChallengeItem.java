@@ -21,7 +21,7 @@ public final class ChallengeItem {
   private String challenge;
   private String purpose;
   private String userHandle;
-  private String expiresAt;
+  private Long expiresAt;
 
   @DynamoDbPartitionKey
   public String getPk() {
@@ -81,11 +81,11 @@ public final class ChallengeItem {
     this.userHandle = userHandle;
   }
 
-  public String getExpiresAt() {
+  public Long getExpiresAt() {
     return expiresAt;
   }
 
-  public void setExpiresAt(String expiresAt) {
+  public void setExpiresAt(Long expiresAt) {
     this.expiresAt = expiresAt;
   }
 
@@ -100,7 +100,7 @@ public final class ChallengeItem {
     item.setPurpose(record.purpose().name());
     item.setUserHandle(
         record.userHandle() == null ? null : Base64Url.encode(record.userHandle().value()));
-    item.setExpiresAt(record.expiresAt().toString());
+    item.setExpiresAt(record.expiresAt().toEpochMilli());
     return item;
   }
 
@@ -110,6 +110,6 @@ public final class ChallengeItem {
         Base64Url.decode(challenge),
         ChallengeRecord.Purpose.valueOf(purpose),
         userHandle == null ? null : UserHandle.of(Base64Url.decode(userHandle)),
-        Instant.parse(expiresAt));
+        Instant.ofEpochMilli(expiresAt));
   }
 }

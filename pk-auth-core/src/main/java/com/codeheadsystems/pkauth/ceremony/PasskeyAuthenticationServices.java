@@ -51,64 +51,64 @@ public final class PasskeyAuthenticationServices {
 
     private Builder() {}
 
-    public Builder webAuthnManager(WebAuthnManager v) {
-      this.webAuthnManager = v;
+    public Builder webAuthnManager(WebAuthnManager webAuthnManager) {
+      this.webAuthnManager = webAuthnManager;
       return this;
     }
 
-    public Builder objectConverter(ObjectConverter v) {
-      this.objectConverter = v;
+    public Builder objectConverter(ObjectConverter objectConverter) {
+      this.objectConverter = objectConverter;
       return this;
     }
 
-    public Builder credentialRepository(CredentialRepository v) {
-      this.credentialRepository = v;
+    public Builder credentialRepository(CredentialRepository credentialRepository) {
+      this.credentialRepository = credentialRepository;
       return this;
     }
 
-    public Builder userLookup(UserLookup v) {
-      this.userLookup = v;
+    public Builder userLookup(UserLookup userLookup) {
+      this.userLookup = userLookup;
       return this;
     }
 
-    public Builder challengeStore(ChallengeStore v) {
-      this.challengeStore = v;
+    public Builder challengeStore(ChallengeStore challengeStore) {
+      this.challengeStore = challengeStore;
       return this;
     }
 
-    public Builder clockProvider(ClockProvider v) {
-      this.clockProvider = v;
+    public Builder clockProvider(ClockProvider clockProvider) {
+      this.clockProvider = clockProvider;
       return this;
     }
 
-    public Builder originValidator(OriginValidator v) {
-      this.originValidator = v;
+    public Builder originValidator(OriginValidator originValidator) {
+      this.originValidator = originValidator;
       return this;
     }
 
-    public Builder attestationTrustPolicy(AttestationTrustPolicy v) {
-      this.attestationTrustPolicy = v;
+    public Builder attestationTrustPolicy(AttestationTrustPolicy attestationTrustPolicy) {
+      this.attestationTrustPolicy = attestationTrustPolicy;
       return this;
     }
 
-    public Builder relyingPartyConfig(RelyingPartyConfig v) {
-      this.rpConfig = v;
+    public Builder relyingPartyConfig(RelyingPartyConfig relyingPartyConfig) {
+      this.rpConfig = relyingPartyConfig;
       return this;
     }
 
-    public Builder ceremonyConfig(CeremonyConfig v) {
-      this.ceremonyConfig = v;
+    public Builder ceremonyConfig(CeremonyConfig ceremonyConfig) {
+      this.ceremonyConfig = ceremonyConfig;
       return this;
     }
 
     /** Override the {@link SecureRandom} used for challenge generation (test seam). */
-    public Builder secureRandom(SecureRandom v) {
-      this.secureRandom = v;
+    public Builder secureRandom(SecureRandom secureRandom) {
+      this.secureRandom = secureRandom;
       return this;
     }
 
-    public Builder metrics(Metrics v) {
-      this.metrics = v;
+    public Builder metrics(Metrics metrics) {
+      this.metrics = metrics;
       return this;
     }
 
@@ -119,12 +119,12 @@ public final class PasskeyAuthenticationServices {
      * implementation here; the in-memory default tracks counters per-process and per-replica
      * counters multiply by the cluster size.
      *
-     * @param v a non-null limiter implementation
+     * @param ceremonyRateLimiter a non-null limiter implementation
      * @return this builder
      * @since 0.9.1
      */
-    public Builder ceremonyRateLimiter(CeremonyRateLimiter v) {
-      this.ceremonyRateLimiter = Objects.requireNonNull(v, "ceremonyRateLimiter");
+    public Builder ceremonyRateLimiter(CeremonyRateLimiter ceremonyRateLimiter) {
+      this.ceremonyRateLimiter = Objects.requireNonNull(ceremonyRateLimiter, "ceremonyRateLimiter");
       return this;
     }
 

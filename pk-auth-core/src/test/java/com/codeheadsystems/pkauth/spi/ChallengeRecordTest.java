@@ -29,11 +29,11 @@ class ChallengeRecordTest {
     Instant exp = Instant.parse("2024-01-01T00:05:00Z");
     UserHandle uh = UserHandle.of(new byte[] {7});
     ChallengeRecord a =
-        new ChallengeRecord(new byte[] {1, 2}, ChallengeRecord.Purpose.ASSERTION, uh, exp);
+        new ChallengeRecord(new byte[] {1, 2}, ChallengeRecord.Purpose.AUTHENTICATION, uh, exp);
     ChallengeRecord b =
-        new ChallengeRecord(new byte[] {1, 2}, ChallengeRecord.Purpose.ASSERTION, uh, exp);
+        new ChallengeRecord(new byte[] {1, 2}, ChallengeRecord.Purpose.AUTHENTICATION, uh, exp);
     ChallengeRecord c =
-        new ChallengeRecord(new byte[] {1, 3}, ChallengeRecord.Purpose.ASSERTION, uh, exp);
+        new ChallengeRecord(new byte[] {1, 3}, ChallengeRecord.Purpose.AUTHENTICATION, uh, exp);
     assertThat(a).isEqualTo(b).hasSameHashCodeAs(b);
     assertThat(a).isNotEqualTo(c);
     assertThat(a).isNotEqualTo("nope");
@@ -51,6 +51,7 @@ class ChallengeRecordTest {
   @Test
   void purposeEnumValues() {
     assertThat(ChallengeRecord.Purpose.values())
-        .containsExactly(ChallengeRecord.Purpose.REGISTRATION, ChallengeRecord.Purpose.ASSERTION);
+        .containsExactly(
+            ChallengeRecord.Purpose.REGISTRATION, ChallengeRecord.Purpose.AUTHENTICATION);
   }
 }

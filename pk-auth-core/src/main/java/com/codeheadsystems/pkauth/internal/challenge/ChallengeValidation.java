@@ -80,4 +80,54 @@ public sealed interface ChallengeValidation {
 
   /** The challenge record has expired according to the {@code ClockProvider}. */
   record Expired() implements ChallengeValidation {}
+
+  /**
+   * Visitor used by {@link #toResult(ChallengeValidation, Mapper)} to translate a non-{@code Valid}
+   * variant into a caller-defined result type. Centralises the dispatch so every call site uses the
+   * same enumeration and the compiler catches new variants.
+   *
+   * @param <R> the result type produced by the mapper
+   * @since 0.9.1
+   */
+  interface Mapper<R> {
+    R malformedClientData(String detail);
+
+    R ceremonyTypeMismatch(String expected, String actual);
+
+    R originMismatch(String actual);
+
+    R invalidEncoding(String detail);
+
+    R idMismatch();
+
+    R missingOrConsumed();
+
+    R purposeMismatch();
+
+    R bytesMismatch();
+
+    R expired();
+  }
+
+  /**
+   * Dispatches {@code v} to the corresponding {@code mapper} method. Throws if {@code v} is the
+   * {@code Valid} variant — callers must short-circuit success before invoking this helper.
+   *
+   * @since 0.9.1
+   */
+  static <R> R toResult(ChallengeValidation v, Mapper<R> mapper) {
+    return switch (v) {
+      case Valid ignored ->
+          throw new IllegalStateException("ChallengeValidation.toResult called on Valid");
+      case MalformedClientData m -> mapper.malformedClientData(m.detail());
+      case CeremonyTypeMismatch t -> mapper.ceremonyTypeMismatch(t.expected(), t.actual());
+      case OriginMismatch o -> mapper.originMismatch(o.actual());
+      case InvalidEncoding e -> mapper.invalidEncoding(e.detail());
+      case IdMismatch ignored -> mapper.idMismatch();
+      case MissingOrConsumed ignored -> mapper.missingOrConsumed();
+      case PurposeMismatch ignored -> mapper.purposeMismatch();
+      case BytesMismatch ignored -> mapper.bytesMismatch();
+      case Expired ignored -> mapper.expired();
+    };
+  }
 }

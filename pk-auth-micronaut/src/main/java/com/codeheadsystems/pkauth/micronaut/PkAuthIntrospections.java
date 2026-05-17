@@ -2,9 +2,12 @@
 package com.codeheadsystems.pkauth.micronaut;
 
 import com.codeheadsystems.pkauth.admin.AccountSummary;
+import com.codeheadsystems.pkauth.admin.AdminRequests;
 import com.codeheadsystems.pkauth.admin.AdminResult;
+import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
 import com.codeheadsystems.pkauth.admin.BackupCodesGenerated;
 import com.codeheadsystems.pkauth.admin.CredentialSummary;
+import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
 import com.codeheadsystems.pkauth.admin.OtpDispatchResult;
 import com.codeheadsystems.pkauth.admin.PhoneVerificationResult;
 import com.codeheadsystems.pkauth.api.AssertionResult;
@@ -62,6 +65,7 @@ import io.micronaut.core.annotation.Introspected;
       RegistrationResult.AttestationRejected.class,
       RegistrationResult.DuplicateCredential.class,
       RegistrationResult.InvalidPayload.class,
+      RegistrationResult.RateLimited.class,
       AssertionResult.class,
       AssertionResult.Success.class,
       AssertionResult.UnknownCredential.class,
@@ -70,6 +74,7 @@ import io.micronaut.core.annotation.Introspected;
       AssertionResult.CounterRegression.class,
       AssertionResult.UserVerificationRequired.class,
       AssertionResult.InvalidSignature.class,
+      AssertionResult.RateLimited.class,
       // value types
       UserHandle.class,
       ChallengeId.class,
@@ -94,6 +99,14 @@ import io.micronaut.core.annotation.Introspected;
       AdminResult.ValidationFailed.class,
       AdminResult.Conflict.class,
       AdminResult.RateLimited.class,
+      // shared admin wire DTOs (items #10, #11)
+      AdminRequests.RenameCredential.class,
+      AdminRequests.StartEmailVerification.class,
+      AdminRequests.FinishEmailVerification.class,
+      AdminRequests.StartPhoneVerification.class,
+      AdminRequests.FinishPhoneVerification.class,
+      BackupCodesCountResponse.class,
+      EmailVerificationResult.class,
     })
 public final class PkAuthIntrospections {
   private PkAuthIntrospections() {}

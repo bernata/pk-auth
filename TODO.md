@@ -380,7 +380,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 
 ## Tier 3 — Maintainability / low-severity security / polish
 
-### 32. De-duplicate `mapRegistrationPreflight`/`mapAssertionPreflight` switches
+### ✅ 32. De-duplicate `mapRegistrationPreflight`/`mapAssertionPreflight` switches
+**Completed:** 2026-05-16 — added `ChallengeValidation.Mapper<R>` visitor + static `toResult(v, mapper)` dispatcher; both `DefaultPasskeyAuthenticationService` preflight maps now delegate to that single switch.
 - Severity: **Med** — [Maint #9]
 - Fix: parameterise `ChallengeValidation.toResult(...)` on the sum type itself.
 
@@ -404,7 +405,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 **Completed:** 2026-05-16 — bundled with #29; magic string is now `UserLookup.USERNAMELESS_KEY`. (`stored2` rename not done — defer.)
 - Severity: **Med** — [Maint #10]
 
-### 37. Replace metric-tag string concatenation with a `Ceremony` enum
+### ✅ 37. Replace metric-tag string concatenation with a `Ceremony` enum
+**Completed:** 2026-05-16 — `ChallengeValidator.Ceremony` now carries `metricPhase()` / `outcomeCounterName()` / `durationTimerName()`; `DefaultPasskeyAuthenticationService.outcome()`/`outcomeAssertion()`/`handleCounterRegression` all consume the enum, no more `"pkauth." + phase + ".outcome"` concat.
 - Severity: **Med** — [Maint #13]
 
 ### ✅ 38. Collapse `toExcludeDescriptor` / `toAllowDescriptor` to one helper
@@ -417,7 +419,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: reject any `baseUrl` that isn't `https://` (or `http://` in dev mode), or
   that contains `\r\n` / whitespace, in the constructor.
 
-### 40. Don't retain raw JWT bearer inside `PkAuthJwtAuthenticationToken`
+### ✅ 40. Don't retain raw JWT bearer inside `PkAuthJwtAuthenticationToken`
+**Completed:** 2026-05-16 — `eraseCredentials()` now nulls the token field; Spring `ProviderManager`'s default erase pass (or hosts calling it explicitly) shrinks the in-memory copy to the parsed `JwtClaims`.
 - Severity: **Low** — [Web #3]
 - Fix: replace the token field with the parsed `JwtClaims`-only view, or override
   `eraseCredentials()` to null the token post-set.
@@ -427,18 +430,21 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Fix: in `PkAuthJwtAuthenticationFilter`, refuse to authenticate when only a
   cookie is present (the CSRF-disabled config is correct only for header-bearer).
 
-### 42. Make `startEmailVerification` indistinguishable on email match vs mismatch
+### ✅ 42. Make `startEmailVerification` indistinguishable on email match vs mismatch
+**Completed:** 2026-05-16 — `DefaultAdminService.startEmailVerification` now maps `SendResult.EmailMismatch` to the same `AdminResult.Success<>(null)` as a real send; mismatch is recorded only by `MagicLinkService`'s audit-log warning.
 - Severity: **Low** — [Web #6]
 - Files: `DefaultAdminService.java:167-170`, `MagicLinkService.java:205-215`.
 - Fix: return the same `204` for both; surface mismatch via audit log only.
 
-### 43. Demote username logging in Spring ceremony controller from INFO to DEBUG
+### ✅ 43. Demote username logging in Spring ceremony controller from INFO to DEBUG
+**Completed:** 2026-05-16 — both `auth.registration.start username=` and `auth.authentication.start username=` calls in `PkAuthCeremonyController` lowered to `LOG.debug`, matching Dropwizard / Micronaut.
 - Severity: **Low** (PII) — [Web #8]
 - Asymmetry note: Dropwizard and Micronaut adapters do not log usernames at
   controller level — fix the Spring side or hide both behind
   `pkauth.observability.log-usernames` (default false).
 
-### 44. Fix DynamoDB challenge-store expiry lex-compare (use numeric epoch)
+### ✅ 44. Fix DynamoDB challenge-store expiry lex-compare (use numeric epoch)
+**Completed:** 2026-05-16 — `ChallengeItem.expiresAt` switched from `String` (ISO-8601) to `Long` (epoch-millis); `DynamoDbChallengeStore` writes / reads / conditional-deletes with `AttributeValue.fromN(...)`; subsecond TTL leak gone.
 - Severity: **Low** — [Crypto #6]
 - File: `DynamoDbChallengeStore.java:56-79`. ~1 second of stale TTL can slip past.
 - Fix: store `expiresAt` as numeric epoch-millis; cleanest fix also enables
@@ -478,7 +484,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
   `MagicLinkService.InMemoryRateLimiter` solve the same problem with
   non-identical APIs.
 
-### 51. Add a build-time check that `PkAuthIntrospections` lists every wire record
+### ✅ 51. Add a build-time check that `PkAuthIntrospections` lists every wire record
+**Completed:** 2026-05-16 — new `PkAuthIntrospectionsCoverageTest` walks the `pk-auth.api` and `pk-auth.admin` packages reflectively, asserts every public record is in `PkAuthIntrospections`. Added the previously-missing `RegistrationResult.RateLimited`, `AssertionResult.RateLimited`, all five `AdminRequests.*` records, `BackupCodesCountResponse`, and `EmailVerificationResult` to the introspection sweep.
 - Severity: **Low** — [Maint #17]
 - Fix: a `@Test` that reflectively walks the `api` / `admin` packages and
   asserts every record/sealed-variant appears in `@Introspected`.
@@ -491,7 +498,8 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Spring/Micronaut single-ctor injection is implicit; Dropwizard marks `@Inject`.
   Document the policy or annotate consistently.
 
-### 54. Reconcile `ChallengeRecord.Purpose.ASSERTION` with host-facing "authentication" vocabulary
+### ✅ 54. Reconcile `ChallengeRecord.Purpose.ASSERTION` with host-facing "authentication" vocabulary
+**Completed:** 2026-05-16 — enum value renamed to `AUTHENTICATION` across `pk-auth-core` (`ChallengeRecord`, `ChallengeValidator`, `DefaultPasskeyAuthenticationService`), tests, and the JDBI V2 migration's CHECK constraint. Pre-1.0 break per maintainer decision.
 - Severity: **Low** — [API #27]
 - Fix: rename enum value to `AUTHENTICATION` (least disruptive).
 
@@ -507,14 +515,16 @@ These pre-answer questions that would otherwise come up mid-implementation:
 - Document on the SPI: `delete` is hard delete; audit history is the host
   log pipeline's responsibility.
 
-### 56. Rename `PasskeyAuthenticationServices.Builder` setters from `v` to descriptive names
+### ✅ 56. Rename `PasskeyAuthenticationServices.Builder` setters from `v` to descriptive names
+**Completed:** 2026-05-16 — all 13 builder setters in `PasskeyAuthenticationServices.Builder` now take the parameter under its real field name (e.g. `Builder.webAuthnManager(WebAuthnManager webAuthnManager)`) instead of `v`.
 - Severity: **Low** — [API #26]
 
 ### ✅ 57. Drop the deprecated `icon` field from `RelyingPartyConfig`
 **Completed:** 2026-05-16 — `icon` and the 4-arg / 3-arg constructor pair removed; record is now a 3-component record. Tests updated.
 - Severity: **Low** — [API #31]
 
-### 58. Add explicit no-validation note (or accept) `CounterRegression`'s missing compact ctor
+### ✅ 58. Add explicit no-validation note (or accept) `CounterRegression`'s missing compact ctor
+**Completed:** 2026-05-16 — `AssertionResult.CounterRegression` Javadoc now states the record intentionally has no compact constructor and explains why (inputs already validated at the single construction site in `handleCounterRegression`; record fields are informational telemetry).
 - Severity: **Low** — [API #25]
 
 ### 59. Audit `package-info.java` per package for stability/SPI markers

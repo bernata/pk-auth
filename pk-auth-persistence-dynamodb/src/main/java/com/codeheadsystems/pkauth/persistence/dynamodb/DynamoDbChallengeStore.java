@@ -56,7 +56,7 @@ public final class DynamoDbChallengeStore implements ChallengeStore {
           if (item.getUserHandle() != null) {
             values.put("userHandle", AttributeValue.fromS(item.getUserHandle()));
           }
-          values.put("expiresAt", AttributeValue.fromS(item.getExpiresAt()));
+          values.put("expiresAt", AttributeValue.fromN(Long.toString(item.getExpiresAt())));
           client.putItem(PutItemRequest.builder().tableName(tableName).item(values).build());
           return null;
         });
@@ -71,11 +71,11 @@ public final class DynamoDbChallengeStore implements ChallengeStore {
           key.put("pk", AttributeValue.fromS("CHAL#" + id.value()));
           key.put("sk", AttributeValue.fromS("META"));
           // Server-side expiry: refuse to delete a row that's already past its expiresAt timestamp.
-          // ISO-8601 UTC strings compare lexicographically in the same order as the underlying
-          // instants, so a string `>` comparison against the current instant rejects expired rows
-          // even though we're comparing strings. DynamoDB's attribute-level TTL deletion is
-          // best-effort (can lag up to ~48h), so it cannot be relied on for security expiry — this
-          // condition is what actually enforces single-use within the TTL window.
+          // expiresAt is stored as a numeric epoch-millis attribute so DynamoDB's numeric
+          // comparator gives precise (sub-second) ordering against the wall clock. DynamoDB's
+          // attribute-level TTL deletion is best-effort (can lag up to ~48h), so it cannot be
+          // relied on for security expiry — this condition is what actually enforces single-use
+          // within the TTL window.
           software.amazon.awssdk.services.dynamodb.model.DeleteItemResponse response;
           try {
             response =
@@ -85,7 +85,9 @@ public final class DynamoDbChallengeStore implements ChallengeStore {
                         .key(key)
                         .conditionExpression("expiresAt > :now")
                         .expressionAttributeValues(
-                            Map.of(":now", AttributeValue.fromS(Instant.now().toString())))
+                            Map.of(
+                                ":now",
+                                AttributeValue.fromN(Long.toString(Instant.now().toEpochMilli()))))
                         .returnValues(ReturnValue.ALL_OLD)
                         .build());
           } catch (ConditionalCheckFailedException expired) {
@@ -107,7 +109,7 @@ public final class DynamoDbChallengeStore implements ChallengeStore {
           if (attrs.containsKey("userHandle")) {
             item.setUserHandle(attrs.get("userHandle").s());
           }
-          item.setExpiresAt(attrs.get("expiresAt").s());
+          item.setExpiresAt(Long.parseLong(attrs.get("expiresAt").n()));
           return Optional.of(item.toRecord());
         });
   }

@@ -5,7 +5,7 @@
 CREATE TABLE challenges (
     id           TEXT        PRIMARY KEY,
     challenge    BYTEA       NOT NULL,
-    purpose      TEXT        NOT NULL CHECK (purpose IN ('REGISTRATION', 'ASSERTION')),
+    purpose      TEXT        NOT NULL CHECK (purpose IN ('REGISTRATION', 'AUTHENTICATION')),
     user_handle  BYTEA,
     expires_at   TIMESTAMPTZ NOT NULL
 );

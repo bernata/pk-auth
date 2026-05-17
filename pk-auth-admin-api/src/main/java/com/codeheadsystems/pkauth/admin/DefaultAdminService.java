@@ -159,10 +159,11 @@ public final class DefaultAdminService implements AdminService {
     if (send instanceof SendResult.RateLimited) {
       return new AdminResult.RateLimited<>(Duration.ofHours(1));
     }
-    if (send instanceof SendResult.EmailMismatch) {
-      return new AdminResult.ValidationFailed<>(
-          "email does not match the address bound to this user");
-    }
+    // Privacy invariant (item #42): a caller-supplied email that does not match the user's
+    // bound address must produce the same 204 as a successful send. Surfacing
+    // ValidationFailed here would let a caller probe "is this email bound to this user?".
+    // The mismatch is already recorded by MagicLinkService's audit log warning; do NOT
+    // re-surface it on the response shape.
     return new AdminResult.Success<>(null);
   }
 

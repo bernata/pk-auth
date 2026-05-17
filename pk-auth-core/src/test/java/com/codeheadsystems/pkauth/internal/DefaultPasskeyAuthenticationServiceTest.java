@@ -274,7 +274,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void finishRegistrationRejectsCrossPurposeChallenge() {
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     byte[] cd = clientData("webauthn.create", Base64Url.encode(CHALLENGE), "https://example.com");
     RegistrationResult result = service.finishRegistration(finishReg(cd));
     assertThat(result).isInstanceOf(RegistrationResult.InvalidChallenge.class);
@@ -346,7 +346,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void finishAuthenticationRejectsUnknownCredential() {
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     when(credentialRepository.findByCredentialId(CRED_ID_VALUE)).thenReturn(Optional.empty());
     byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
     AssertionResult result = service.finishAuthentication(finishAuth(cd));
@@ -370,7 +370,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void finishAuthenticationMapsUserNotVerified() throws Exception {
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     primeStoredCredentialForAssertion();
     when(webAuthnManager.verify(
             any(com.webauthn4j.data.AuthenticationRequest.class),
@@ -383,7 +383,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void finishAuthenticationMapsBadSignature() throws Exception {
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     primeStoredCredentialForAssertion();
     when(webAuthnManager.verify(
             any(com.webauthn4j.data.AuthenticationRequest.class),
@@ -396,7 +396,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void finishAuthenticationCounterRegressionRejectMode() throws Exception {
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     primeStoredCredentialForAssertion();
     when(webAuthnManager.verify(
             any(com.webauthn4j.data.AuthenticationRequest.class),
@@ -411,7 +411,7 @@ class DefaultPasskeyAuthenticationServiceTest {
   @Test
   void finishAuthenticationCounterRegressionWarnModeAccepts() throws Exception {
     service = newService(CounterRegressionPolicy.WARN);
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     primeStoredCredentialForAssertion();
     when(webAuthnManager.verify(
             any(com.webauthn4j.data.AuthenticationRequest.class),
@@ -428,7 +428,7 @@ class DefaultPasskeyAuthenticationServiceTest {
   void finishAuthenticationCounterRegressionWarnModeCarriesRegressedStatus() throws Exception {
     // Fix #42: WARN-mode success must be distinguishable from clean success via CounterStatus.
     service = newService(CounterRegressionPolicy.WARN);
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     primeStoredCredentialForAssertion();
     when(webAuthnManager.verify(
             any(com.webauthn4j.data.AuthenticationRequest.class),
@@ -460,7 +460,7 @@ class DefaultPasskeyAuthenticationServiceTest {
             Optional.of(
                 new ChallengeRecord(
                     CHALLENGE,
-                    ChallengeRecord.Purpose.ASSERTION,
+                    ChallengeRecord.Purpose.AUTHENTICATION,
                     USER_HANDLE,
                     NOW.plusSeconds(300))));
     when(credentialRepository.findByCredentialId(CRED_ID_VALUE))
@@ -494,7 +494,10 @@ class DefaultPasskeyAuthenticationServiceTest {
         .thenReturn(
             Optional.of(
                 new ChallengeRecord(
-                    CHALLENGE, ChallengeRecord.Purpose.ASSERTION, null, NOW.plusSeconds(300))));
+                    CHALLENGE,
+                    ChallengeRecord.Purpose.AUTHENTICATION,
+                    null,
+                    NOW.plusSeconds(300))));
     primeStoredCredentialForAssertion(); // credential's userHandle is USER_HANDLE
     byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
     FinishAuthenticationRequest req =
@@ -515,7 +518,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void finishAuthenticationHappyPathUpdatesSignCount() throws Exception {
-    primeStoredChallenge(ChallengeRecord.Purpose.ASSERTION);
+    primeStoredChallenge(ChallengeRecord.Purpose.AUTHENTICATION);
     primeStoredCredentialForAssertion();
 
     AuthenticationData data = mock(AuthenticationData.class);

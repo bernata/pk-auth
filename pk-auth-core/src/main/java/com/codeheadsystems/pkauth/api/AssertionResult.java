@@ -80,7 +80,20 @@ public sealed interface AssertionResult {
     }
   }
 
-  /** Received counter is less than or equal to the stored counter — authenticator cloning risk. */
+  /**
+   * Received counter is less than or equal to the stored counter — authenticator cloning risk.
+   *
+   * <p><b>No compact constructor:</b> this record intentionally accepts any pair of {@code long}
+   * values, including negatives, equal values, and {@code received > stored}. The variant is
+   * constructed at exactly one site ({@code
+   * DefaultPasskeyAuthenticationService.handleCounterRegression}) where the inputs are already
+   * validated against the authenticator-supplied sign count and the stored credential row; an extra
+   * compact-ctor invariant here would only hide a bug at the construction site, not catch one at
+   * the boundary. Treat {@code stored} and {@code received} as informational telemetry fields, not
+   * as enforced contracts.
+   *
+   * @since 0.9.1
+   */
   record CounterRegression(long stored, long received) implements AssertionResult {}
 
   /** Ceremony required user verification but the authenticator did not assert UV. */

@@ -40,7 +40,7 @@ public class PkAuthCeremonyController {
   @PostMapping("/registration/start")
   public StartRegistrationResponse startRegistration(
       @RequestBody StartRegistrationRequest req, HttpServletRequest httpRequest) {
-    LOG.info("auth.registration.start username={}", req.username());
+    LOG.debug("auth.registration.start username={}", req.username());
     return orchestrator.startRegistration(req, clientIp(httpRequest));
   }
 
@@ -53,7 +53,7 @@ public class PkAuthCeremonyController {
   @PostMapping("/authentication/start")
   public StartAuthenticationResponse startAuthentication(
       @RequestBody StartAuthenticationRequest req, HttpServletRequest httpRequest) {
-    LOG.info("auth.authentication.start username={}", req.username());
+    LOG.debug("auth.authentication.start username={}", req.username());
     return orchestrator.startAuthentication(req, clientIp(httpRequest));
   }
 

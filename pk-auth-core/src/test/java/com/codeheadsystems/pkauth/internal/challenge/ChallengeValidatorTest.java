@@ -54,7 +54,7 @@ class ChallengeValidatorTest {
 
   @Test
   void validReturnsValidWithRecordAndClientData() {
-    primeStore(ChallengeRecord.Purpose.ASSERTION, NOW.plusSeconds(60));
+    primeStore(ChallengeRecord.Purpose.AUTHENTICATION, NOW.plusSeconds(60));
     byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
     ChallengeValidation out =
         validator.validate(ChallengeValidator.Ceremony.AUTHENTICATION, CHALLENGE_ID, cd);
@@ -62,7 +62,7 @@ class ChallengeValidatorTest {
         .isInstanceOfSatisfying(
             ChallengeValidation.Valid.class,
             v -> {
-              assertThat(v.record().purpose()).isEqualTo(ChallengeRecord.Purpose.ASSERTION);
+              assertThat(v.record().purpose()).isEqualTo(ChallengeRecord.Purpose.AUTHENTICATION);
               assertThat(v.clientData().origin()).isEqualTo("https://example.com");
             });
   }
@@ -137,7 +137,7 @@ class ChallengeValidatorTest {
             Optional.of(
                 new ChallengeRecord(
                     filled(32, (byte) 8),
-                    ChallengeRecord.Purpose.ASSERTION,
+                    ChallengeRecord.Purpose.AUTHENTICATION,
                     USER_HANDLE,
                     NOW.plusSeconds(60))));
     byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
@@ -148,7 +148,7 @@ class ChallengeValidatorTest {
 
   @Test
   void expiredChallengeReturnsExpired() {
-    primeStore(ChallengeRecord.Purpose.ASSERTION, NOW.minusSeconds(1));
+    primeStore(ChallengeRecord.Purpose.AUTHENTICATION, NOW.minusSeconds(1));
     byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
     ChallengeValidation out =
         validator.validate(ChallengeValidator.Ceremony.AUTHENTICATION, CHALLENGE_ID, cd);

@@ -23,7 +23,7 @@ public final class PkAuthJwtAuthenticationToken extends AbstractAuthenticationTo
 
   private final UserHandle principal;
   private final JwtClaims claims;
-  private final String token;
+  private String token;
 
   public PkAuthJwtAuthenticationToken(UserHandle principal, JwtClaims claims, String token) {
     super(authorities(claims));
@@ -54,8 +54,28 @@ public final class PkAuthJwtAuthenticationToken extends AbstractAuthenticationTo
     return claims;
   }
 
-  /** Raw token string (useful for downstream services that want to forward it). */
+  /**
+   * Raw token string (useful for downstream services that want to forward it). Returns {@code null}
+   * once {@link #eraseCredentials()} has been invoked by Spring Security's {@code ProviderManager}
+   * — applications that need the raw bearer for outbound calls must capture it before the security
+   * context post-processing pass.
+   */
   public String getToken() {
     return token;
+  }
+
+  /**
+   * Drops the raw bearer string so it no longer lives on the {@code SecurityContext} for the
+   * lifetime of the request. Spring Security calls this after authentication when {@code
+   * eraseCredentials} is enabled (default) on the {@code AuthenticationManager}; for the pk-auth
+   * filter chain we additionally invoke it explicitly so the in-memory copy of the JWT shrinks to
+   * just the parsed {@link JwtClaims} view.
+   *
+   * @since 0.9.1
+   */
+  @Override
+  public void eraseCredentials() {
+    super.eraseCredentials();
+    this.token = null;
   }
 }

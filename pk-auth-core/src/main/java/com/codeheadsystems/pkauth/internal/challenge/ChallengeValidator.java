@@ -36,17 +36,29 @@ import java.util.Optional;
  */
 public final class ChallengeValidator {
 
-  /** Ceremony marker the validator should accept in {@code clientData.type}. */
+  /**
+   * Ceremony marker the validator should accept in {@code clientData.type}. Also carries the
+   * canonical phase string used in metric names and structured log lines so callers never have to
+   * concatenate {@code "pkauth." + phase + ".outcome"} by hand.
+   *
+   * @since 0.9.1
+   */
   public enum Ceremony {
-    REGISTRATION("webauthn.create", ChallengeRecord.Purpose.REGISTRATION),
-    AUTHENTICATION("webauthn.get", ChallengeRecord.Purpose.ASSERTION);
+    REGISTRATION("webauthn.create", ChallengeRecord.Purpose.REGISTRATION, "registration"),
+    AUTHENTICATION("webauthn.get", ChallengeRecord.Purpose.AUTHENTICATION, "authentication");
 
     private final String clientDataType;
     private final ChallengeRecord.Purpose purpose;
+    private final String metricPhase;
+    private final String outcomeCounterName;
+    private final String durationTimerName;
 
-    Ceremony(String clientDataType, ChallengeRecord.Purpose purpose) {
+    Ceremony(String clientDataType, ChallengeRecord.Purpose purpose, String metricPhase) {
       this.clientDataType = clientDataType;
       this.purpose = purpose;
+      this.metricPhase = metricPhase;
+      this.outcomeCounterName = "pkauth." + metricPhase + ".outcome";
+      this.durationTimerName = "pkauth." + metricPhase + ".duration";
     }
 
     public String clientDataType() {
@@ -55,6 +67,36 @@ public final class ChallengeValidator {
 
     public ChallengeRecord.Purpose purpose() {
       return purpose;
+    }
+
+    /**
+     * Canonical phase token (e.g. {@code "registration"}) used both as a structured-log field and
+     * as the segment of every {@code pkauth.<phase>.*} metric name.
+     *
+     * @since 0.9.1
+     */
+    public String metricPhase() {
+      return metricPhase;
+    }
+
+    /**
+     * Fully-qualified metric name for the per-ceremony "outcome" counter ({@code
+     * pkauth.<phase>.outcome}).
+     *
+     * @since 0.9.1
+     */
+    public String outcomeCounterName() {
+      return outcomeCounterName;
+    }
+
+    /**
+     * Fully-qualified metric name for the per-ceremony "duration" timer ({@code
+     * pkauth.<phase>.duration}).
+     *
+     * @since 0.9.1
+     */
+    public String durationTimerName() {
+      return durationTimerName;
     }
   }
 

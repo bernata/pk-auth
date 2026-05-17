@@ -11,7 +11,7 @@ import org.jspecify.annotations.Nullable;
  * In-flight WebAuthn challenge persisted between the start and finish of a ceremony.
  *
  * @param challenge the random challenge bytes the server issued to the client
- * @param purpose whether this challenge belongs to a registration or assertion ceremony
+ * @param purpose whether this challenge belongs to a registration or authentication ceremony
  * @param userHandle the user this challenge is bound to; nullable for usernameless flows where the
  *     user is only known at finish
  * @param expiresAt absolute expiration; consumers should treat past-due records as missing
@@ -48,9 +48,14 @@ public record ChallengeRecord(
     return Objects.hash(Arrays.hashCode(challenge), purpose, userHandle, expiresAt);
   }
 
-  /** Which ceremony issued this challenge. */
+  /**
+   * Which ceremony issued this challenge. Host-facing vocabulary matches the {@code
+   * /auth/authentication/*} URL family rather than WebAuthn's internal "assertion" wording.
+   *
+   * @since 0.9.1 — renamed from {@code ASSERTION}; pre-1.0 break with no deprecation.
+   */
   public enum Purpose {
     REGISTRATION,
-    ASSERTION
+    AUTHENTICATION
   }
 }
