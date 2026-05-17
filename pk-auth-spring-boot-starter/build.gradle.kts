@@ -53,9 +53,6 @@ dependencies {
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.security)
     implementation(libs.slf4j.api)
-    implementation(libs.jackson.databind)
-    implementation(libs.jackson.annotations)
-    implementation(libs.nimbus.jose.jwt)
 
     annotationProcessor(libs.spring.boot.configuration.processor)
 
@@ -69,15 +66,6 @@ dependencies {
     testImplementation(libs.spring.security.test)
     testImplementation(libs.h2)
     testRuntimeOnly(libs.logback.classic)
-}
-
-// Spring Boot's starter-test pulls Mockito (along with JUnit & AssertJ). The test-conventions
-// plugin already wires our own Mockito; let Spring Boot's transitive copy win so version skew
-// against starter-test doesn't surface. We exclude the test-conventions ones rather than Spring's.
-configurations.named("testImplementation") {
-    // No-op: keep both versions on the path — JUnit/Mockito loaders only see one class, and
-    // Gradle's resolution chooses the highest version. The two duplicated stack entries are
-    // harmless here.
 }
 
 tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {

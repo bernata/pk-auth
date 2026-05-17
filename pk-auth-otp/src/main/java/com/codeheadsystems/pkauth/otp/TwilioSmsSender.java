@@ -4,9 +4,14 @@ package com.codeheadsystems.pkauth.otp;
 import java.util.Objects;
 
 /**
- * Skeleton {@link SmsSender} for Twilio. Per brief §3, pk-auth ships only the SPI — host
- * applications are expected to add the Twilio SDK and complete the implementation. Throwing on call
- * keeps surprises loud.
+ * Intentional starter scaffold for the Twilio {@link SmsSender}. Per brief §3, pk-auth ships only
+ * the SPI — host applications add the Twilio SDK dependency and replace {@link #send} with the real
+ * REST call. The class ships in this form on purpose: it captures the canonical Twilio constructor
+ * shape (account SID, auth token, sender number) and fails loudly if it is ever invoked unmodified.
+ *
+ * <p>This is <b>not</b> a half-finished feature. Do not remove it during dead-code sweeps; it is
+ * one of the two SDK-naming anchors (alongside {@code JavaMailEmailSender}) that documents which
+ * external libraries the project expects hosts to bring.
  *
  * @since 0.9.1
  */

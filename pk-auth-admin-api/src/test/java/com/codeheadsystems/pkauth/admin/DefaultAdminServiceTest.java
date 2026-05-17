@@ -17,7 +17,6 @@ import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
 import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
 import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
-import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryBackupCodeRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryCredentialRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryOtpRepository;
@@ -371,11 +370,5 @@ class DefaultAdminServiceTest {
             null);
     credentials.save(record);
     return record;
-  }
-
-  /** Keeps unused-import warnings down without removing the import. */
-  @SuppressWarnings("unused")
-  private CredentialRepository requireRepo() {
-    return credentials;
   }
 }

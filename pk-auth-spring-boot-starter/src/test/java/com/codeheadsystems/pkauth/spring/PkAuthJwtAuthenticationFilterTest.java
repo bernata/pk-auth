@@ -20,10 +20,10 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
- * Regression test for item #41 in TODO.md: the filter must authenticate only on the {@code
- * Authorization: Bearer …} header. A request that carries cookies (e.g. {@code JSESSIONID}) but no
- * {@code Authorization} header must not be authenticated, since the pk-auth filter chain disables
- * CSRF on the assumption that auth never depends on a cookie.
+ * Regression test for the header-only authentication contract: the filter must authenticate only on
+ * the {@code Authorization: Bearer …} header. A request that carries cookies (e.g. {@code
+ * JSESSIONID}) but no {@code Authorization} header must not be authenticated, since the pk-auth
+ * filter chain disables CSRF on the assumption that auth never depends on a cookie.
  */
 class PkAuthJwtAuthenticationFilterTest {
 

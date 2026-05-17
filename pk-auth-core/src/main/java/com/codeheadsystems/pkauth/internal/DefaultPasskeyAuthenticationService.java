@@ -26,7 +26,6 @@ import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.CounterRegressionPolicy;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.credential.AuthenticatorData;
-import com.codeheadsystems.pkauth.credential.CredentialMetadata;
 import com.codeheadsystems.pkauth.credential.CredentialRecord;
 import com.codeheadsystems.pkauth.metrics.Metrics;
 import com.codeheadsystems.pkauth.spi.AttestationTrustPolicy;
@@ -865,16 +864,5 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
       LOG.info("{} rate-limited username-bucket username={}", phase, username);
       throw new CeremonyRateLimitedException("username");
     }
-  }
-
-  /**
-   * Returns a {@link CredentialMetadata} view of every credential we know about for {@code handle}.
-   * Adapters / admin endpoints may call this; kept here so tests can exercise the repository wiring
-   * without a separate facade.
-   */
-  public List<CredentialMetadata> listCredentialMetadata(UserHandle handle) {
-    return credentialRepository.findByUserHandle(handle).stream()
-        .map(CredentialRecord::toMetadata)
-        .toList();
   }
 }

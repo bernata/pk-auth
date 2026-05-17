@@ -203,7 +203,8 @@ public final class FakeAuthenticator {
   }
 
   private Credential pickCredential(StartAuthenticationResponse start) {
-    // Privacy invariant (TODO #6): allowCredentials is always non-null. An empty list is
+    // Privacy invariant (account-enumeration guard): allowCredentials is always non-null. An empty
+    // list is
     // produced both by the usernameless flow and by unknown-username requests — we fall back to
     // the single-credential path in that case, exactly as a real authenticator would.
     var allow = start.publicKey().allowCredentials();

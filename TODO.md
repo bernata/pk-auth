@@ -536,35 +536,42 @@ These pre-answer questions that would otherwise come up mid-implementation:
 
 ## Tier 4 — Dead code & cleanup
 
-### 61. Delete `listCredentialMetadata` from `DefaultPasskeyAuthenticationService`
+### ✅ 61. Delete `listCredentialMetadata` from `DefaultPasskeyAuthenticationService`
+**Completed:** 2026-05-16 — Removed the unused method (no callers in main or test) and dropped the now-orphaned `CredentialMetadata` import.
 - Severity: **High confidence** — [DeadCode #2]
 - File: `DefaultPasskeyAuthenticationService.java:615-619`. Internal package; no callers.
 
-### 62. Remove unused Gradle dep `argon2-jvm` from `pk-auth-otp`
+### ✅ 62. Remove unused Gradle dep `argon2-jvm` from `pk-auth-otp`
+**Completed:** 2026-05-16 — Dropped `api(libs.argon2.jvm)` from `pk-auth-otp/build.gradle.kts`. The module hashes with HMAC-SHA256; the only Argon2 mentions left are Javadoc references in `OtpService` explaining the design choice.
 - Severity: **High confidence** — [DeadCode #7]
 - The module hashes with HMAC-SHA256 only; `argon2-jvm` is on `api` and leaks to
   consumers.
 
-### 63. Remove unused Gradle dep `dropwizard-assets` from `pk-auth-dropwizard`
+### ✅ 63. Remove unused Gradle dep `dropwizard-assets` from `pk-auth-dropwizard`
+**Completed:** 2026-05-16 — Dropped `api(libs.dropwizard.assets)`. No source in `pk-auth-dropwizard` references `AssetsBundle`; the demo module declares its own dep.
 - Severity: **High confidence** — [DeadCode #8]
 - Only the demo module uses `AssetsBundle`; the demo declares its own dep.
 
-### 64. Delete empty `configurations.named("testImplementation")` no-op block
+### ✅ 64. Delete empty `configurations.named("testImplementation")` no-op block
+**Completed:** 2026-05-16 — Block (and the misleading comment block above it) deleted from `pk-auth-spring-boot-starter/build.gradle.kts`.
 - Severity: **High confidence** — [DeadCode #6] and [Maint #22] (same finding)
 - File: `pk-auth-spring-boot-starter/build.gradle.kts:74-78`.
 
-### 65. Delete dead test helpers `requireRepo` and `mapper()`
+### ✅ 65. Delete dead test helpers `requireRepo` and `mapper()`
+**Completed:** 2026-05-16 — Removed both `@SuppressWarnings("unused")` helpers. `requireRepo` in `DefaultAdminServiceTest` was the sole consumer of the `CredentialRepository` import, so the import goes too; `mapper()` in `PkAuthBundleIntegrationTest` claimed to anchor the `ObjectMapper` import, which is already pulled in by line 83 of the same test.
 - Severity: **High confidence** — [DeadCode #3, #5]
 - Both already `@SuppressWarnings("unused")`; both have explanatory comments
   that turn out to be inaccurate (the imports they claim to preserve are used
   elsewhere).
 
-### 66. Delete the `payloadTypes()` static-assertion in Micronaut `PkAuthAdminController`
+### ✅ 66. Delete the `payloadTypes()` static-assertion in Micronaut `PkAuthAdminController`
+**Completed:** 2026-05-16 — Removed `payloadTypes()` plus the now-orphaned imports (`AccountSummary`, `BackupCodesGenerated`, `CredentialSummary`, `OtpDispatchResult`, `PhoneVerificationResult`, `java.util.List`). `PkAuthIntrospections` (and the coverage test from item #51) still asserts the same classes are visible.
 - Severity: **Medium confidence** — [DeadCode #4]
 - `PkAuthIntrospections` already wires those classes; the assertion is dead
   duplication.
 
-### 67. Walk every in-source `TODO #NN` marker; delete if done, otherwise rewrite as prose
+### ✅ 67. Walk every in-source `TODO #NN` marker; delete if done, otherwise rewrite as prose
+**Completed:** 2026-05-16 — Walked all surviving markers; the original list's Spring / Micronaut controller-level TODOs and the MagicLink `TODO #5` were already cleaned up in earlier Tier-1/2 passes. Remaining work this pass: rewrote `ChallengeGenerator.idOf` Javadoc as "future work" prose (no `TODO #43`); rewrote `PkAuthCeremonyJwt` Javadoc to drop the historical `TODO #31` pointer; replaced five `(TODO #6)` mentions in `DefaultPasskeyAuthenticationServiceTest` with `(account-enumeration guard)`; rewrote the comparable references in `CeremonyScenarios` and `FakeAuthenticator`; tightened the class Javadoc on `PkAuthJwtAuthenticationFilterTest` so it doesn't point at TODO.md; and scrubbed the `TODO.md item #55` reference from Flyway `V7__credentials_hard_delete.sql`. A repo-wide grep for `TODO #` / `TODO.md` now returns no hits outside this file and `.review-findings/`.
 - Severity: **High confidence** — [DeadCode #11], [Maint #26], [DeadCode #13]
 - Decision: do NOT re-establish the numeric tracker. For each marker below,
   read the surrounding code, decide whether the work is done, and either
@@ -581,33 +588,38 @@ These pre-answer questions that would otherwise come up mid-implementation:
   - Micronaut `PkAuthCeremonyController.java:35` — `TODO #29`
   - Micronaut `PkAuthAdminController.java:37` — `TODO #29`
 
-### 68. Drop stale "Populated in Phase 2+" / Phase-0 comments
+### ✅ 68. Drop stale "Populated in Phase 2+" / Phase-0 comments
+**Completed:** 2026-05-16 — Rewrote the package-info Javadoc on `pk-auth-core/.../internal`; rewrote the "Phase 0 / Phase 1+" comments in `build-logic/.../pkauth.test-conventions.gradle.kts` and root `build.gradle.kts`; deleted the `phaseStatus` Gradle task (printing "phase 0" was actively misleading at this point).
 - Severity: **High confidence** — [DeadCode #12], [Maint #15, #16]
 - Files: `pk-auth-core/.../internal/package-info.java:3`;
   `build-logic/.../pkauth.test-conventions.gradle.kts:34-36`;
   `build.gradle.kts:1-2, 7-9, 14-18, 51` (`phaseStatus` task printing "phase 0").
 - Drop `phaseStatus` or repurpose to print the current published version.
 
-### 69. Remove `dropwizard-jersey` dependency from `pk-auth-dropwizard`
+### ✅ 69. Remove `dropwizard-jersey` dependency from `pk-auth-dropwizard`
+**Completed:** 2026-05-16 — Dropped `api(libs.dropwizard.jersey)`. No source in `pk-auth-dropwizard` imports `io.dropwizard.jersey.*`; Jersey types arrive transitively via `dropwizard-core`. Verified by the build + test run.
 - Severity: **Low** — [DeadCode #9]
 - Decision: drop the `api(libs.dropwizard.jersey)` line. Run the full
   Dropwizard system test (`pk-auth-dropwizard` tests + `examples/dropwizard-demo`)
   after removal; revert this single line if it fails.
 
-### 70. Remove `nimbus-jose-jwt` / `jackson-databind` / `jackson-annotations` from Spring starter
+### ✅ 70. Remove `nimbus-jose-jwt` / `jackson-databind` / `jackson-annotations` from Spring starter
+**Completed:** 2026-05-16 — All three `implementation(...)` lines dropped. No source under `pk-auth-spring-boot-starter/src/main/` imports `com.nimbusds.*` or `com.fasterxml.jackson.*` directly; Nimbus arrives via `pk-auth-jwt` and Jackson via `spring-boot-starter-web`. Verified by the build + test run.
 - Severity: **Low** — [DeadCode #10]
 - Decision: drop the three `implementation(...)` lines. Both libs are pulled
   transitively (Nimbus via `pk-auth-jwt`, Jackson via Spring Boot web). Run
   the Spring starter system test + `examples/spring-boot-demo` after removal;
   revert individual lines if anything fails to resolve.
 
-### 71. Document `PkAuthErrorCode` unused constants as reserved wire vocabulary
+### ✅ 71. Document `PkAuthErrorCode` unused constants as reserved wire vocabulary
+**Completed:** 2026-05-16 — Added a "Reserved wire vocabulary" paragraph to the enum Javadoc enumerating the constants the shipped adapter mappers do not yet emit and stating they are intentionally reserved for future emissions.
 - Severity: **Low** — [DeadCode #14]
 - Decision: keep the nine unused constants. Update the enum Javadoc to state
   explicitly that they are reserved wire-contract values; not all are emitted
   by the current adapter mappers.
 
-### 72. Keep starter-stub senders; tighten their Javadoc
+### ✅ 72. Keep starter-stub senders; tighten their Javadoc
+**Completed:** 2026-05-16 — Rewrote both class-level Javadocs to call them "intentional starter scaffolds" (not "skeletons"), state plainly that they are *not* half-finished features, and ask future dead-code sweeps to leave them alone. They are the project's SDK-naming anchors (Twilio for SMS, Jakarta Mail for email).
 - Severity: **Info** — [DeadCode #15]
 - Decision: keep `TwilioSmsSender` and `JavaMailEmailSender`. Their Javadoc
   already says "pk-auth ships only the SPI — host applications are expected

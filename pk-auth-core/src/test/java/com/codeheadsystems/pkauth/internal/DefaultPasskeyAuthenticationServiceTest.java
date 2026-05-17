@@ -157,7 +157,8 @@ class DefaultPasskeyAuthenticationServiceTest {
     assertThat(resp.publicKey().user().name()).isEqualTo("alice");
     assertThat(resp.publicKey().user().displayName()).isEqualTo("Alice");
     assertThat(resp.publicKey().challenge()).containsExactly(CHALLENGE);
-    // Privacy invariant (TODO #6): brand-new usernames must yield a non-null empty list so the
+    // Privacy invariant (account-enumeration guard): brand-new usernames must yield a non-null
+    // empty list so the
     // wire shape is indistinguishable from existing users with no credentials to exclude.
     assertThat(resp.publicKey().excludeCredentials()).isNotNull().isEmpty();
 
@@ -168,7 +169,8 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void startRegistrationSerializesEmptyExcludeCredentialsAsJsonArray() {
-    // Belt-and-braces wire check (TODO #6): even with NON_NULL inclusion, an empty list must
+    // Belt-and-braces wire check (account-enumeration guard): even with NON_NULL inclusion, an
+    // empty list must
     // serialize as [] and the excludeCredentials key must be present so an unknown / brand-new
     // username's response is byte-indistinguishable from a known user's response.
     when(userLookup.getOrCreateHandle("brand-new")).thenReturn(USER_HANDLE);
@@ -198,7 +200,8 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void startAuthenticationReturnsEmptyAllowCredentialsForUsernamelessFlow() {
-    // Privacy invariant (TODO #6): the usernameless flow must produce a non-null empty list so
+    // Privacy invariant (account-enumeration guard): the usernameless flow must produce a non-null
+    // empty list so
     // it is wire-indistinguishable from an unknown-username request.
     StartAuthenticationResponse resp =
         service.startAuthentication(new StartAuthenticationRequest(null, null));
@@ -207,7 +210,8 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void startAuthenticationReturnsEmptyAllowCredentialsForUnknownUsername() {
-    // Privacy invariant (TODO #6): an unknown username must produce the same empty-list shape
+    // Privacy invariant (account-enumeration guard): an unknown username must produce the same
+    // empty-list shape
     // as a known user with no credentials registered. Emitting null here was the
     // account-enumeration leak fixed in this change.
     when(userLookup.findHandleByUsername("ghost")).thenReturn(Optional.empty());
@@ -220,7 +224,7 @@ class DefaultPasskeyAuthenticationServiceTest {
 
   @Test
   void startAuthenticationSerializesEmptyAllowCredentialsAsJsonArray() {
-    // Belt-and-braces wire check (TODO #6): an unknown user must produce an
+    // Belt-and-braces wire check (account-enumeration guard): an unknown user must produce an
     // "allowCredentials":[] field present in the JSON, not an omitted field.
     when(userLookup.findHandleByUsername("ghost")).thenReturn(Optional.empty());
     StartAuthenticationResponse resp =

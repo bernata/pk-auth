@@ -14,7 +14,6 @@ tasks.named<JavaCompile>("compileJava") {
 
 dependencies {
     api(project(":pk-auth-core"))
-    api(libs.argon2.jvm)
     implementation(libs.slf4j.api)
 
     testImplementation(project(":pk-auth-testkit"))

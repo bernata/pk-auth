@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: MIT
 --
--- Switches credentials from soft-delete to hard-delete (TODO.md item #55).
+-- Switches credentials from soft-delete to hard-delete.
 -- Audit history for credential deletions now lives in the host's structured
 -- log pipeline as a `pkauth.credential.deleted` event emitted by the service
 -- layer (DefaultAdminService.deleteCredential). The credentials table no

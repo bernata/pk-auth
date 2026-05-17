@@ -8,9 +8,9 @@ import java.util.Objects;
 /**
  * Shared JWT-minting helper used by every adapter (Spring, Dropwizard, Micronaut) immediately after
  * a successful WebAuthn assertion. Before this helper existed each adapter constructed {@link
- * JwtClaims#forPasskey} inline, with a different {@code amr} list per adapter — see TODO #31. This
- * helper standardizes the claim shape so a token minted by the Spring adapter is byte-equivalent
- * (modulo {@code jti}/{@code iat}) to one minted by Dropwizard or Micronaut.
+ * JwtClaims#forPasskey} inline, with a different {@code amr} list per adapter; this helper
+ * standardizes the claim shape so a token minted by the Spring adapter is byte-equivalent (modulo
+ * {@code jti}/{@code iat}) to one minted by Dropwizard or Micronaut.
  *
  * <p><b>Standardized {@code amr}</b>: {@link #ASSERTION_AMR} — {@code ["pkauth", "webauthn"]}. The
  * RFC 8176 registry doesn't define a passkey-specific token, so we use the descriptive {@code

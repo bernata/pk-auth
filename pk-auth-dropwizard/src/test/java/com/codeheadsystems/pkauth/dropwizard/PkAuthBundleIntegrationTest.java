@@ -226,11 +226,4 @@ final class PkAuthBundleIntegrationTest {
     }
     return r.readEntity(type);
   }
-
-  // Reference the ObjectMapper field so the import is used (Jackson 2 mapper retrieval keeps the
-  // bridge wired up — see PkAuthJacksonBridge).
-  @SuppressWarnings("unused")
-  private ObjectMapper mapper() {
-    return app.getObjectMapper();
-  }
 }

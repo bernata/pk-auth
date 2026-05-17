@@ -38,10 +38,10 @@ public final class ChallengeGenerator {
   /**
    * Derives a {@link ChallengeId} from challenge bytes (base64url-encodes them as the id value).
    *
-   * <p>TODO #43: ChallengeId should wrap a random UUID instead of the challenge bytes. This
-   * requires adding {@code ChallengeStore.takeByBytes(byte[])} so finish-time lookup can still find
-   * the record by the bytes carried in {@code clientDataJSON.challenge}. Deferred because the
-   * persistence impls (JDBI, DynamoDB) need schema/index changes — too invasive for this patch.
+   * <p>Future work: {@code ChallengeId} could wrap a random UUID instead of the challenge bytes,
+   * but that requires a {@code ChallengeStore.takeByBytes(byte[])} so finish-time lookup can still
+   * find the record by the bytes carried in {@code clientDataJSON.challenge}, plus schema / index
+   * changes in the JDBI and DynamoDB impls.
    */
   public static ChallengeId idOf(byte[] challenge) {
     return new ChallengeId(Base64Url.encode(challenge));

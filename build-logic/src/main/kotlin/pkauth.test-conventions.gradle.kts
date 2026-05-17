@@ -31,9 +31,8 @@ tasks.named<JacocoReport>("jacocoTestReport") {
     }
 }
 
-// Coverage gates are intentionally NOT wired in Phase 0 — there is no production code yet, so any
-// minimum threshold would force an immediate spurious failure. The brief (§11) calls for ≥80% on
-// pk-auth-core and ≥70% on adapters; those rules get enabled in Phase 1+ once real code lands.
+// Per-module coverage gates (≥80% on pk-auth-core, ≥70% on adapters) are wired in each module's
+// build.gradle.kts via JacocoCoverageVerification, not centrally here.
 
 tasks.named("check") {
     dependsOn(tasks.named("jacocoTestReport"))

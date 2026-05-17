@@ -38,8 +38,6 @@ dependencies {
     api(project(":pk-auth-jwt"))
     api(libs.dropwizard.core)
     api(libs.dropwizard.auth)
-    api(libs.dropwizard.jersey)
-    api(libs.dropwizard.assets)
     api(libs.dagger)
     api(libs.jakarta.inject.api)
 

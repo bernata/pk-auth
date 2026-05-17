@@ -84,7 +84,7 @@ public final class CeremonyScenarios {
 
   /**
    * Usernameless flow: startAuthentication with a null username returns options with an empty
-   * {@code allowCredentials} list (never {@code null} — privacy invariant, see TODO #6); the
+   * {@code allowCredentials} list (never {@code null} — account-enumeration guard); the
    * FakeAuthenticator picks the sole registered credential and assertion succeeds.
    */
   public void usernamelessFlowSucceedsWithSingleCredential() {

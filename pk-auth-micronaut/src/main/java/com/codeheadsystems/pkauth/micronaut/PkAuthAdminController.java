@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.micronaut;
 
-import com.codeheadsystems.pkauth.admin.AccountSummary;
 import com.codeheadsystems.pkauth.admin.AdminRequests.FinishEmailVerification;
 import com.codeheadsystems.pkauth.admin.AdminRequests.FinishPhoneVerification;
 import com.codeheadsystems.pkauth.admin.AdminRequests.RenameCredential;
@@ -12,11 +11,7 @@ import com.codeheadsystems.pkauth.admin.AdminResponseMapper.AdminResponse;
 import com.codeheadsystems.pkauth.admin.AdminResult;
 import com.codeheadsystems.pkauth.admin.AdminService;
 import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
-import com.codeheadsystems.pkauth.admin.BackupCodesGenerated;
-import com.codeheadsystems.pkauth.admin.CredentialSummary;
 import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
-import com.codeheadsystems.pkauth.admin.OtpDispatchResult;
-import com.codeheadsystems.pkauth.admin.PhoneVerificationResult;
 import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import io.micronaut.http.HttpRequest;
@@ -34,7 +29,6 @@ import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.Produces;
 import io.micronaut.scheduling.TaskExecutors;
 import io.micronaut.scheduling.annotation.ExecuteOn;
-import java.util.List;
 
 /**
  * Admin controller mounting the brief §6.9 endpoints under {@code /auth/admin/**}. All
@@ -154,18 +148,5 @@ public class PkAuthAdminController {
       http.body(response.body());
     }
     return http;
-  }
-
-  /** Compile-time assertion that the AdminResult payload types are visible — no logic. */
-  @SuppressWarnings("unused")
-  private static List<Class<?>> payloadTypes() {
-    return List.of(
-        AccountSummary.class,
-        CredentialSummary.class,
-        BackupCodesGenerated.class,
-        OtpDispatchResult.class,
-        PhoneVerificationResult.class,
-        BackupCodesCountResponse.class,
-        EmailVerificationResult.class);
   }
 }
