@@ -25,6 +25,27 @@ tags.
   back to `JwtConfig.defaultAudience()`. New convenience factory
   `JwtClaims.forPasskey(userHandle, credentialId, audience, amr)` etc. mirror
   the existing audience-less factories.
+- `AccessTokenStore` SPI in `pk-auth-jwt` for stateful (server-revocable) access
+  tokens. `PkAuthJwtIssuer` calls `record` on every issue; `PkAuthJwtValidator`
+  calls `exists` on every validate. The default `AccessTokenStore.noop()` keeps
+  stateless behaviour; hosts wire a real store (JDBI, DynamoDB) to opt in. See
+  ADR 0015.
+- `pk-auth-persistence-jdbi`: `JdbiAccessTokenStore` backed by the new
+  `access_tokens` table (Flyway V8).
+- `pk-auth-persistence-dynamodb`: `DynamoDbAccessTokenStore` using two items
+  per JTI (primary jti-keyed item + user-indexed pointer item) with DynamoDB
+  native TTL on the `ttl` attribute for asynchronous expiry cleanup.
+- `pk-auth-testkit`: `InMemoryAccessTokenStore` + `AccessTokenStoreScenarios`
+  parity-test class driven from in-memory / JDBI / DynamoDB integration tests.
+- `UserDeletionService` and `UserDeletionListener` SPI in
+  `pk-auth-core` (`com.codeheadsystems.pkauth.lifecycle`). Single fan-out
+  point that runs every registered listener for a user, with idempotent +
+  best-effort semantics and structured `pkauth.user.deletion` logging. See
+  ADR 0016. The library ships listeners for credentials, backup codes, OTPs,
+  and access tokens; each adapter wires them automatically.
+- `CredentialRepository.deleteByUserHandle(UserHandle)` and
+  `OtpRepository.deleteByUserHandle(UserHandle)` SPI methods for the fan-out.
+  Implemented in all three persistence variants.
 
 ### Changed
 
@@ -42,6 +63,16 @@ tags.
   `PkAuthConfig.Jwt` (Dropwizard), and `PkAuthConfiguration.Jwt` (Micronaut)
   each gain a `ttlsByAudience: Map<String, Duration>` field and rename their
   single-TTL field; see each adapter's javadoc for the bound property name.
+- **Breaking (SPI).** `CredentialRepository` and `OtpRepository` gain a
+  `deleteByUserHandle(UserHandle) -> int` method. All shipped implementations
+  (in-memory, JDBI, DynamoDB) updated. Downstream host-supplied
+  implementations must add it; the natural impl is a single bulk-delete
+  statement keyed on the user-handle column.
+- `PkAuthJwtIssuer` and `PkAuthJwtValidator` gain new constructors that accept
+  an `AccessTokenStore`. The legacy three-arg constructors remain and default
+  to `AccessTokenStore.noop()`.
+- Flyway schema version bumped to V8. `PkAuthJdbiSchema.CURRENT_SCHEMA_VERSION`
+  is now `"8"`.
 
 ## [1.0.0] — 2026-05 (stabilisation cut)
 

@@ -142,6 +142,29 @@ public final class DynamoDbOtpRepository implements OtpRepository {
   }
 
   @Override
+  public int deleteByUserHandle(UserHandle userHandle) {
+    return wrap(
+        "otp.deleteByUserHandle",
+        () -> {
+          String userB64 = Base64Url.encode(userHandle.value());
+          int[] removed = {0};
+          table
+              .query(
+                  QueryConditional.sortBeginsWith(
+                      Key.builder().partitionValue("USER#" + userB64).sortValue("OTP#").build()))
+              .stream()
+              .flatMap(page -> page.items().stream())
+              .forEach(
+                  item -> {
+                    table.deleteItem(
+                        Key.builder().partitionValue(item.getPk()).sortValue(item.getSk()).build());
+                    removed[0]++;
+                  });
+          return removed[0];
+        });
+  }
+
+  @Override
   public int countSince(UserHandle userHandle, String phoneE164, Instant since) {
     return wrap(
         "otp.countSince",

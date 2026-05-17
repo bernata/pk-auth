@@ -96,4 +96,15 @@ public interface OtpRepository {
    * the service for rate limiting (brief §6.5 — at most 3 per 15 minutes).
    */
   int countSince(UserHandle userHandle, String phoneE164, Instant since);
+
+  /**
+   * Deletes every OTP row owned by the supplied user. Called by {@link
+   * com.codeheadsystems.pkauth.lifecycle.UserDeletionService} during user-deletion fan-out.
+   *
+   * <p>Returns the number of rows removed (best-effort; used for structured logging). Must be
+   * idempotent — a call against a user with no remaining rows returns {@code 0}.
+   *
+   * @since 1.1.0
+   */
+  int deleteByUserHandle(UserHandle userHandle);
 }

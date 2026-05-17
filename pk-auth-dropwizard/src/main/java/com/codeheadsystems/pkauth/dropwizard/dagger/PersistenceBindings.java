@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.dropwizard.dagger;
 
+import com.codeheadsystems.pkauth.jwt.AccessTokenStore;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -25,6 +26,7 @@ public final class PersistenceBindings {
   private final ChallengeStore challengeStore;
   @Nullable private final BackupCodeRepository backupCodeRepository;
   @Nullable private final OtpRepository otpRepository;
+  private final AccessTokenStore accessTokenStore;
 
   private PersistenceBindings(Builder b) {
     this.credentialRepository =
@@ -33,6 +35,8 @@ public final class PersistenceBindings {
     this.challengeStore = Objects.requireNonNull(b.challengeStore, "challengeStore");
     this.backupCodeRepository = b.backupCodeRepository;
     this.otpRepository = b.otpRepository;
+    this.accessTokenStore =
+        b.accessTokenStore == null ? AccessTokenStore.noop() : b.accessTokenStore;
   }
 
   public static Builder builder() {
@@ -61,6 +65,18 @@ public final class PersistenceBindings {
     return otpRepository;
   }
 
+  /**
+   * Returns the configured {@link AccessTokenStore}. Defaults to {@link AccessTokenStore#noop()} —
+   * stateless JWT behaviour. Hosts that want server-side access-token revocation supply a real
+   * store (e.g. {@code JdbiAccessTokenStore}) via {@link
+   * Builder#accessTokenStore(AccessTokenStore)}.
+   *
+   * @since 1.1.0
+   */
+  public AccessTokenStore accessTokenStore() {
+    return accessTokenStore;
+  }
+
   /** Builder. */
   public static final class Builder {
     @Nullable private CredentialRepository credentialRepository;
@@ -68,6 +84,7 @@ public final class PersistenceBindings {
     @Nullable private ChallengeStore challengeStore;
     @Nullable private BackupCodeRepository backupCodeRepository;
     @Nullable private OtpRepository otpRepository;
+    @Nullable private AccessTokenStore accessTokenStore;
 
     private Builder() {}
 
@@ -93,6 +110,17 @@ public final class PersistenceBindings {
 
     public Builder otpRepository(OtpRepository v) {
       this.otpRepository = v;
+      return this;
+    }
+
+    /**
+     * Supplies a real {@link AccessTokenStore} for stateful access-token mode. Omit (or pass null)
+     * to keep stateless JWT behaviour via {@link AccessTokenStore#noop()}.
+     *
+     * @since 1.1.0
+     */
+    public Builder accessTokenStore(AccessTokenStore v) {
+      this.accessTokenStore = v;
       return this;
     }
 

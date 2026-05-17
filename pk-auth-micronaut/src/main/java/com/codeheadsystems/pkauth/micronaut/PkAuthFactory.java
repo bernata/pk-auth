@@ -8,12 +8,20 @@ import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
+import com.codeheadsystems.pkauth.jwt.AccessTokenStore;
+import com.codeheadsystems.pkauth.jwt.AccessTokenStoreDeletionListener;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.JwtSecretResolver;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.jwt.RevocationCheck;
 import com.codeheadsystems.pkauth.jwt.TokenTtlPolicy;
+import com.codeheadsystems.pkauth.lifecycle.BackupCodeRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.CredentialRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.OtpRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionService;
 import com.codeheadsystems.pkauth.magiclink.EmailSender;
 import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
@@ -32,6 +40,8 @@ import io.micronaut.context.annotation.Factory;
 import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -110,9 +120,21 @@ public class PkAuthFactory {
     return JwtSecretResolver.resolveHs256Keyset(config.getJwt().getSecret());
   }
 
+  /**
+   * Default no-op {@link AccessTokenStore}. Hosts wanting stateful access tokens replace this bean
+   * by declaring their own {@code @Singleton AccessTokenStore} in their factory.
+   *
+   * @since 1.1.0
+   */
   @Singleton
-  PkAuthJwtIssuer jwtIssuer(JwtConfig cfg, JwtKeyset keyset, ClockProvider clock) {
-    return new PkAuthJwtIssuer(cfg, keyset, clock);
+  AccessTokenStore accessTokenStore() {
+    return AccessTokenStore.noop();
+  }
+
+  @Singleton
+  PkAuthJwtIssuer jwtIssuer(
+      JwtConfig cfg, JwtKeyset keyset, ClockProvider clock, AccessTokenStore accessTokenStore) {
+    return new PkAuthJwtIssuer(cfg, keyset, clock, accessTokenStore);
   }
 
   /**
@@ -131,8 +153,36 @@ public class PkAuthFactory {
   }
 
   @Singleton
-  PkAuthJwtValidator jwtValidator(JwtConfig cfg, JwtKeyset keyset, ClockProvider clock) {
-    return new PkAuthJwtValidator(cfg, keyset, clock);
+  PkAuthJwtValidator jwtValidator(
+      JwtConfig cfg, JwtKeyset keyset, ClockProvider clock, AccessTokenStore accessTokenStore) {
+    return new PkAuthJwtValidator(cfg, keyset, clock, RevocationCheck.allow(), accessTokenStore);
+  }
+
+  // -- User deletion fan-out ---------------------------------------------------------------
+
+  @Singleton
+  UserDeletionListener credentialDeletionListener(CredentialRepository repo) {
+    return new CredentialRepositoryDeletionListener(repo);
+  }
+
+  @Singleton
+  UserDeletionListener backupCodeDeletionListener(BackupCodeRepository repo) {
+    return new BackupCodeRepositoryDeletionListener(repo);
+  }
+
+  @Singleton
+  UserDeletionListener otpDeletionListener(OtpRepository repo) {
+    return new OtpRepositoryDeletionListener(repo);
+  }
+
+  @Singleton
+  UserDeletionListener accessTokenStoreDeletionListener(AccessTokenStore store) {
+    return new AccessTokenStoreDeletionListener(store);
+  }
+
+  @Singleton
+  UserDeletionService userDeletionService(Collection<UserDeletionListener> listeners) {
+    return new UserDeletionService(new ArrayList<>(listeners));
   }
 
   /**

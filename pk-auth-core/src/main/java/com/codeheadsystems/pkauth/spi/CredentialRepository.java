@@ -36,4 +36,16 @@ public interface CredentialRepository {
    * tombstones inside the credentials table.
    */
   void delete(CredentialId credentialId);
+
+  /**
+   * Hard-deletes every credential owned by the supplied user. Called by {@link
+   * com.codeheadsystems.pkauth.lifecycle.UserDeletionService} during user-deletion fan-out; hosts
+   * may also call it directly for bulk-revocation flows.
+   *
+   * <p>Returns the number of rows removed (best-effort; used for structured logging). Must be
+   * idempotent — a call against a user with no remaining credentials returns {@code 0}.
+   *
+   * @since 1.1.0
+   */
+  int deleteByUserHandle(UserHandle userHandle);
 }

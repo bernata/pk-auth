@@ -94,4 +94,19 @@ public final class InMemoryOtpRepository implements OtpRepository {
             .filter(o -> !o.createdAt().isBefore(since))
             .count();
   }
+
+  @Override
+  public int deleteByUserHandle(UserHandle userHandle) {
+    int[] removed = {0};
+    byId.entrySet()
+        .removeIf(
+            e -> {
+              if (e.getValue().userHandle().equals(userHandle)) {
+                removed[0]++;
+                return true;
+              }
+              return false;
+            });
+    return removed[0];
+  }
 }

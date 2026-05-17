@@ -22,6 +22,7 @@ module com.codeheadsystems.pkauth.core {
   exports com.codeheadsystems.pkauth.credential;
   exports com.codeheadsystems.pkauth.error;
   exports com.codeheadsystems.pkauth.json;
+  exports com.codeheadsystems.pkauth.lifecycle;
   exports com.codeheadsystems.pkauth.metrics;
   exports com.codeheadsystems.pkauth.spi;
 }
