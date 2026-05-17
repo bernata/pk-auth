@@ -44,28 +44,50 @@ public final class PkAuthJwtValidator {
   private final JwtKeyset keyset;
   private final ClockProvider clockProvider;
   private final RevocationCheck revocationCheck;
+  private final AccessTokenStore accessTokenStore;
 
   /**
-   * Constructs a validator with no-op revocation (tokens are valid until {@code exp}). Equivalent
-   * to {@code new PkAuthJwtValidator(config, keyset, clockProvider, RevocationCheck.allow())}.
+   * Constructs a validator with no-op revocation and no-op access-token store (tokens are valid
+   * until {@code exp}). Equivalent to {@code new PkAuthJwtValidator(config, keyset, clockProvider,
+   * RevocationCheck.allow(), AccessTokenStore.noop())}.
    */
   public PkAuthJwtValidator(JwtConfig config, JwtKeyset keyset, ClockProvider clockProvider) {
-    this(config, keyset, clockProvider, RevocationCheck.allow());
+    this(config, keyset, clockProvider, RevocationCheck.allow(), AccessTokenStore.noop());
   }
 
   /**
-   * Constructs a validator with a custom {@link RevocationCheck}. Use this constructor when you
-   * need early token invalidation backed by your application's datastore.
+   * Constructs a validator with a custom {@link RevocationCheck} and the default no-op {@link
+   * AccessTokenStore}. Use this constructor when you need lightweight deny-list invalidation
+   * without persisting every issued JTI.
    */
   public PkAuthJwtValidator(
       JwtConfig config,
       JwtKeyset keyset,
       ClockProvider clockProvider,
       RevocationCheck revocationCheck) {
+    this(config, keyset, clockProvider, revocationCheck, AccessTokenStore.noop());
+  }
+
+  /**
+   * Constructs a validator with both a custom {@link RevocationCheck} and a custom {@link
+   * AccessTokenStore}. The store is consulted on every {@link #validate(String)} call after
+   * signature and standard-claim checks; an absent jti yields {@link
+   * JwtVerificationResult.Revoked}. Wire the same store on the matching {@link PkAuthJwtIssuer} so
+   * issued JTIs are recorded.
+   *
+   * @since 1.1.0
+   */
+  public PkAuthJwtValidator(
+      JwtConfig config,
+      JwtKeyset keyset,
+      ClockProvider clockProvider,
+      RevocationCheck revocationCheck,
+      AccessTokenStore accessTokenStore) {
     this.config = Objects.requireNonNull(config, "config");
     this.keyset = Objects.requireNonNull(keyset, "keyset");
     this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
     this.revocationCheck = Objects.requireNonNull(revocationCheck, "revocationCheck");
+    this.accessTokenStore = Objects.requireNonNull(accessTokenStore, "accessTokenStore");
   }
 
   /** Verifies signature and standard claims, then reconstructs a {@link JwtClaims}. */
@@ -143,6 +165,11 @@ public final class PkAuthJwtValidator {
 
     String jti = body.getJWTID();
     if (revocationCheck.isRevoked(jti, subject)) {
+      return new JwtVerificationResult.Revoked(jti, subject);
+    }
+    if (jti != null && !accessTokenStore.exists(jti)) {
+      // Stateful mode: the token's jti is not in the store (logout / admin-revoke / never
+      // recorded). The noop store always returns true so stateless deployments skip this branch.
       return new JwtVerificationResult.Revoked(jti, subject);
     }
 

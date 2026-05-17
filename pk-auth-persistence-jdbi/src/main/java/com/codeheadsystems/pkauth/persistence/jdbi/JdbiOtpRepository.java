@@ -139,6 +139,18 @@ public final class JdbiOtpRepository implements OtpRepository {
                         .one()));
   }
 
+  @Override
+  public int deleteByUserHandle(UserHandle userHandle) {
+    return wrap(
+        "otp.deleteByUserHandle",
+        () ->
+            jdbi.withHandle(
+                h ->
+                    h.createUpdate("DELETE FROM otp_codes WHERE user_handle = :uh")
+                        .bind("uh", userHandle.value())
+                        .execute()));
+  }
+
   /**
    * Runs {@code body} and wraps any {@link JdbiException} in a {@link PkAuthPersistenceException}
    * so adapter exception mappers can produce a uniform 503. Existing {@link

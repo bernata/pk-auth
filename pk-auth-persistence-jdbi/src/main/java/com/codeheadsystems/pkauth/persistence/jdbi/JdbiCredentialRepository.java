@@ -173,6 +173,18 @@ public final class JdbiCredentialRepository implements CredentialRepository {
         });
   }
 
+  @Override
+  public int deleteByUserHandle(UserHandle userHandle) {
+    return wrap(
+        "credentials.deleteByUserHandle",
+        () ->
+            jdbi.withHandle(
+                h ->
+                    h.createUpdate("DELETE FROM credentials WHERE user_handle = :uh")
+                        .bind("uh", userHandle.value())
+                        .execute()));
+  }
+
   // -------------------------------------------------------------------------
   // Internal helpers
   // -------------------------------------------------------------------------

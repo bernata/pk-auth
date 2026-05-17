@@ -22,7 +22,7 @@ public final class PkAuthJdbiSchema {
    * #migrateForDevelopment(DataSource)} pins Flyway's {@code target} to this value so that
    * unreleased migrations on the classpath are never applied accidentally.
    */
-  public static final String CURRENT_SCHEMA_VERSION = "6";
+  public static final String CURRENT_SCHEMA_VERSION = "8";
 
   private PkAuthJdbiSchema() {}
 

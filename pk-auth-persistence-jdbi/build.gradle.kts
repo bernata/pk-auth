@@ -14,6 +14,8 @@ tasks.named<JavaCompile>("compileJava") {
 
 dependencies {
     api(project(":pk-auth-core"))
+    // AccessTokenStore lives in pk-auth-jwt; JdbiAccessTokenStore implements it.
+    api(project(":pk-auth-jwt"))
     api(libs.jdbi.core)
     // JDBI's class files reference com.google.errorprone.annotations.concurrent.GuardedBy.
     // Without errorprone-annotations on the compile classpath, javac emits an annotation-not-found

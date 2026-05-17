@@ -192,6 +192,29 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
         });
   }
 
+  @Override
+  public int deleteByUserHandle(UserHandle userHandle) {
+    return wrap(
+        "credentials.deleteByUserHandle",
+        () -> {
+          String userB64 = Base64Url.encode(userHandle.value());
+          int[] removed = {0};
+          table
+              .query(
+                  QueryConditional.sortBeginsWith(
+                      Key.builder().partitionValue("USER#" + userB64).sortValue("CRED#").build()))
+              .stream()
+              .flatMap(page -> page.items().stream())
+              .forEach(
+                  item -> {
+                    table.deleteItem(
+                        Key.builder().partitionValue(item.getPk()).sortValue(item.getSk()).build());
+                    removed[0]++;
+                  });
+          return removed[0];
+        });
+  }
+
   private Optional<CredentialItem> lookupItem(CredentialId credentialId) {
     String credIdB64 = credentialId.b64url();
     return credentialByIdIndex

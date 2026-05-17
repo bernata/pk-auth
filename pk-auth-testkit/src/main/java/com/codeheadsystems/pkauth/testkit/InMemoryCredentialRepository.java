@@ -78,4 +78,20 @@ public final class InMemoryCredentialRepository implements CredentialRepository 
   public void delete(CredentialId credentialId) {
     byCredentialId.remove(credentialId);
   }
+
+  @Override
+  public int deleteByUserHandle(UserHandle userHandle) {
+    int[] removed = {0};
+    byCredentialId
+        .entrySet()
+        .removeIf(
+            e -> {
+              if (e.getValue().userHandle().equals(userHandle)) {
+                removed[0]++;
+                return true;
+              }
+              return false;
+            });
+    return removed[0];
+  }
 }

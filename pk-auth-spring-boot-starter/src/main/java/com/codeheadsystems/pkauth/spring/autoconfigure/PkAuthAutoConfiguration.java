@@ -11,12 +11,20 @@ import com.codeheadsystems.pkauth.composition.PkAuthComposition;
 import com.codeheadsystems.pkauth.config.CeremonyConfig;
 import com.codeheadsystems.pkauth.config.CounterRegressionPolicy;
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
+import com.codeheadsystems.pkauth.jwt.AccessTokenStore;
+import com.codeheadsystems.pkauth.jwt.AccessTokenStoreDeletionListener;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.JwtSecretResolver;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.jwt.RevocationCheck;
 import com.codeheadsystems.pkauth.jwt.TokenTtlPolicy;
+import com.codeheadsystems.pkauth.lifecycle.BackupCodeRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.CredentialRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.OtpRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionService;
 import com.codeheadsystems.pkauth.magiclink.EmailSender;
 import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
@@ -38,6 +46,7 @@ import com.codeheadsystems.pkauth.testkit.InMemoryCredentialRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryOtpRepository;
 import com.codeheadsystems.pkauth.testkit.InMemoryUserLookup;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -231,18 +240,87 @@ public class PkAuthAutoConfiguration {
     return jwt;
   }
 
+  /**
+   * Default no-op {@link AccessTokenStore}. Hosts that want server-side access-token revocation
+   * override this bean by declaring their own {@code AccessTokenStore} (e.g. {@code
+   * JdbiAccessTokenStore}).
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public AccessTokenStore pkAuthAccessTokenStore() {
+    return AccessTokenStore.noop();
+  }
+
+  /**
+   * Default no-op {@link RevocationCheck}. Same override pattern as {@link
+   * #pkAuthAccessTokenStore()}.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public RevocationCheck pkAuthRevocationCheck() {
+    return RevocationCheck.allow();
+  }
+
   @Bean
   @ConditionalOnMissingBean
   public PkAuthJwtIssuer pkAuthJwtIssuer(
-      JwtConfig config, JwtKeyset keyset, ClockProvider clockProvider) {
-    return new PkAuthJwtIssuer(config, keyset, clockProvider);
+      JwtConfig config,
+      JwtKeyset keyset,
+      ClockProvider clockProvider,
+      AccessTokenStore accessTokenStore) {
+    return new PkAuthJwtIssuer(config, keyset, clockProvider, accessTokenStore);
   }
 
   @Bean
   @ConditionalOnMissingBean
   public PkAuthJwtValidator pkAuthJwtValidator(
-      JwtConfig config, JwtKeyset keyset, ClockProvider clockProvider) {
-    return new PkAuthJwtValidator(config, keyset, clockProvider);
+      JwtConfig config,
+      JwtKeyset keyset,
+      ClockProvider clockProvider,
+      RevocationCheck revocationCheck,
+      AccessTokenStore accessTokenStore) {
+    return new PkAuthJwtValidator(config, keyset, clockProvider, revocationCheck, accessTokenStore);
+  }
+
+  // -- User deletion fan-out ------------------------------------------------------------------
+
+  /** Listener: deletes every passkey credential owned by the user. */
+  @Bean
+  public UserDeletionListener pkAuthCredentialRepositoryDeletionListener(
+      CredentialRepository repository) {
+    return new CredentialRepositoryDeletionListener(repository);
+  }
+
+  /** Listener: deletes every backup code owned by the user. */
+  @Bean
+  public UserDeletionListener pkAuthBackupCodeRepositoryDeletionListener(
+      BackupCodeRepository repository) {
+    return new BackupCodeRepositoryDeletionListener(repository);
+  }
+
+  /** Listener: deletes every OTP row owned by the user. */
+  @Bean
+  public UserDeletionListener pkAuthOtpRepositoryDeletionListener(OtpRepository repository) {
+    return new OtpRepositoryDeletionListener(repository);
+  }
+
+  /**
+   * Listener: deletes every stateful access-token row owned by the user (noop in stateless mode).
+   */
+  @Bean
+  public UserDeletionListener pkAuthAccessTokenStoreDeletionListener(AccessTokenStore store) {
+    return new AccessTokenStoreDeletionListener(store);
+  }
+
+  /**
+   * Collects every {@link UserDeletionListener} bean and wires the fan-out service. Hosts can
+   * register additional listeners by declaring their own {@code @Bean UserDeletionListener
+   * myCustomListener(...)} — Spring auto-collects all beans of the interface type.
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public UserDeletionService pkAuthUserDeletionService(List<UserDeletionListener> listeners) {
+    return new UserDeletionService(listeners);
   }
 
   // -- Alt-flow services -----------------------------------------------------------------------

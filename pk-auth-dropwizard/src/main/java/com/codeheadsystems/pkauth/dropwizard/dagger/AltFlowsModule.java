@@ -10,6 +10,9 @@ import com.codeheadsystems.pkauth.dropwizard.admin.PkAuthAdminResource;
 import com.codeheadsystems.pkauth.dropwizard.config.PkAuthConfig;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.lifecycle.BackupCodeRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.OtpRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionListener;
 import com.codeheadsystems.pkauth.magiclink.EmailSender;
 import com.codeheadsystems.pkauth.magiclink.LoggingEmailSender;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
@@ -23,6 +26,7 @@ import com.codeheadsystems.pkauth.spi.OtpRepository;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import dagger.Module;
 import dagger.Provides;
+import dagger.multibindings.IntoSet;
 import jakarta.inject.Singleton;
 import java.util.Objects;
 import org.jspecify.annotations.Nullable;
@@ -208,6 +212,22 @@ public final class AltFlowsModule {
   @Singleton
   PkAuthAdminResource provideAdminResource(AdminService adminService) {
     return new PkAuthAdminResource(adminService);
+  }
+
+  /** User-deletion listener for backup codes — only present in the full component. */
+  @Provides
+  @Singleton
+  @IntoSet
+  UserDeletionListener provideBackupCodeDeletionListener(BackupCodeRepository repo) {
+    return new BackupCodeRepositoryDeletionListener(repo);
+  }
+
+  /** User-deletion listener for OTPs — only present in the full component. */
+  @Provides
+  @Singleton
+  @IntoSet
+  UserDeletionListener provideOtpDeletionListener(OtpRepository repo) {
+    return new OtpRepositoryDeletionListener(repo);
   }
 
   /**

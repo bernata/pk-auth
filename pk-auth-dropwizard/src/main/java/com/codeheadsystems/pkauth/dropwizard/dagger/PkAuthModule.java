@@ -9,12 +9,17 @@ import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
 import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
 import com.codeheadsystems.pkauth.dropwizard.config.PkAuthConfig;
 import com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource;
+import com.codeheadsystems.pkauth.jwt.AccessTokenStore;
+import com.codeheadsystems.pkauth.jwt.AccessTokenStoreDeletionListener;
 import com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator;
 import com.codeheadsystems.pkauth.jwt.JwtConfig;
 import com.codeheadsystems.pkauth.jwt.JwtKeyset;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
 import com.codeheadsystems.pkauth.jwt.TokenTtlPolicy;
+import com.codeheadsystems.pkauth.lifecycle.CredentialRepositoryDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionListener;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionService;
 import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
@@ -22,6 +27,7 @@ import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import com.codeheadsystems.pkauth.spi.UserLookup;
 import dagger.Module;
 import dagger.Provides;
+import dagger.multibindings.IntoSet;
 import jakarta.inject.Singleton;
 import java.time.Duration;
 import java.util.Map;
@@ -160,14 +166,43 @@ public final class PkAuthModule {
 
   @Provides
   @Singleton
-  PkAuthJwtIssuer provideJwtIssuer(JwtConfig cfg, JwtKeyset ks, ClockProvider clock) {
-    return new PkAuthJwtIssuer(cfg, ks, clock);
+  AccessTokenStore provideAccessTokenStore() {
+    return persistence.accessTokenStore();
   }
 
   @Provides
   @Singleton
-  PkAuthJwtValidator provideJwtValidator(JwtConfig cfg, JwtKeyset ks, ClockProvider clock) {
-    return new PkAuthJwtValidator(cfg, ks, clock);
+  PkAuthJwtIssuer provideJwtIssuer(
+      JwtConfig cfg, JwtKeyset ks, ClockProvider clock, AccessTokenStore accessTokenStore) {
+    return new PkAuthJwtIssuer(cfg, ks, clock, accessTokenStore);
+  }
+
+  @Provides
+  @Singleton
+  PkAuthJwtValidator provideJwtValidator(
+      JwtConfig cfg, JwtKeyset ks, ClockProvider clock, AccessTokenStore accessTokenStore) {
+    return new PkAuthJwtValidator(
+        cfg, ks, clock, com.codeheadsystems.pkauth.jwt.RevocationCheck.allow(), accessTokenStore);
+  }
+
+  @Provides
+  @Singleton
+  @IntoSet
+  UserDeletionListener provideCredentialDeletionListener(CredentialRepository repo) {
+    return new CredentialRepositoryDeletionListener(repo);
+  }
+
+  @Provides
+  @Singleton
+  @IntoSet
+  UserDeletionListener provideAccessTokenStoreDeletionListener(AccessTokenStore store) {
+    return new AccessTokenStoreDeletionListener(store);
+  }
+
+  @Provides
+  @Singleton
+  UserDeletionService provideUserDeletionService(Set<UserDeletionListener> listeners) {
+    return new UserDeletionService(listeners);
   }
 
   @Provides

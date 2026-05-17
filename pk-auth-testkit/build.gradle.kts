@@ -17,6 +17,9 @@ tasks.named<JavaCompile>("compileJava") {
 
 dependencies {
     api(project(":pk-auth-core"))
+    // AccessTokenStore lives in pk-auth-jwt; in-memory impl + parity scenarios need it on the API
+    // surface so downstream test code can drive both pk-auth-core and pk-auth-jwt SPIs.
+    api(project(":pk-auth-jwt"))
     api(libs.bundles.jackson)
     api(libs.webauthn4j.core)
     // AssertJ on the api surface because CeremonyScenarios uses `assertThat`. Downstream
