@@ -8,6 +8,7 @@ import com.codeheadsystems.pkauth.refresh.spi.RefreshTokenRepository;
 import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -19,6 +20,7 @@ import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.mapper.RowMapper;
+import org.jdbi.v3.core.statement.Update;
 
 /**
  * {@link RefreshTokenRepository} backed by the {@code refresh_tokens} table (Flyway V9). The
@@ -173,26 +175,46 @@ public final class JdbiRefreshTokenRepository implements RefreshTokenRepository 
   // -- Internals --------------------------------------------------------------------------
 
   private static void insert(Handle h, RefreshTokenRecord r) {
-    h.createUpdate(
-            "INSERT INTO refresh_tokens"
-                + " (refresh_id, token_hash, user_handle, audience, device_id, family_id,"
-                + "  parent_refresh_id, issued_at, expires_at, used_at, revoked_at, revoked_reason)"
-                + " VALUES (:rid, :hash, :uh, :aud, :did, :fam, :pid, :iat, :exp, :uat, :rat,"
-                + "  :reason)")
-        .bind("rid", r.refreshId())
-        .bind("hash", r.tokenHash())
-        .bind("uh", r.userHandle().value())
-        .bind("aud", r.audience())
-        .bind("did", r.deviceId().orElse(null))
-        .bind("fam", r.familyId())
-        .bind("pid", r.parentRefreshId().orElse(null))
-        .bind("iat", OffsetDateTime.ofInstant(r.issuedAt(), ZoneOffset.UTC))
-        .bind("exp", OffsetDateTime.ofInstant(r.expiresAt(), ZoneOffset.UTC))
-        .bind("uat", r.usedAt().map(t -> OffsetDateTime.ofInstant(t, ZoneOffset.UTC)).orElse(null))
-        .bind(
-            "rat", r.revokedAt().map(t -> OffsetDateTime.ofInstant(t, ZoneOffset.UTC)).orElse(null))
-        .bind("reason", r.revokedReason().map(Enum::name).orElse(null))
-        .execute();
+    Update update =
+        h.createUpdate(
+                "INSERT INTO refresh_tokens"
+                    + " (refresh_id, token_hash, user_handle, audience, device_id, family_id,"
+                    + "  parent_refresh_id, issued_at, expires_at, used_at, revoked_at,"
+                    + "  revoked_reason)"
+                    + " VALUES (:rid, :hash, :uh, :aud, :did, :fam, :pid, :iat, :exp, :uat, :rat,"
+                    + "  :reason)")
+            .bind("rid", r.refreshId())
+            .bind("hash", r.tokenHash())
+            .bind("uh", r.userHandle().value())
+            .bind("aud", r.audience())
+            .bind("did", r.deviceId().orElse(null))
+            .bind("fam", r.familyId())
+            .bind("pid", r.parentRefreshId().orElse(null))
+            .bind("iat", OffsetDateTime.ofInstant(r.issuedAt(), ZoneOffset.UTC))
+            .bind("exp", OffsetDateTime.ofInstant(r.expiresAt(), ZoneOffset.UTC))
+            .bind("reason", r.revokedReason().map(Enum::name).orElse(null));
+    // used_at and revoked_at are TIMESTAMPTZ; JDBI's untyped-null default (Types.VARCHAR) is
+    // rejected by Postgres against a TIMESTAMPTZ column. Force Types.TIMESTAMP_WITH_TIMEZONE on
+    // the null branch.
+    bindNullable(
+        update,
+        "uat",
+        r.usedAt().map(t -> OffsetDateTime.ofInstant(t, ZoneOffset.UTC)).orElse(null),
+        Types.TIMESTAMP_WITH_TIMEZONE);
+    bindNullable(
+        update,
+        "rat",
+        r.revokedAt().map(t -> OffsetDateTime.ofInstant(t, ZoneOffset.UTC)).orElse(null),
+        Types.TIMESTAMP_WITH_TIMEZONE);
+    update.execute();
+  }
+
+  private static void bindNullable(Update update, String name, Object value, int sqlType) {
+    if (value == null) {
+      update.bindNull(name, sqlType);
+    } else {
+      update.bind(name, value);
+    }
   }
 
   private static <T> T wrap(String op, Supplier<T> body) {

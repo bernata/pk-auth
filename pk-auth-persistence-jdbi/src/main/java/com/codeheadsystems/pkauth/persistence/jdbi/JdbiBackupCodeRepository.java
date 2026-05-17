@@ -6,15 +6,18 @@ import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
 import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.mapper.RowMapper;
+import org.jdbi.v3.core.statement.Update;
 
 /**
  * {@link BackupCodeRepository} backed by the {@code backup_codes} table (Flyway V3).
@@ -36,25 +39,40 @@ public final class JdbiBackupCodeRepository implements BackupCodeRepository {
     wrap(
         "backupCodes.save",
         () -> {
-          jdbi.useHandle(
-              h ->
-                  h.createUpdate(
-                          "INSERT INTO backup_codes (code_id, user_handle, hashed_code, consumed,"
-                              + " consumed_at, created_at)"
-                              + " VALUES (:cid, :uh, :hash, :consumed, :consumedAt, :createdAt)")
-                      .bind("cid", code.codeId())
-                      .bind("uh", code.userHandle().value())
-                      .bind("hash", code.hashedCode())
-                      .bind("consumed", code.consumed())
-                      .bind(
-                          "consumedAt",
-                          code.consumedAt() == null
-                              ? null
-                              : OffsetDateTime.ofInstant(code.consumedAt(), ZoneOffset.UTC))
-                      .bind("createdAt", OffsetDateTime.ofInstant(code.createdAt(), ZoneOffset.UTC))
-                      .execute());
+          jdbi.useHandle(h -> insertBackupCode(h, code));
           return null;
         });
+  }
+
+  private static void insertBackupCode(Handle h, StoredBackupCode code) {
+    Update update =
+        h.createUpdate(
+                "INSERT INTO backup_codes (code_id, user_handle, hashed_code, consumed,"
+                    + " consumed_at, created_at)"
+                    + " VALUES (:cid, :uh, :hash, :consumed, :consumedAt, :createdAt)")
+            .bind("cid", code.codeId())
+            .bind("uh", code.userHandle().value())
+            .bind("hash", code.hashedCode())
+            .bind("consumed", code.consumed())
+            .bind("createdAt", OffsetDateTime.ofInstant(code.createdAt(), ZoneOffset.UTC));
+    // consumed_at is TIMESTAMPTZ; force Types.TIMESTAMP_WITH_TIMEZONE on the null branch so PG
+    // does not reject the untyped-null (Types.VARCHAR) default.
+    bindNullable(
+        update,
+        "consumedAt",
+        code.consumedAt() == null
+            ? null
+            : OffsetDateTime.ofInstant(code.consumedAt(), ZoneOffset.UTC),
+        Types.TIMESTAMP_WITH_TIMEZONE);
+    update.execute();
+  }
+
+  private static void bindNullable(Update update, String name, Object value, int sqlType) {
+    if (value == null) {
+      update.bindNull(name, sqlType);
+    } else {
+      update.bind(name, value);
+    }
   }
 
   /** Returns only active (not yet revoked) codes for the given user handle. */
@@ -164,21 +182,7 @@ public final class JdbiBackupCodeRepository implements BackupCodeRepository {
                     .bind("uh", userHandle.value())
                     .execute();
                 for (StoredBackupCode code : records) {
-                  h.createUpdate(
-                          "INSERT INTO backup_codes (code_id, user_handle, hashed_code, consumed,"
-                              + " consumed_at, created_at)"
-                              + " VALUES (:cid, :uh, :hash, :consumed, :consumedAt, :createdAt)")
-                      .bind("cid", code.codeId())
-                      .bind("uh", code.userHandle().value())
-                      .bind("hash", code.hashedCode())
-                      .bind("consumed", code.consumed())
-                      .bind(
-                          "consumedAt",
-                          code.consumedAt() == null
-                              ? null
-                              : OffsetDateTime.ofInstant(code.consumedAt(), ZoneOffset.UTC))
-                      .bind("createdAt", OffsetDateTime.ofInstant(code.createdAt(), ZoneOffset.UTC))
-                      .execute();
+                  insertBackupCode(h, code);
                 }
               });
           return null;
@@ -207,16 +211,20 @@ public final class JdbiBackupCodeRepository implements BackupCodeRepository {
   private void insertAuditEvent(
       String eventType, byte[] userHandle, String subjectId, String detail) {
     jdbi.useHandle(
-        h ->
-            h.createUpdate(
-                    "INSERT INTO pkauth_audit_events"
-                        + " (event_type, user_handle, subject_id, detail)"
-                        + " VALUES (:eventType, :userHandle, :subjectId, :detail)")
-                .bind("eventType", eventType)
-                .bind("userHandle", userHandle)
-                .bind("subjectId", subjectId)
-                .bind("detail", detail)
-                .execute());
+        h -> {
+          Update update =
+              h.createUpdate(
+                      "INSERT INTO pkauth_audit_events"
+                          + " (event_type, user_handle, subject_id, detail)"
+                          + " VALUES (:eventType, :userHandle, :subjectId, :detail)")
+                  .bind("eventType", eventType)
+                  .bind("subjectId", subjectId)
+                  .bind("detail", detail);
+          // user_handle is BYTEA and nullable (unknown attacker). Untyped-null default
+          // (Types.VARCHAR) is rejected against BYTEA — force Types.BINARY on the null branch.
+          bindNullable(update, "userHandle", userHandle, Types.BINARY);
+          update.execute();
+        });
   }
 
   private static final RowMapper<StoredBackupCode> MAPPER = (rs, ctx) -> readRow(rs);

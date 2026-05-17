@@ -11,6 +11,7 @@ import com.codeheadsystems.pkauth.spi.PkAuthPersistenceException;
 import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 // Array import kept for the row-mapper path that reads back the text[] column.
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -25,6 +26,7 @@ import java.util.function.Supplier;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.mapper.RowMapper;
+import org.jdbi.v3.core.statement.Update;
 
 /**
  * {@link CredentialRepository} backed by the Phase 5 {@code credentials} table.
@@ -56,32 +58,40 @@ public final class JdbiCredentialRepository implements CredentialRepository {
             "credentials.save",
             () ->
                 jdbi.withHandle(
-                    h ->
-                        h.createUpdate(
-                                "INSERT INTO credentials (credential_id, user_handle,"
-                                    + " public_key_cose, sign_count, label, aaguid, transports,"
-                                    + " backup_eligible, backup_state, created_at, last_used_at)"
-                                    + " VALUES (:cid, :uh, :pk, :sc, :label, :aaguid,"
-                                    + " :transports, :be, :bs, :createdAt, :lastUsedAt)"
-                                    + " ON CONFLICT (credential_id) DO NOTHING")
-                            .bind("cid", record.credentialId().value())
-                            .bind("uh", record.userHandle().value())
-                            .bind("pk", record.publicKeyCose())
-                            .bind("sc", record.signCount())
-                            .bind("label", record.label())
-                            .bind("aaguid", record.aaguid())
-                            .bindArray("transports", String.class, (Object[]) transportWire)
-                            .bind("be", record.backupEligible())
-                            .bind("bs", record.backupState())
-                            .bind(
-                                "createdAt",
-                                OffsetDateTime.ofInstant(record.createdAt(), ZoneOffset.UTC))
-                            .bind(
-                                "lastUsedAt",
-                                record.lastUsedAt() == null
-                                    ? null
-                                    : OffsetDateTime.ofInstant(record.lastUsedAt(), ZoneOffset.UTC))
-                            .execute()));
+                    h -> {
+                      Update update =
+                          h.createUpdate(
+                                  "INSERT INTO credentials (credential_id, user_handle,"
+                                      + " public_key_cose, sign_count, label, aaguid, transports,"
+                                      + " backup_eligible, backup_state, created_at, last_used_at)"
+                                      + " VALUES (:cid, :uh, :pk, :sc, :label, :aaguid,"
+                                      + " :transports, :be, :bs, :createdAt, :lastUsedAt)"
+                                      + " ON CONFLICT (credential_id) DO NOTHING")
+                              .bind("cid", record.credentialId().value())
+                              .bind("uh", record.userHandle().value())
+                              .bind("pk", record.publicKeyCose())
+                              .bind("sc", record.signCount())
+                              .bind("label", record.label())
+                              .bindArray("transports", String.class, (Object[]) transportWire)
+                              .bind("be", record.backupEligible())
+                              .bind("bs", record.backupState())
+                              .bind(
+                                  "createdAt",
+                                  OffsetDateTime.ofInstant(record.createdAt(), ZoneOffset.UTC));
+                      // aaguid is null for platform authenticators / attestation=none. The default
+                      // untyped-null binding uses Types.VARCHAR, which Postgres rejects against a
+                      // UUID column ("column ... is of type uuid but expression is of type
+                      // character varying"). Force Types.OTHER for the null case.
+                      bindNullable(update, "aaguid", record.aaguid(), Types.OTHER);
+                      bindNullable(
+                          update,
+                          "lastUsedAt",
+                          record.lastUsedAt() == null
+                              ? null
+                              : OffsetDateTime.ofInstant(record.lastUsedAt(), ZoneOffset.UTC),
+                          Types.TIMESTAMP_WITH_TIMEZONE);
+                      return update.execute();
+                    }));
     if (inserted == 0) {
       throw new DuplicateCredentialException(
           "Duplicate credential id; refusing to overwrite an existing credential");
@@ -195,6 +205,20 @@ public final class JdbiCredentialRepository implements CredentialRepository {
    * {@link PkAuthPersistenceException} (including {@link DuplicateCredentialException}) is
    * re-thrown unchanged so the duplicate-credential branch reaches the caller intact.
    */
+  /**
+   * Binds a nullable value. When non-null, defers to JDBI's standard binding. When null, calls
+   * {@code bindNull} with the supplied SQL type so Postgres receives a typed NULL rather than the
+   * untyped-null default (Types.VARCHAR), which strict typing rejects against UUID and TIMESTAMPTZ
+   * columns. See bug report for the original {@code aaguid} failure mode.
+   */
+  private static void bindNullable(Update update, String name, Object value, int sqlType) {
+    if (value == null) {
+      update.bindNull(name, sqlType);
+    } else {
+      update.bind(name, value);
+    }
+  }
+
   private static <T> T wrap(String op, Supplier<T> body) {
     try {
       return body.get();
