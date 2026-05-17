@@ -4,11 +4,12 @@ This document explains how to publish the pk-auth libraries to Maven Central.
 
 ## What gets published
 
-Every release publishes the same set of 12 artifacts, all under
+Every release publishes the same set of 13 artifacts, all under
 `com.codeheadsystems` and sharing one version:
 
 - `pk-auth-core`, `pk-auth-jwt`, `pk-auth-admin-api`
-- `pk-auth-backup-codes`, `pk-auth-magic-link`, `pk-auth-otp`
+- `pk-auth-backup-codes`, `pk-auth-magic-link`, `pk-auth-otp`,
+  `pk-auth-refresh-tokens`
 - `pk-auth-persistence-jdbi`, `pk-auth-persistence-dynamodb`
 - `pk-auth-testkit`
 - `pk-auth-spring-boot-starter`, `pk-auth-dropwizard`, `pk-auth-micronaut`
@@ -89,7 +90,7 @@ Both workflows perform the same steps:
 7. `./gradlew publishAggregationToCentralPortal` — builds, signs, and uploads
    every module in a single bundle to the Central Portal.
 8. Build per-module `-sources.jar` and `-javadoc.jar` archives.
-9. Create a GitHub release with all 12 module jars attached and a copy-paste
+9. Create a GitHub release with all 13 module jars attached and a copy-paste
    `implementation(...)` snippet in the body.
 
 ## Verifying the release

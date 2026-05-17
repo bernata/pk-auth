@@ -109,10 +109,11 @@ framework underneath:
 
 ```
 pk-auth-core/                  # framework-neutral ceremony engine + SPIs
-pk-auth-jwt/                   # HS256 JWT mint + validate
+pk-auth-jwt/                   # HS256 JWT mint + validate, AccessTokenStore, TokenTtlPolicy
 pk-auth-backup-codes/          # alt flow: Argon2id-hashed backup codes
 pk-auth-magic-link/            # alt flow: email magic-link verification
 pk-auth-otp/                   # alt flow: phone OTP verification
+pk-auth-refresh-tokens/        # rotating refresh tokens with family-based replay defense
 pk-auth-admin-api/             # framework-neutral admin operations
 pk-auth-persistence-jdbi/      # SPI impls on JDBI + Postgres + Flyway
 pk-auth-persistence-dynamodb/  # SPI impls on AWS DynamoDB Enhanced
@@ -146,14 +147,17 @@ tests and Playwright end-to-end suites:
 
 ## Status
 
-Phases 0–12 complete (see `pk-auth-build-brief.md` §10 for the phase
-plan). The library is feature-complete against the brief but is still
-labelled **pre-1.0** — SPI signatures may change between minor versions
-until 1.0. See [`docs/stability.md`](./docs/stability.md) for the full
-versioning policy and the list of SPI surfaces. The full build and
-end-to-end suites are green; the test classpath includes the testkit's
-`FakeAuthenticator`, so registration + assertion ceremonies exercise the
-real WebAuthn4J verifier without a browser.
+1.0.0 cut the stable baseline; the current development line is
+**1.1.0-SNAPSHOT**, which adds per-audience JWT TTLs, the
+`AccessTokenStore` (stateful access tokens), the
+`UserDeletionService` fan-out, and the `pk-auth-refresh-tokens`
+module (rotating refresh tokens with family-based replay defense).
+See [`CHANGELOG.md`](./CHANGELOG.md) for the full delta and
+[`docs/stability.md`](./docs/stability.md) for the versioning policy
+and the list of SPI surfaces. The full build and end-to-end suites
+are green; the test classpath includes the testkit's
+`FakeAuthenticator`, so registration + assertion ceremonies exercise
+the real WebAuthn4J verifier without a browser.
 
 **Known property — transactional boundaries:** pk-auth does not require
 host SPIs to share a transactional context. At ceremony finish,

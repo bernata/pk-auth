@@ -80,7 +80,7 @@ The project ships as a set of related JARs. You pick the ones you need:
 | Module | What it does | When you need it |
 |---|---|---|
 | `pk-auth-core` | The framework-neutral ceremony engine. Has the WebAuthn logic, the JWT contract, all the SPI interfaces you might implement, and the result types you'll pattern-match. | Always — every other module depends on this. |
-| `pk-auth-jwt` | Issues and validates HS256 JWTs. Includes the optional `RevocationCheck` SPI for "logout everywhere" or account-disable. | Always — pk-auth's authentication output is a JWT. |
+| `pk-auth-jwt` | Issues and validates HS256 JWTs. Houses the `TokenTtlPolicy` SPI (per-audience access-token TTLs) and the `AccessTokenStore` SPI (stateful, server-revocable access tokens — paved road for "logout everywhere"); the lighter-weight `RevocationCheck` SPI is also still here. | Always — pk-auth's authentication output is a JWT. |
 
 ### Pick one adapter (this is your framework binding)
 
@@ -108,6 +108,7 @@ Skip them and the feature isn't exposed.
 | `pk-auth-backup-codes` | View-once Argon2id-hashed backup codes for account recovery. | Users will lose their phones; backup codes are the documented recovery path before "talk to support." |
 | `pk-auth-magic-link` | Single-use email magic-link tokens. JWTs on the wire; consumed-JTI tracking via a swappable SPI. | Email verification, or a passwordless login alternative for users without a passkey-capable device. |
 | `pk-auth-otp` | 6-digit SMS OTPs with attempt caps and Argon2id-hashed storage. | Phone verification. |
+| `pk-auth-refresh-tokens` | Rotating refresh tokens with family-based replay defense. Adds `POST /auth/refresh`; on success returns a new refresh token + a fresh access JWT, on replay scorches the entire token family. Requires a `RefreshTokenRepository` SPI (JDBI / DynamoDB impls ship). See [ADR 0013](./docs/adr/0013-refresh-tokens-family-rotation.md). | When you need sessions longer than the access-token TTL without re-running a WebAuthn ceremony. |
 | `pk-auth-admin-api` | Adds the `/auth/admin/**` endpoints (rename / delete passkeys, regenerate backup codes, account summary, email & phone verification). | Almost always — without it the UI can't manage credentials. |
 
 ### The browser SDK
@@ -136,7 +137,11 @@ SPI surface — the interfaces below — so pk-auth can reach into your world.
 | `ClockProvider` | Optional | Default is `Clock.systemUTC()`. Override in tests. |
 | `ConsumedJtiStore` | Optional (multi-replica only) | In-memory Caffeine cache by default. Replace with a shared store (Redis, DynamoDB) once you run more than one replica with magic-link enabled. |
 | `CeremonyRateLimiter` | Optional (multi-replica only) | In-memory per-IP / per-username throttle by default. Same multi-replica caveat as above. |
-| `RevocationCheck` | Optional | Default allows every otherwise-valid JWT. Implement if you need "log everyone out now" or per-user disable. |
+| `AccessTokenStore` | Optional (1.1.0) | Stateful access tokens. When wired, every issued JWT's JTI is persisted; the validator looks it up on every request, so deleting the row immediately invalidates the bearer. The shipped JDBI / DynamoDB implementations are the paved road; `AccessTokenStore.noop()` is the legacy default. |
+| `RevocationCheck` | Optional | In-process deny-list for hosts that want to invalidate a small subset of tokens without persisting every issue. Orthogonal to `AccessTokenStore`. |
+| `TokenTtlPolicy` | Optional (1.1.0) | Per-audience access-token TTL. Default is `TokenTtlPolicy.single(ttl)` — one TTL for every audience. Implement when web / cli / mobile clients need different token lifetimes from a single issuer. |
+| `RefreshTokenRepository` | If `pk-auth-refresh-tokens` is enabled (1.1.0) | Storage for the rotating refresh-token primitive. The load-bearing `rotateAtomically` method must mark-used + insert-successor atomically; JDBI / DynamoDB / in-memory impls ship. |
+| `UserDeletionListener` | Optional (1.1.0) | Hook for the `UserDeletionService` fan-out. Listeners for credentials, backup codes, OTPs, access tokens, and refresh tokens are auto-registered; add your own to clean up host-owned tables when a user is deleted. |
 
 **Good news**: every required SPI has a working `InMemoryX` implementation in
 `pk-auth-testkit`, so you can boot the whole stack with zero database work
@@ -201,6 +206,7 @@ Every adapter exposes the same JSON contract. The full table is in
   - `POST /auth/passkeys/registration/finish` → persists the new credential
   - `POST /auth/passkeys/authentication/start` → returns WebAuthn `get()` options
   - `POST /auth/passkeys/authentication/finish` → returns `{token: "<JWT>"}`
+  - `POST /auth/refresh` → rotates a refresh token; returns `{refresh, access}` on success, `401 {detail}` on any failure. Only mounted when `pk-auth-refresh-tokens` is wired.
 
 - **Admin endpoints** (require `Authorization: Bearer <jwt>`):
   - `GET    /auth/admin/account`
@@ -249,6 +255,6 @@ project, and the three demos are the proof.
 - **The wire and class details** — [`DESIGN.md`](./DESIGN.md).
 - **Running it in production** — [`docs/operator-guide.md`](./docs/operator-guide.md).
 - **Security stance** — [`docs/threat-model.md`](./docs/threat-model.md).
-- **Why a thing is the way it is** — [`docs/adr/`](./docs/adr/) (12 ADRs).
+- **Why a thing is the way it is** — [`docs/adr/`](./docs/adr/) (16 ADRs).
 - **SPI stability + versioning** — [`docs/stability.md`](./docs/stability.md).
 - **Transactional behavior across SPIs** — [`docs/transactional-semantics.md`](./docs/transactional-semantics.md).

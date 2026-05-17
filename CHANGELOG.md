@@ -104,8 +104,8 @@ tags.
 - `PkAuthJwtIssuer` and `PkAuthJwtValidator` gain new constructors that accept
   an `AccessTokenStore`. The legacy three-arg constructors remain and default
   to `AccessTokenStore.noop()`.
-- Flyway schema version bumped to V8. `PkAuthJdbiSchema.CURRENT_SCHEMA_VERSION`
-  is now `"8"`.
+- Flyway schema version bumped to V9 (V8 access tokens + V9 refresh tokens).
+  `PkAuthJdbiSchema.CURRENT_SCHEMA_VERSION` is now `"9"`.
 
 ## [1.0.0] — 2026-05 (stabilisation cut)
 
