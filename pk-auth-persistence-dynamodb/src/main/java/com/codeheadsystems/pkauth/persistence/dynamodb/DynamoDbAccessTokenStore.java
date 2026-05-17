@@ -25,8 +25,9 @@ import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
  *
  * <p>The two writes are non-atomic — primary first, then user-index. A failure between them leaves
  * the primary item live (validator-correct) and the user-index missing (a future deleteAllForUser
- * would not see this jti). Since user deletion is an operator-rare flow and {@link
- * UserDeletionListener} contract is idempotent, the operator can retry. See ADR 0016.
+ * would not see this jti). Since user deletion is an operator-rare flow and the {@link
+ * com.codeheadsystems.pkauth.lifecycle.UserDeletionListener} contract is idempotent, the operator
+ * can retry. See ADR 0016.
  *
  * @since 1.1.0
  */

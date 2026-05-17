@@ -2,6 +2,7 @@
 package com.codeheadsystems.pkauth.dropwizard.dagger;
 
 import com.codeheadsystems.pkauth.jwt.AccessTokenStore;
+import com.codeheadsystems.pkauth.refresh.spi.RefreshTokenRepository;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
@@ -27,6 +28,7 @@ public final class PersistenceBindings {
   @Nullable private final BackupCodeRepository backupCodeRepository;
   @Nullable private final OtpRepository otpRepository;
   private final AccessTokenStore accessTokenStore;
+  @Nullable private final RefreshTokenRepository refreshTokenRepository;
 
   private PersistenceBindings(Builder b) {
     this.credentialRepository =
@@ -37,6 +39,7 @@ public final class PersistenceBindings {
     this.otpRepository = b.otpRepository;
     this.accessTokenStore =
         b.accessTokenStore == null ? AccessTokenStore.noop() : b.accessTokenStore;
+    this.refreshTokenRepository = b.refreshTokenRepository;
   }
 
   public static Builder builder() {
@@ -77,6 +80,18 @@ public final class PersistenceBindings {
     return accessTokenStore;
   }
 
+  /**
+   * Returns the configured {@link RefreshTokenRepository}, or {@code null} when the host hasn't
+   * wired refresh tokens. The bundle's alt-flow auto-wiring path mounts {@code /auth/refresh} only
+   * when this is non-null; the slim-component path does not mount refresh endpoints in 1.1.0.
+   *
+   * @since 1.1.0
+   */
+  @Nullable
+  public RefreshTokenRepository refreshTokenRepository() {
+    return refreshTokenRepository;
+  }
+
   /** Builder. */
   public static final class Builder {
     @Nullable private CredentialRepository credentialRepository;
@@ -85,6 +100,7 @@ public final class PersistenceBindings {
     @Nullable private BackupCodeRepository backupCodeRepository;
     @Nullable private OtpRepository otpRepository;
     @Nullable private AccessTokenStore accessTokenStore;
+    @Nullable private RefreshTokenRepository refreshTokenRepository;
 
     private Builder() {}
 
@@ -121,6 +137,17 @@ public final class PersistenceBindings {
      */
     public Builder accessTokenStore(AccessTokenStore v) {
       this.accessTokenStore = v;
+      return this;
+    }
+
+    /**
+     * Supplies a {@link RefreshTokenRepository} so the bundle's alt-flow path can mount {@code
+     * /auth/refresh}. Omit to skip refresh-token endpoint registration.
+     *
+     * @since 1.1.0
+     */
+    public Builder refreshTokenRepository(RefreshTokenRepository v) {
+      this.refreshTokenRepository = v;
       return this;
     }
 

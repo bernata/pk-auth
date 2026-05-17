@@ -2,6 +2,8 @@
 package com.codeheadsystems.pkauth.spring;
 
 import com.codeheadsystems.pkauth.config.RelyingPartyConfig;
+import com.codeheadsystems.pkauth.refresh.spi.RefreshTokenRepository;
+import com.codeheadsystems.pkauth.testkit.InMemoryRefreshTokenRepository;
 import com.codeheadsystems.pkauth.testkit.PkAuthFixtures;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
@@ -25,5 +27,17 @@ public class PkAuthTestApplication {
   @Primary
   public RelyingPartyConfig testRelyingPartyConfig() {
     return PkAuthFixtures.defaultRelyingParty();
+  }
+
+  /**
+   * Wire an in-memory refresh-token repository so the {@code /auth/refresh} endpoint and the
+   * matching deletion-fan-out listener activate in tests. Production hosts bind a real backend
+   * (JDBI or DynamoDB).
+   *
+   * @since 1.1.0
+   */
+  @Bean
+  public RefreshTokenRepository testRefreshTokenRepository() {
+    return new InMemoryRefreshTokenRepository();
   }
 }

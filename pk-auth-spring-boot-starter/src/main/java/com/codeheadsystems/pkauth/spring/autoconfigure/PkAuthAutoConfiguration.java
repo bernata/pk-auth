@@ -32,6 +32,12 @@ import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
 import com.codeheadsystems.pkauth.otp.OtpPepperResolver;
 import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.otp.SmsSender;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenConfig;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenService;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenServiceDeletionListener;
+import com.codeheadsystems.pkauth.refresh.RefreshTtlPolicy;
+import com.codeheadsystems.pkauth.refresh.spi.RefreshTokenRepository;
+import com.codeheadsystems.pkauth.refresh.web.RefreshHandler;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
 import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
@@ -51,6 +57,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -321,6 +328,65 @@ public class PkAuthAutoConfiguration {
   @ConditionalOnMissingBean
   public UserDeletionService pkAuthUserDeletionService(List<UserDeletionListener> listeners) {
     return new UserDeletionService(listeners);
+  }
+
+  // -- Refresh tokens (only active when a RefreshTokenRepository bean is present) -------------
+
+  /**
+   * Builds the {@link RefreshTokenConfig} from {@code pkauth.refresh.*} properties. Materialised
+   * unconditionally so hosts can inject it for ad-hoc construction, but the bean only matters when
+   * a {@link RefreshTokenRepository} is also bound.
+   *
+   * @since 1.1.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  public RefreshTokenConfig pkAuthRefreshTokenConfig(PkAuthProperties props) {
+    PkAuthProperties.Refresh refresh = props.refresh();
+    Duration defaultTtl =
+        refresh.defaultTtl() == null
+            ? RefreshTokenConfig.DEFAULT_REFRESH_TTL
+            : refresh.defaultTtl();
+    Map<String, Duration> overrides = refresh.ttlsByAudience();
+    RefreshTtlPolicy policy =
+        overrides == null || overrides.isEmpty()
+            ? RefreshTtlPolicy.single(defaultTtl)
+            : RefreshTtlPolicy.fixed(defaultTtl, overrides);
+    Duration retention =
+        refresh.cleanupRetention() == null
+            ? RefreshTokenConfig.DEFAULT_CLEANUP_RETENTION
+            : refresh.cleanupRetention();
+    return new RefreshTokenConfig(
+        policy,
+        RefreshTokenConfig.DEFAULT_SECRET_BYTES,
+        RefreshTokenConfig.DEFAULT_REFRESH_ID_BYTES,
+        retention);
+  }
+
+  /** {@link RefreshTokenService} bean — only when a {@link RefreshTokenRepository} is wired. */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnBean(RefreshTokenRepository.class)
+  public RefreshTokenService pkAuthRefreshTokenService(
+      RefreshTokenRepository repository, RefreshTokenConfig config, ClockProvider clockProvider) {
+    return new RefreshTokenService(repository, config, clockProvider);
+  }
+
+  /** Wires the user-deletion fan-out's refresh-token branch. */
+  @Bean
+  @ConditionalOnBean(RefreshTokenService.class)
+  public UserDeletionListener pkAuthRefreshTokenServiceDeletionListener(
+      RefreshTokenService service) {
+    return new RefreshTokenServiceDeletionListener(service);
+  }
+
+  /** Framework-neutral handler that the controller delegates to. */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnBean(RefreshTokenService.class)
+  public RefreshHandler pkAuthRefreshHandler(
+      RefreshTokenService refreshService, PkAuthJwtIssuer issuer) {
+    return new RefreshHandler(refreshService, issuer);
   }
 
   // -- Alt-flow services -----------------------------------------------------------------------

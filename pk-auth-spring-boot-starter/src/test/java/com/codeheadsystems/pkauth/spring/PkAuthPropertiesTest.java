@@ -20,10 +20,12 @@ class PkAuthPropertiesTest {
             new PkAuthProperties.Jwt("iss", "aud", "secret-that-is-long-enough-32b!!", null, null),
             null,
             null,
+            null,
             false);
-    // ceremony/otp normalise to defaults
+    // ceremony/otp/refresh normalise to defaults
     assertThat(props.ceremony().challengeTtl()).isEqualTo(Duration.ofMinutes(5));
     assertThat(props.otp().pepper()).isNull();
+    assertThat(props.refresh().path()).isNull();
     // devMode defaults to false when bound from absent property
     assertThat(props.devMode()).isFalse();
   }
@@ -43,6 +45,7 @@ class PkAuthPropertiesTest {
                 perAudience),
             new PkAuthProperties.Ceremony(Duration.ofMinutes(2)),
             new PkAuthProperties.Otp("dGVzdC1wZXBwZXItYmFzZTY0LWVuY29kZWQ="),
+            new PkAuthProperties.Refresh(Duration.ofDays(14), null, null, "/auth/refresh"),
             true);
     assertThat(props.relyingParty().id()).isEqualTo("example.com");
     assertThat(props.jwt().defaultTtl()).isEqualTo(Duration.ofMinutes(30));
@@ -56,7 +59,7 @@ class PkAuthPropertiesTest {
   void requiredBlocksAreNoLongerDefaulted() {
     // PkAuthProperties no longer auto-populates relyingParty / jwt — adapters fail fast when
     // either block is missing rather than booting against silent localhost / random-key defaults.
-    PkAuthProperties props = new PkAuthProperties(null, null, null, null, false);
+    PkAuthProperties props = new PkAuthProperties(null, null, null, null, null, false);
     assertThat(props.relyingParty()).isNull();
     assertThat(props.jwt()).isNull();
   }

@@ -5,8 +5,11 @@ import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
 import com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionService;
+import com.codeheadsystems.pkauth.refresh.web.RefreshHandler;
 import dagger.Component;
 import jakarta.inject.Singleton;
+import java.util.Optional;
 
 /**
  * Dagger 2 component that materializes everything the bundle hands to Jersey. Brief §6.11 —
@@ -31,4 +34,15 @@ public interface PkAuthComponent {
 
   /** The authenticator the bundle plugs into Dropwizard's {@code AuthDynamicFeature}. */
   PkAuthDropwizardAuthenticator passkeyAuthenticator();
+
+  /** User-deletion fan-out service. Always present; the listener set may be empty. */
+  UserDeletionService userDeletionService();
+
+  /**
+   * Refresh handler; present only when {@code PersistenceBindings.refreshTokenRepository} is
+   * non-null. The bundle uses presence to decide whether to mount {@code /auth/refresh}.
+   *
+   * @since 1.1.0
+   */
+  Optional<RefreshHandler> refreshHandler();
 }

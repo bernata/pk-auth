@@ -15,8 +15,10 @@ import com.codeheadsystems.pkauth.dropwizard.dagger.PkAuthComponent;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PkAuthFullComponent;
 import com.codeheadsystems.pkauth.dropwizard.dagger.PkAuthModule;
 import com.codeheadsystems.pkauth.dropwizard.json.PkAuthJacksonBridge;
+import com.codeheadsystems.pkauth.dropwizard.resource.PkAuthRefreshResource;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.refresh.web.RefreshHandler;
 import io.dropwizard.auth.AuthDynamicFeature;
 import io.dropwizard.auth.AuthValueFactoryProvider;
 import io.dropwizard.core.ConfiguredBundle;
@@ -148,7 +150,8 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
               fullComponent.ceremonyResource(),
               fullComponent.passkeyAuthenticator(),
               fullComponent.jwtIssuer(),
-              fullComponent.jwtValidator());
+              fullComponent.jwtValidator(),
+              fullComponent.refreshHandler().orElse(null));
     } else {
       this.component = DaggerPkAuthComponent.builder().pkAuthModule(pkAuthModule).build();
       wiring =
@@ -156,7 +159,8 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
               component.ceremonyResource(),
               component.passkeyAuthenticator(),
               component.jwtIssuer(),
-              component.jwtValidator());
+              component.jwtValidator(),
+              component.refreshHandler().orElse(null));
     }
 
     // Ensure the runtime ObjectMapper has the bridge too (the environment may build its own copy
@@ -182,6 +186,11 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
     } else if (preBuiltAdminService != null) {
       environment.jersey().register(new PkAuthAdminResource(preBuiltAdminService));
       LOG.info("pkauth.admin.endpoints.registered path=/auth/admin (host-built AdminService)");
+    }
+
+    if (wiring.refreshHandler() != null) {
+      environment.jersey().register(new PkAuthRefreshResource(wiring.refreshHandler()));
+      LOG.info("pkauth.refresh.endpoint.registered path=/auth/refresh");
     }
 
     LOG.info(
@@ -238,5 +247,6 @@ public class PkAuthBundle<C extends HasPkAuthConfig> implements ConfiguredBundle
       com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource ceremonyResource,
       PkAuthDropwizardAuthenticator authenticator,
       PkAuthJwtIssuer jwtIssuer,
-      PkAuthJwtValidator jwtValidator) {}
+      PkAuthJwtValidator jwtValidator,
+      @Nullable RefreshHandler refreshHandler) {}
 }

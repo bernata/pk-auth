@@ -90,19 +90,55 @@ Boundaries cross-checked in this model:
 
 ## Token revocation
 
-JWTs issued by pk-auth are valid until their `exp` claim by default — there is no built-in
-revocation list. This is an intentional trade-off: stateless tokens simplify scaling, but
-they mean a stolen token is valid until expiry.
+Two complementary primitives ship with pk-auth as of 1.1.0:
 
-Hosts that require early revocation (logout-all, account-disable, credential compromise
-response) should implement the `RevocationCheck` SPI added in `pk-auth-jwt`. The SPI
-receives the full JWT claims on every validated request and must return a boolean; the
-adapter rejects the token if the hook returns `true`. A Redis set of revoked JTIs is the
-typical implementation.
+1. **`AccessTokenStore` (ADR 0015)** — positive allow-list. Every issued JWT's JTI is
+   persisted server-side; the validator looks it up on every request. Deleting the row
+   (logout, admin revoke, password reset, user delete) immediately invalidates the
+   bearer, well before its `exp`. This is the paved-road for revocability.
+2. **`RevocationCheck` (1.0)** — negative deny-list. Lightweight in-process hook for hosts
+   that issue many millions of tokens per day and want to invalidate a small subset
+   proactively (e.g. a "session revoked" stream from a security event bus). Still
+   supported; orthogonal to `AccessTokenStore`.
 
-Until `RevocationCheck` is wired, keep `pkauth.jwt.ttl` short (≤ 1 hour) and educate
-users to use browser logout (which discards the client-side token) rather than relying on
-server-side invalidation.
+The default `AccessTokenStore.noop()` keeps the legacy stateless-JWT behaviour for hosts
+that prefer it — the call costs an always-true return. Choose the binding based on traffic
+shape, not as a feature toggle.
+
+For session-lifetime management (re-using a single login across days/weeks without
+re-authenticating), the rotating refresh-token primitive is the paved road — see
+"Refresh-token replay defense" below.
+
+## Refresh-token replay defense
+
+Rotating refresh tokens with family-based replay detection are shipped via
+`pk-auth-refresh-tokens` (ADR 0013). The properties the design guarantees:
+
+- **Atomic mark-and-insert.** The SPI's `rotateAtomically` primitive marks the parent
+  used AND inserts the successor as a single atomic operation (JDBI transaction,
+  DynamoDB `TransactWriteItems`, or in-memory `compute` block). A non-atomic sequence
+  has a window where a concurrent rotator's family-scorch can miss the freshly-inserted
+  successor; the SPI contract forbids this and the concurrent-race test enforces it.
+- **Hash-before-mark-used.** The service hashes the presented secret and compares
+  against the stored row hash *before* invoking `rotateAtomically`. A presented
+  refresh-id with the wrong secret returns `Unknown`, never burns the legitimate
+  token's `used_at`. This is enforced by the
+  `wrongSecretReturnsUnknownAndDoesNotBurnLegitToken` parity test on every backend.
+- **Replay → family scorch.** Re-presenting a used or revoked refresh from a known
+  family triggers a `revokeFamily(familyId, ROTATION_REPLAY)` call that runs outside
+  the failed rotation. The result is that BOTH the attacker AND the legitimate client
+  lose the session — the legit user sees their next refresh fail and is redirected to
+  login. The cost is one ceremony; the alternative is a leaked session that survives
+  the legit client's rotation.
+- **Concurrent rotation: exactly one wins.** The non-negotiable race test launches 8
+  threads rotating the same token simultaneously. Exactly one thread returns
+  `RotateResult.Success`; the other 7 return `RotateResult.Replayed`; the entire
+  family (root + the winner's successor) is revoked. This test passes against
+  Postgres (JDBI transaction path) and DynamoDB Local (`TransactWriteItems` path) on
+  every CI run.
+- **Hash-at-rest.** The 32-byte secret is SHA-256-hashed before storage; the raw
+  secret is never persisted. The wire token (`{refreshId}.{secret}`, base64url on
+  both halves) must NEVER be logged.
 
 ## Data at rest
 

@@ -16,6 +16,8 @@ dependencies {
     api(project(":pk-auth-core"))
     // AccessTokenStore lives in pk-auth-jwt; JdbiAccessTokenStore implements it.
     api(project(":pk-auth-jwt"))
+    // RefreshTokenRepository SPI; JdbiRefreshTokenRepository implements it.
+    api(project(":pk-auth-refresh-tokens"))
     api(libs.jdbi.core)
     // JDBI's class files reference com.google.errorprone.annotations.concurrent.GuardedBy.
     // Without errorprone-annotations on the compile classpath, javac emits an annotation-not-found

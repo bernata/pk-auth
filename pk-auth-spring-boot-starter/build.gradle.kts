@@ -33,6 +33,7 @@ dependencies {
     api(project(":pk-auth-backup-codes"))
     api(project(":pk-auth-magic-link"))
     api(project(":pk-auth-otp"))
+    api(project(":pk-auth-refresh-tokens"))
 
     // Admin API is optional from a runtime perspective; the autoconfigure block reads it via
     // @ConditionalOnClass. We still depend on it `compileOnly` so the controller class compiles.

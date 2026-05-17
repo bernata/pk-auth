@@ -19,6 +19,7 @@ All modules share the same version and `com.codeheadsystems` group id.
 | `pk-auth-backup-codes` | [![Maven Central: pk-auth-backup-codes](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-backup-codes?label=pk-auth-backup-codes)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-backup-codes) | Argon2id-hashed one-time backup codes. |
 | `pk-auth-magic-link` | [![Maven Central: pk-auth-magic-link](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-magic-link?label=pk-auth-magic-link)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-magic-link) | Single-use email magic-link tokens. |
 | `pk-auth-otp` | [![Maven Central: pk-auth-otp](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-otp?label=pk-auth-otp)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-otp) | 6-digit SMS OTP codes for phone verification. |
+| `pk-auth-refresh-tokens` | [![Maven Central: pk-auth-refresh-tokens](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-refresh-tokens?label=pk-auth-refresh-tokens)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-refresh-tokens) | Rotating refresh tokens with family-based replay defense. *(1.1.0)* |
 | `pk-auth-persistence-jdbi` | [![Maven Central: pk-auth-persistence-jdbi](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-persistence-jdbi?label=pk-auth-persistence-jdbi)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-persistence-jdbi) | JDBI 3 + Flyway + Postgres SPI implementations. |
 | `pk-auth-persistence-dynamodb` | [![Maven Central: pk-auth-persistence-dynamodb](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-persistence-dynamodb?label=pk-auth-persistence-dynamodb)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-persistence-dynamodb) | AWS SDK v2 DynamoDB Enhanced SPI implementations (single-table). |
 | `pk-auth-testkit` | [![Maven Central: pk-auth-testkit](https://img.shields.io/maven-central/v/com.codeheadsystems/pk-auth-testkit?label=pk-auth-testkit)](https://central.sonatype.com/artifact/com.codeheadsystems/pk-auth-testkit) | `FakeAuthenticator`, in-memory SPIs, and fixtures for tests. |
@@ -31,7 +32,17 @@ What you get out of the box:
 - WebAuthn registration and assertion ceremonies — including multi-passkey
   enrolment and conditional UI — backed by WebAuthn4J.
 - A stateless JWT mint at the end of authentication (HS256, configurable
-  TTL).
+  TTL) — or, with the 1.1.0 `AccessTokenStore` SPI, a stateful access
+  token that's revocable before its `exp`.
+- Per-audience JWT TTL dispatch via `TokenTtlPolicy` so web / cli /
+  mobile clients can carry different access-token lifetimes from a single
+  issuer.
+- **Rotating refresh tokens with family-based replay defense** *(1.1.0)*
+  — `POST /auth/refresh` is one ceremony / one row per rotation, with
+  motif-style atomic mark-and-insert and family scorch on detected
+  replay. The browser SDK's `PkAuthClient.refresh()` returns a typed
+  result sum, never throws on 401. See
+  [ADR 0013](./docs/adr/0013-refresh-tokens-family-rotation.md).
 - Account admin: list / rename / delete passkeys, regenerate
   view-once backup codes, account summary.
 - Alternative-flow modules: backup codes, magic-link email verification,

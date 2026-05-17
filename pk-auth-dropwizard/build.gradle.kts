@@ -36,6 +36,7 @@ tasks.named<JavaCompile>("compileTestJava") {
 dependencies {
     api(project(":pk-auth-core"))
     api(project(":pk-auth-jwt"))
+    api(project(":pk-auth-refresh-tokens"))
     api(libs.dropwizard.core)
     api(libs.dropwizard.auth)
     api(libs.dagger)

@@ -16,6 +16,9 @@ dependencies {
     api(project(":pk-auth-core"))
     // AccessTokenStore lives in pk-auth-jwt; DynamoDbAccessTokenStore implements it.
     api(project(":pk-auth-jwt"))
+    // RefreshTokenRepository lives in pk-auth-refresh-tokens; DynamoDbRefreshTokenRepository
+    // implements it.
+    api(project(":pk-auth-refresh-tokens"))
     api(libs.aws.dynamodb)
     api(libs.aws.dynamodb.enhanced)
     implementation(libs.slf4j.api)

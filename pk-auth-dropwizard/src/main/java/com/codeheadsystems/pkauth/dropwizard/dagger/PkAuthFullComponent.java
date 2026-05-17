@@ -8,10 +8,13 @@ import com.codeheadsystems.pkauth.dropwizard.auth.PkAuthDropwizardAuthenticator;
 import com.codeheadsystems.pkauth.dropwizard.resource.PkAuthCeremonyResource;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.lifecycle.UserDeletionService;
 import com.codeheadsystems.pkauth.magiclink.MagicLinkService;
 import com.codeheadsystems.pkauth.otp.OtpService;
+import com.codeheadsystems.pkauth.refresh.web.RefreshHandler;
 import dagger.Component;
 import jakarta.inject.Singleton;
+import java.util.Optional;
 
 /**
  * Dagger component that wires the passkey ceremony graph <em>and</em> the alt-flow services
@@ -55,4 +58,15 @@ public interface PkAuthFullComponent {
 
   /** The admin resource the bundle mounts at {@code /auth/admin}. */
   PkAuthAdminResource adminResource();
+
+  /** User-deletion fan-out service. */
+  UserDeletionService userDeletionService();
+
+  /**
+   * Refresh handler; present only when {@code PersistenceBindings.refreshTokenRepository} is
+   * non-null.
+   *
+   * @since 1.1.0
+   */
+  Optional<RefreshHandler> refreshHandler();
 }
