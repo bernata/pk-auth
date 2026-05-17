@@ -1,0 +1,1521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pk-auth — Passkey-first authentication for the JVM</title>
+  <meta name="description" content="A drop-in WebAuthn credential layer for Spring Boot 4, Dropwizard 5, and Micronaut 4. Framework-neutral core, stateless JWT, host-implemented user lookup.">
+  <meta name="theme-color" content="#7A1F1F">
+  <style>
+    :root {
+      /* Palette: warm parchment with oxblood + aged brass accents */
+      --paper: #F0E5CB;
+      --paper-light: #F7EFDA;
+      --paper-warm: #EADBB8;
+      --paper-dim: #E2D3AA;
+      --rule: #C4B58D;
+      --rule-soft: #D8C99E;
+
+      --ink: #1F1B14;
+      --ink-soft: #3A312A;
+      --ink-muted: #7A6A56;
+      --ink-dim: #9C8E73;
+
+      --accent: #7A1F1F;
+      --accent-hot: #8B2424;
+      --accent-deep: #5C1818;
+      --brass: #9C6A1A;
+      --brass-light: #B8843D;
+
+      --code-bg: #1E1A12;
+      --code-bg-edge: #2A2418;
+      --code-text: #E8DDC5;
+      --code-mute: #8B7E64;
+      --code-keyword: #D4915C;
+      --code-string: #C4A062;
+      --code-comment: #7A6A56;
+      --code-type: #E5A672;
+      --code-punct: #B8A98D;
+
+      --method-get: #2E4A37;
+      --method-post: #2B3F66;
+      --method-patch: #8B6B2E;
+      --method-delete: #7A1F1F;
+
+      --serif: "Iowan Old Style", "Palatino Linotype", "URW Palladio L", "Book Antiqua", Palatino, "Hoefler Text", Georgia, serif;
+      --sans: "Optima", "Avenir Next", "Avenir", "Trebuchet MS", "Lucida Grande", "Lucida Sans Unicode", sans-serif;
+      --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", "Source Code Pro", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      /* Intentionally NOT inverting — the cream-paper aesthetic is the design.
+         Reader-prefer-dark users get the original; high contrast is preserved. */
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--serif);
+      background: var(--paper);
+      color: var(--ink-soft);
+      line-height: 1.55;
+      font-size: 17px;
+      font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "onum" 1;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+      /* subtle paper grain */
+      background-image:
+        radial-gradient(at 12% 8%, rgba(122,31,31,0.04) 0, transparent 40%),
+        radial-gradient(at 88% 92%, rgba(156,106,26,0.05) 0, transparent 45%),
+        radial-gradient(at 50% 50%, rgba(31,27,20,0.015) 0, transparent 60%);
+      background-attachment: fixed;
+      min-height: 100vh;
+    }
+
+    /* Selection styled like a wet-ink highlight */
+    ::selection { background: var(--accent); color: var(--paper); }
+
+    a { color: var(--accent); text-decoration: none; border-bottom: 1px solid currentColor; transition: color .15s, border-color .15s; }
+    a:hover { color: var(--accent-deep); border-bottom-color: var(--accent-deep); }
+
+    .container { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+    .container--narrow { max-width: 880px; }
+
+    /* ---------------- HEADER ---------------- */
+    header.site {
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    header.site .container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 18px;
+      padding-bottom: 18px;
+      gap: 24px;
+    }
+    .wordmark {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-family: var(--serif);
+      color: var(--ink);
+      border: 0;
+      font-size: 18px;
+      letter-spacing: 0.04em;
+    }
+    .wordmark:hover { color: var(--accent); }
+    .wordmark .mark {
+      width: 26px;
+      height: 26px;
+      display: inline-block;
+    }
+    .wordmark strong {
+      font-weight: 600;
+      font-variant: small-caps;
+      letter-spacing: 0.16em;
+    }
+    .wordmark em {
+      font-style: italic;
+      color: var(--ink-muted);
+      font-size: 13px;
+      letter-spacing: 0.06em;
+    }
+    nav.primary { display: flex; gap: 28px; align-items: center; }
+    nav.primary a {
+      font-family: var(--sans);
+      font-size: 13px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-soft);
+      border: 0;
+      position: relative;
+      padding: 6px 2px;
+    }
+    nav.primary a:hover { color: var(--accent); }
+    nav.primary a::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 1px;
+      background: var(--accent);
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .2s ease-out;
+    }
+    nav.primary a:hover::after { transform: scaleX(1); }
+
+    .pill {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 4px 9px;
+      border: 1px solid var(--rule);
+      color: var(--ink-muted);
+      border-radius: 1px;
+      background: var(--paper-light);
+    }
+
+    /* ---------------- SECTION SCAFFOLDING ---------------- */
+    section { padding: 96px 0; position: relative; }
+    section + section { border-top: 1px solid var(--rule); }
+
+    .section-marker {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 36px;
+    }
+    .section-marker::before {
+      content: "";
+      width: 28px; height: 1px;
+      background: var(--accent);
+      display: inline-block;
+    }
+    .section-marker .num {
+      font-weight: 600;
+      color: var(--ink);
+    }
+
+    h1, h2, h3, h4 {
+      font-family: var(--serif);
+      font-weight: 400;
+      color: var(--ink);
+      line-height: 1.08;
+      letter-spacing: -0.005em;
+    }
+
+    h2 {
+      font-size: clamp(36px, 4.4vw, 56px);
+      margin-bottom: 24px;
+      max-width: 18ch;
+    }
+    h2 em {
+      font-style: italic;
+      color: var(--accent);
+    }
+    h3 {
+      font-size: 24px;
+      margin-bottom: 16px;
+      letter-spacing: -0.01em;
+    }
+    h4 {
+      font-size: 16px;
+      font-variant: small-caps;
+      letter-spacing: 0.14em;
+      color: var(--ink-muted);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    p { max-width: 60ch; }
+    p + p { margin-top: 16px; }
+
+    .lede {
+      font-family: var(--serif);
+      font-size: 19px;
+      line-height: 1.6;
+      color: var(--ink-soft);
+      max-width: 64ch;
+    }
+
+    /* ---------------- HERO ---------------- */
+    .hero {
+      padding: 80px 0 110px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      /* faint baseline grid for the document feel */
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image: linear-gradient(to right, rgba(31,27,20,0.03) 1px, transparent 1px);
+      background-size: 80px 100%;
+      background-position: 50% 0;
+      opacity: 0.4;
+      mask-image: linear-gradient(to bottom, transparent 0, black 20%, black 80%, transparent 100%);
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.3fr 1fr;
+      gap: 64px;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-meta {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      margin-bottom: 28px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      animation: rise .9s .1s ease-out backwards;
+    }
+    .hero-meta .dot {
+      width: 6px; height: 6px;
+      background: var(--accent);
+      display: inline-block;
+      transform: rotate(45deg);
+    }
+
+    .hero h1 {
+      font-size: clamp(48px, 7.2vw, 96px);
+      font-weight: 400;
+      line-height: 1.0;
+      color: var(--ink);
+      letter-spacing: -0.022em;
+      margin-bottom: 28px;
+      animation: rise .9s .2s ease-out backwards;
+    }
+    .hero h1 .accent {
+      font-style: italic;
+      color: var(--accent);
+      font-weight: 400;
+    }
+    .hero h1 .rule {
+      display: inline-block;
+      width: 90px;
+      height: 4px;
+      background: var(--accent);
+      vertical-align: middle;
+      margin: 0 4px 14px 0;
+    }
+
+    .hero .lede {
+      animation: rise .9s .35s ease-out backwards;
+    }
+
+    .cta-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 36px;
+      animation: rise .9s .5s ease-out backwards;
+    }
+    .btn {
+      font-family: var(--sans);
+      font-size: 13px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      font-weight: 600;
+      padding: 14px 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      border: 1px solid var(--ink);
+      border-radius: 1px;
+      cursor: pointer;
+      transition: all .2s ease-out;
+      background: transparent;
+      color: var(--ink);
+    }
+    .btn:hover { background: var(--ink); color: var(--paper); transform: translateY(-1px); box-shadow: 0 4px 0 -1px var(--accent); }
+    .btn--primary { background: var(--accent); color: var(--paper-light); border-color: var(--accent); }
+    .btn--primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); color: var(--paper); box-shadow: 0 4px 0 -1px var(--brass); }
+    .btn .arrow {
+      transition: transform .2s ease-out;
+      display: inline-block;
+    }
+    .btn:hover .arrow { transform: translateX(3px); }
+    .btn--down:hover .arrow { transform: translateY(3px); }
+
+    .hero-art {
+      position: relative;
+      aspect-ratio: 1;
+      max-width: 420px;
+      margin-left: auto;
+      animation: rise 1.2s .4s ease-out backwards;
+    }
+    .hero-art svg { width: 100%; height: 100%; }
+
+    /* corner annotation */
+    .annotation {
+      position: absolute;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .annotation .line {
+      width: 36px; height: 1px;
+      background: var(--ink-dim);
+    }
+    .annotation--tr { top: 4%; right: 0; }
+    .annotation--bl { bottom: 6%; left: 0; }
+    .annotation--br { bottom: 18%; right: -6%; }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---------------- BOUNDARY (IS / ISN'T) ---------------- */
+    .boundary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      margin-top: 12px;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    .boundary-col {
+      padding: 36px 36px 36px 0;
+      position: relative;
+    }
+    .boundary-col + .boundary-col {
+      padding-left: 36px;
+      border-left: 1px solid var(--rule);
+    }
+    .boundary-col h4 {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .boundary-col h4 .glyph {
+      font-family: var(--serif);
+      font-size: 32px;
+      font-style: italic;
+      letter-spacing: 0;
+      font-variant: normal;
+    }
+    .boundary-col--is h4 .glyph { color: var(--accent); }
+    .boundary-col--isnt h4 .glyph { color: var(--ink-muted); }
+
+    .boundary-col ul {
+      list-style: none;
+    }
+    .boundary-col li {
+      position: relative;
+      padding: 12px 0 12px 44px;
+      border-top: 1px dashed var(--rule-soft);
+      font-family: var(--serif);
+      font-size: 16.5px;
+      color: var(--ink-soft);
+      line-height: 1.55;
+    }
+    .boundary-col li:first-child { border-top: 0; }
+    .boundary-col li::before {
+      position: absolute;
+      left: 0;
+      top: 16px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink-muted);
+      content: attr(data-idx);
+      letter-spacing: 0.1em;
+    }
+    .boundary-col li b {
+      display: block;
+      font-family: var(--serif);
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 2px;
+      font-variant: normal;
+    }
+    .boundary-col--isnt li b { color: var(--accent); text-decoration: line-through; text-decoration-color: rgba(122,31,31,0.4); text-decoration-thickness: 1px; }
+
+    /* ---------------- QUICKSTART ---------------- */
+    .quickstart-intro {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 80px;
+      margin-bottom: 56px;
+      align-items: end;
+    }
+    .quickstart-steps {
+      display: grid;
+      gap: 32px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 32px;
+      align-items: start;
+    }
+    @media (min-width: 1000px) {
+      .step--code { grid-template-columns: 90px 1fr; }
+    }
+    .step-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      padding-top: 12px;
+      text-align: right;
+      border-right: 1px solid var(--rule);
+      padding-right: 16px;
+    }
+    .step-num b {
+      display: block;
+      font-family: var(--serif);
+      font-size: 42px;
+      color: var(--accent);
+      font-style: italic;
+      font-weight: 400;
+      letter-spacing: 0;
+      margin-bottom: 8px;
+      font-variant: lining-nums;
+    }
+    .step-body h3 {
+      margin-bottom: 8px;
+    }
+    .step-body p {
+      color: var(--ink-soft);
+      margin-bottom: 18px;
+      font-size: 16px;
+    }
+    .step-body p code {
+      font-family: var(--mono);
+      font-size: 13px;
+      padding: 1px 6px;
+      background: var(--paper-warm);
+      border: 1px solid var(--rule-soft);
+      border-radius: 2px;
+      color: var(--ink);
+    }
+
+    /* code blocks */
+    .code {
+      background: var(--code-bg);
+      color: var(--code-text);
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.65;
+      padding: 24px 26px;
+      border-radius: 2px;
+      overflow-x: auto;
+      position: relative;
+      border: 1px solid var(--code-bg-edge);
+      box-shadow: 0 1px 0 var(--rule), 0 14px 28px -16px rgba(31,27,20,0.4);
+    }
+    .code::before {
+      content: attr(data-filename);
+      position: absolute;
+      top: 0; right: 0;
+      padding: 6px 14px;
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--code-mute);
+      background: var(--code-bg-edge);
+      border-left: 1px solid var(--code-bg-edge);
+      border-bottom: 1px solid var(--code-bg-edge);
+      border-bottom-left-radius: 2px;
+    }
+    .code pre {
+      margin: 0;
+      white-space: pre;
+      tab-size: 2;
+      padding-top: 6px;
+    }
+    .code .kw { color: var(--code-keyword); }
+    .code .str { color: var(--code-string); }
+    .code .cm  { color: var(--code-comment); font-style: italic; }
+    .code .ty  { color: var(--code-type); }
+    .code .pn  { color: var(--code-punct); }
+    .code .nm  { color: var(--code-text); }
+    .code .at  { color: var(--brass-light); }
+    .code .num { color: var(--code-type); }
+    .code .fn  { color: var(--paper-warm); }
+
+    /* ---------------- MODULES ---------------- */
+    .module-intro {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 60px;
+      margin-bottom: 48px;
+      align-items: end;
+    }
+    .module-key {
+      font-family: var(--mono);
+      font-size: 11.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      align-self: end;
+      padding-bottom: 6px;
+    }
+    .module-key span {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .module-key i {
+      width: 10px;
+      height: 10px;
+      display: inline-block;
+      transform: rotate(45deg);
+    }
+    .module-key .req i { background: var(--accent); }
+    .module-key .pick i { background: var(--brass); }
+    .module-key .opt i { background: var(--ink-muted); }
+
+    .module-groups {
+      display: grid;
+      gap: 24px;
+    }
+    .module-group {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 32px;
+      padding: 28px 0;
+      border-top: 1px solid var(--rule);
+      align-items: start;
+    }
+    .module-group:last-child { border-bottom: 1px solid var(--rule); }
+    .module-group-head h4 {
+      color: var(--ink);
+      font-family: var(--serif);
+      font-size: 19px;
+      font-variant: normal;
+      font-weight: 600;
+      letter-spacing: -0.005em;
+      text-transform: none;
+      font-style: italic;
+      margin-bottom: 4px;
+    }
+    .module-group-head .count {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      display: block;
+      margin-bottom: 8px;
+    }
+    .module-group-head .role {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      display: inline-block;
+      border: 1px solid var(--rule);
+      color: var(--ink-soft);
+      background: var(--paper-light);
+    }
+    .module-group-head .role.req { color: var(--accent); border-color: var(--accent); }
+    .module-group-head .role.pick { color: var(--brass); border-color: var(--brass); }
+    .module-group-head .role.opt { color: var(--ink-muted); border-color: var(--rule); }
+
+    .module-list {
+      display: grid;
+      gap: 0;
+    }
+    .module-card {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      padding: 14px 0;
+      border-top: 1px dashed var(--rule-soft);
+      align-items: baseline;
+    }
+    .module-list .module-card:first-child { border-top: 0; padding-top: 4px; }
+    .module-card-name {
+      font-family: var(--mono);
+      font-size: 13.5px;
+      color: var(--ink);
+      letter-spacing: -0.01em;
+    }
+    .module-card-name b { color: var(--accent); font-weight: 500; }
+    .module-card p {
+      font-family: var(--serif);
+      font-size: 15px;
+      color: var(--ink-soft);
+      grid-column: 1 / -1;
+      margin: 4px 0 0 0;
+      max-width: none;
+      line-height: 1.5;
+    }
+    .module-card .tag {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      align-self: center;
+    }
+
+    /* ---------------- WIRE CONTRACT ---------------- */
+    .wire-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-top: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    .wire-col {
+      padding: 36px 36px 36px 0;
+    }
+    .wire-col + .wire-col {
+      padding-left: 36px;
+      border-left: 1px solid var(--rule);
+    }
+    .wire-col h4 {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      margin-bottom: 24px;
+      color: var(--ink);
+      font-style: italic;
+      font-variant: normal;
+      font-size: 22px;
+      letter-spacing: -0.005em;
+      text-transform: none;
+      font-weight: 600;
+      font-family: var(--serif);
+    }
+    .wire-col h4 small {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+      font-style: normal;
+      font-weight: 400;
+    }
+    .endpoint {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 16px;
+      padding: 11px 0;
+      align-items: baseline;
+      border-top: 1px dashed var(--rule-soft);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+    .endpoint:first-of-type { border-top: 0; }
+    .method {
+      font-size: 10.5px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      padding: 3px 0;
+      text-align: center;
+      color: var(--paper);
+      font-weight: 600;
+      border-radius: 1px;
+    }
+    .method.get { background: var(--method-get); }
+    .method.post { background: var(--method-post); }
+    .method.patch { background: var(--method-patch); }
+    .method.del { background: var(--method-delete); }
+    .endpoint-path { color: var(--ink); }
+    .endpoint-note {
+      grid-column: 2;
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 14px;
+      color: var(--ink-muted);
+      margin-top: 1px;
+    }
+
+    .wire-note {
+      margin-top: 32px;
+      padding: 24px 28px;
+      background: var(--paper-light);
+      border-left: 3px solid var(--brass);
+      border-radius: 1px;
+      font-family: var(--serif);
+      font-size: 15px;
+      color: var(--ink-soft);
+      line-height: 1.6;
+    }
+    .wire-note code {
+      font-family: var(--mono);
+      font-size: 12.5px;
+      background: var(--paper-warm);
+      padding: 1px 6px;
+      border-radius: 2px;
+      color: var(--ink);
+      border: 1px solid var(--rule-soft);
+    }
+    .wire-note strong { color: var(--accent); font-weight: 600; }
+
+    /* ---------------- SECURITY ---------------- */
+    .security-intro {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 80px;
+      margin-bottom: 56px;
+      align-items: end;
+    }
+
+    .sec-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0;
+      border: 1px solid var(--rule);
+    }
+    .sec-card {
+      padding: 32px 28px;
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+      background: var(--paper-light);
+      position: relative;
+      transition: background .2s;
+    }
+    .sec-card:hover { background: var(--paper-warm); }
+    .sec-card:nth-child(3n) { border-right: 0; }
+    @media (max-width: 880px) {
+      .sec-grid { grid-template-columns: 1fr 1fr; }
+      .sec-card:nth-child(3n) { border-right: 1px solid var(--rule); }
+      .sec-card:nth-child(2n) { border-right: 0; }
+    }
+    @media (max-width: 560px) {
+      .sec-grid { grid-template-columns: 1fr; }
+      .sec-card { border-right: 0 !important; }
+    }
+    .sec-card .idx {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .sec-card h4 {
+      font-family: var(--serif);
+      font-style: italic;
+      font-variant: normal;
+      font-size: 19px;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 10px;
+      text-transform: none;
+      letter-spacing: -0.005em;
+      line-height: 1.25;
+    }
+    .sec-card p {
+      font-family: var(--serif);
+      font-size: 15px;
+      color: var(--ink-soft);
+      line-height: 1.55;
+      max-width: 38ch;
+    }
+
+    /* ---------------- FOOTER ---------------- */
+    footer.site {
+      padding: 80px 0 56px;
+      background: var(--paper-light);
+      border-top: 1px solid var(--rule);
+      position: relative;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr 1fr;
+      gap: 48px;
+      margin-bottom: 56px;
+    }
+    .footer-brand h3 {
+      font-size: 28px;
+      margin-bottom: 12px;
+      font-style: italic;
+      color: var(--ink);
+    }
+    .footer-brand p {
+      font-size: 15px;
+      color: var(--ink-soft);
+      max-width: 38ch;
+    }
+    .footer-col h4 {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 18px;
+      font-weight: 600;
+      font-variant: normal;
+    }
+    .footer-col ul { list-style: none; }
+    .footer-col li { padding: 5px 0; }
+    .footer-col a {
+      font-family: var(--serif);
+      color: var(--ink-soft);
+      border: 0;
+      font-size: 15px;
+      transition: color .15s;
+    }
+    .footer-col a:hover { color: var(--accent); }
+
+    .footer-bar {
+      border-top: 1px solid var(--rule);
+      padding-top: 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      font-family: var(--mono);
+      font-size: 11.5px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--ink-muted);
+    }
+    .footer-bar a {
+      color: var(--ink-muted);
+      border: 0;
+    }
+    .footer-bar a:hover { color: var(--accent); }
+
+    /* ---------------- RESPONSIVE ---------------- */
+    @media (max-width: 900px) {
+      .container { padding: 0 24px; }
+      section { padding: 64px 0; }
+      .hero { padding: 56px 0 80px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+      .hero-art { max-width: 320px; margin-left: 0; }
+      .quickstart-intro { grid-template-columns: 1fr; gap: 24px; }
+      .module-intro { grid-template-columns: 1fr; gap: 24px; }
+      .security-intro { grid-template-columns: 1fr; gap: 24px; }
+      .module-group { grid-template-columns: 1fr; gap: 14px; }
+      .boundary-grid { grid-template-columns: 1fr; }
+      .boundary-col + .boundary-col { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); padding-top: 36px; }
+      .wire-grid { grid-template-columns: 1fr; }
+      .wire-col + .wire-col { padding-left: 0; border-left: 0; border-top: 1px solid var(--rule); padding-top: 36px; }
+      .step { grid-template-columns: 1fr; gap: 14px; }
+      .step-num { text-align: left; border-right: 0; padding-right: 0; padding-bottom: 4px; border-bottom: 1px solid var(--rule); padding-top: 0; }
+      .step-num b { display: inline; margin-right: 14px; font-size: 36px; }
+      .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; }
+      .footer-brand { grid-column: 1 / -1; }
+    }
+    @media (max-width: 600px) {
+      nav.primary { display: none; }
+      .footer-grid { grid-template-columns: 1fr; }
+      .code { font-size: 12px; padding: 20px 18px; }
+      h1 .rule { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site">
+    <div class="container">
+      <a href="#" class="wordmark">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M13 1 L24.25 7.5 L24.25 18.5 L13 25 L1.75 18.5 L1.75 7.5 Z" stroke="#1F1B14" stroke-width="1.4" fill="#F0E5CB"/>
+            <circle cx="13" cy="13" r="3.5" fill="#7A1F1F"/>
+            <circle cx="13" cy="13" r="6.2" stroke="#7A1F1F" stroke-width="0.8" fill="none" opacity="0.6"/>
+          </svg>
+        </span>
+        <strong>pk-auth</strong>
+        <em>WebAuthn on the JVM</em>
+      </a>
+      <nav class="primary">
+        <a href="#boundary">Scope</a>
+        <a href="#quickstart">Quickstart</a>
+        <a href="#modules">Modules</a>
+        <a href="#wire">Wire</a>
+        <a href="https://github.com/codeheadsystems/pk-auth">Source</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============== HERO ============== -->
+    <section class="hero">
+      <div class="container">
+        <div class="hero-grid">
+          <div class="hero-text">
+            <div class="hero-meta">
+              <span class="dot" aria-hidden="true"></span>
+              <span>JDK 21</span>
+              <span>·</span>
+              <span>WebAuthn4J</span>
+              <span>·</span>
+              <span>MIT licensed</span>
+            </div>
+            <h1>
+              <span class="rule" aria-hidden="true"></span>Passkey-first<br>
+              authentication,<br>
+              <span class="accent">on the JVM.</span>
+            </h1>
+            <p class="lede">
+              A framework-neutral WebAuthn credential layer for Spring Boot 4, Dropwizard 5,
+              and Micronaut 4 applications. The ceremony engine is yours, the user table stays
+              yours, and the output is a short-lived JWT &mdash; nothing leaves your servers,
+              nothing is locked to one framework.
+            </p>
+            <div class="cta-row">
+              <a href="https://github.com/codeheadsystems/pk-auth" class="btn btn--primary">
+                View on GitHub
+                <span class="arrow" aria-hidden="true">&rarr;</span>
+              </a>
+              <a href="https://github.com/codeheadsystems/pk-auth/blob/main/GETTING_STARTED.md" class="btn">
+                Read the guide
+                <span class="arrow" aria-hidden="true">&rarr;</span>
+              </a>
+              <a href="#quickstart" class="btn btn--down">
+                Wire it up
+                <span class="arrow" aria-hidden="true">&darr;</span>
+              </a>
+            </div>
+          </div>
+          <div class="hero-art" aria-hidden="true">
+            <!-- Stylized "credential specimen": hexagonal hardware-key form with biometric scan rings -->
+            <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <radialGradient id="scan" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stop-color="#7A1F1F" stop-opacity="0.25"/>
+                  <stop offset="55%" stop-color="#7A1F1F" stop-opacity="0.06"/>
+                  <stop offset="100%" stop-color="#7A1F1F" stop-opacity="0"/>
+                </radialGradient>
+                <pattern id="hatch" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+                  <line x1="0" y1="0" x2="0" y2="6" stroke="#1F1B14" stroke-width="0.6"/>
+                </pattern>
+              </defs>
+              <!-- biometric scan rings -->
+              <circle cx="200" cy="200" r="180" fill="url(#scan)"/>
+              <circle cx="200" cy="200" r="175" fill="none" stroke="#7A1F1F" stroke-width="0.5" stroke-dasharray="2 6" opacity="0.4"/>
+              <circle cx="200" cy="200" r="155" fill="none" stroke="#7A1F1F" stroke-width="0.5" stroke-dasharray="1 8" opacity="0.35"/>
+              <circle cx="200" cy="200" r="135" fill="none" stroke="#7A1F1F" stroke-width="0.4" stroke-dasharray="2 12" opacity="0.3"/>
+              <!-- crosshairs -->
+              <line x1="200" y1="10" x2="200" y2="40" stroke="#1F1B14" stroke-width="0.6"/>
+              <line x1="200" y1="360" x2="200" y2="390" stroke="#1F1B14" stroke-width="0.6"/>
+              <line x1="10" y1="200" x2="40" y2="200" stroke="#1F1B14" stroke-width="0.6"/>
+              <line x1="360" y1="200" x2="390" y2="200" stroke="#1F1B14" stroke-width="0.6"/>
+              <!-- hex outline -->
+              <path d="M200 65 L312 130 L312 270 L200 335 L88 270 L88 130 Z" fill="#F7EFDA" stroke="#1F1B14" stroke-width="1.6"/>
+              <path d="M200 65 L312 130 L312 270 L200 335 L88 270 L88 130 Z" fill="url(#hatch)" opacity="0.05"/>
+              <!-- inner hex -->
+              <path d="M200 105 L278 150 L278 250 L200 295 L122 250 L122 150 Z" fill="none" stroke="#1F1B14" stroke-width="0.8" opacity="0.45"/>
+              <!-- center keyhole / iris -->
+              <circle cx="200" cy="200" r="42" fill="none" stroke="#7A1F1F" stroke-width="1.4"/>
+              <circle cx="200" cy="200" r="28" fill="none" stroke="#7A1F1F" stroke-width="0.7" opacity="0.7"/>
+              <circle cx="200" cy="200" r="12" fill="#7A1F1F"/>
+              <circle cx="200" cy="200" r="4" fill="#F7EFDA"/>
+              <!-- 6 hex registration points -->
+              <g fill="#1F1B14">
+                <circle cx="200" cy="65" r="2.5"/>
+                <circle cx="312" cy="130" r="2.5"/>
+                <circle cx="312" cy="270" r="2.5"/>
+                <circle cx="200" cy="335" r="2.5"/>
+                <circle cx="88" cy="270" r="2.5"/>
+                <circle cx="88" cy="130" r="2.5"/>
+              </g>
+              <!-- accent ticks around inner ring -->
+              <g stroke="#9C6A1A" stroke-width="1">
+                <line x1="200" y1="155" x2="200" y2="148"/>
+                <line x1="245" y1="200" x2="252" y2="200"/>
+                <line x1="200" y1="245" x2="200" y2="252"/>
+                <line x1="155" y1="200" x2="148" y2="200"/>
+              </g>
+              <!-- corner micro labels -->
+              <g font-family="JetBrains Mono, monospace" font-size="8" fill="#7A6A56" letter-spacing="0.12em">
+                <text x="56" y="58">CRED-A</text>
+                <text x="304" y="58">CRED-B</text>
+                <text x="56" y="350">RP.ID</text>
+                <text x="304" y="350">UV=REQ</text>
+              </g>
+              <!-- center label -->
+              <text x="200" y="378" font-family="Iowan Old Style, Palatino, serif" font-size="11" font-style="italic" fill="#7A1F1F" text-anchor="middle">credential.specimen.001</text>
+            </svg>
+
+            <span class="annotation annotation--tr">
+              <span>WebAuthn assertion</span>
+              <span class="line"></span>
+            </span>
+            <span class="annotation annotation--bl">
+              <span class="line"></span>
+              <span>HS256 JWT out</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== BOUNDARY ============== -->
+    <section id="boundary">
+      <div class="container">
+        <div class="section-marker"><span class="num">&sect; 002</span><span>scope</span></div>
+        <h2>A credential layer<br><em>&mdash; not</em> an identity provider.</h2>
+        <p class="lede">
+          pk-auth handles the cryptographic parts of WebAuthn and hands you a JWT.
+          It does not own users, replicate your auth model, or impose a schema on
+          your application. The boundary is sharp, and it is documented.
+        </p>
+
+        <div class="boundary-grid">
+          <div class="boundary-col boundary-col--is">
+            <h4><span class="glyph">+</span>What pk-auth is</h4>
+            <ul>
+              <li data-idx="01"><b>A passkey credential layer.</b> Ceremony engine, persistence SPIs, and JWT issuance &mdash; all framework-neutral inside <code>pk-auth-core</code>.</li>
+              <li data-idx="02"><b>Three adapters, one wire contract.</b> Spring Boot 4, Dropwizard 5, and Micronaut 4 mount the same JSON endpoints under <code>/auth/**</code>.</li>
+              <li data-idx="03"><b>A set of SPIs.</b> You implement <code>UserLookup</code> against your existing user table; pk-auth never touches names, emails, or roles directly.</li>
+              <li data-idx="04"><b>Stateless JWT out.</b> Authentication returns a short-lived HS256 token with configurable issuer / audience / TTL.</li>
+              <li data-idx="05"><b>Three persistence paths.</b> Testkit (in-memory), JDBI + Postgres + Flyway, or DynamoDB single-table &mdash; same SPIs, your choice.</li>
+            </ul>
+          </div>
+          <div class="boundary-col boundary-col--isnt">
+            <h4><span class="glyph">&minus;</span>What pk-auth is not</h4>
+            <ul>
+              <li data-idx="01"><b>An identity provider.</b> No OIDC discovery doc, no SAML, no admin console. It is the credential part of <em>your</em> identity story.</li>
+              <li data-idx="02"><b>A SaaS.</b> It is a JAR you compile into your app. Nothing leaves your servers; no external billing or callout.</li>
+              <li data-idx="03"><b>A user database.</b> You bring the users table. The library stores public keys and signing counters that point at handles you mint.</li>
+              <li data-idx="04"><b>Spring-only.</b> The core has no Spring, Dropwizard, Micronaut, JDBC, or servlet dependency. Adapters are interchangeable.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== QUICKSTART ============== -->
+    <section id="quickstart">
+      <div class="container">
+        <div class="section-marker"><span class="num">&sect; 003</span><span>quickstart &mdash; spring boot 4</span></div>
+        <div class="quickstart-intro">
+          <h2>Three files, <em>one bean</em>.</h2>
+          <p class="lede">
+            The minimum-viable wire-up: declare three dependencies, set three required
+            config values, and implement <code style="font-family:var(--mono);font-size:14px;background:var(--paper-warm);padding:1px 6px;border-radius:2px;border:1px solid var(--rule-soft);color:var(--ink)">UserLookup</code>
+            against your user table. The starter auto-configures the controllers,
+            JWT filter, and bean defaults. The testkit fills in storage until you
+            add a real backend.
+          </p>
+        </div>
+
+        <div class="quickstart-steps">
+
+          <div class="step">
+            <div class="step-num"><b>01</b>Dependencies</div>
+            <div class="step-body">
+              <h3>Add the adapter, persistence, and admin API.</h3>
+              <p>Three Maven Central artifacts &mdash; spring-boot starter, the JDBI persistence module, and the admin endpoints. Alt-flow modules (backup codes, magic link, OTP) are independent and additive.</p>
+              <div class="code" data-filename="build.gradle.kts">
+<pre><span class="cm">// Replace &lt;version&gt; with the latest pk-auth release.</span>
+<span class="kw">dependencies</span> <span class="pn">{</span>
+  <span class="fn">implementation</span><span class="pn">(</span><span class="str">"com.codeheadsystems:pk-auth-spring-boot-starter:&lt;version&gt;"</span><span class="pn">)</span>
+  <span class="fn">implementation</span><span class="pn">(</span><span class="str">"com.codeheadsystems:pk-auth-persistence-jdbi:&lt;version&gt;"</span><span class="pn">)</span>
+  <span class="fn">implementation</span><span class="pn">(</span><span class="str">"com.codeheadsystems:pk-auth-admin-api:&lt;version&gt;"</span><span class="pn">)</span>
+<span class="pn">}</span></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num"><b>02</b>Config</div>
+            <div class="step-body">
+              <h3>Set the relying party and the JWT secret.</h3>
+              <p>Three required values: the relying-party ID (your eTLD+1 &mdash; <code>example.com</code>, not <code>auth.example.com</code>), the allowed origins, and the HS256 signing key (32 bytes minimum, fail-fast on boot).</p>
+              <div class="code" data-filename="application.yml">
+<pre><span class="kw">pkauth</span><span class="pn">:</span>
+  <span class="kw">relying-party</span><span class="pn">:</span>
+    <span class="kw">id</span><span class="pn">:</span> <span class="str">example.com</span>            <span class="cm"># eTLD+1, NOT auth.example.com</span>
+    <span class="kw">name</span><span class="pn">:</span> <span class="str">My App</span>
+    <span class="kw">origins</span><span class="pn">:</span> <span class="pn">[</span><span class="str">"https://example.com"</span><span class="pn">]</span>
+  <span class="kw">jwt</span><span class="pn">:</span>
+    <span class="kw">secret</span><span class="pn">:</span> <span class="str">${PKAUTH_JWT_SECRET}</span>      <span class="cm"># &ge; 32 bytes; injected via env</span>
+    <span class="kw">issuer</span><span class="pn">:</span> <span class="str">https://example.com</span>
+    <span class="kw">audience</span><span class="pn">:</span> <span class="str">example.com</span></pre>
+              </div>
+            </div>
+          </div>
+
+          <div class="step">
+            <div class="step-num"><b>03</b>UserLookup</div>
+            <div class="step-body">
+              <h3>Bridge your existing user table.</h3>
+              <p>The one Spring bean you have to write. pk-auth calls it for &ldquo;does this username exist?&rdquo;, &ldquo;what view should I render?&rdquo;, and &ldquo;mint or fetch a handle for first-passkey registration&rdquo;. <code>UserHandle</code> is an opaque byte string &mdash; store it as a <code>BYTEA</code> on your users table with a unique index.</p>
+              <div class="code" data-filename="UserLookupBean.java">
+<pre><span class="at">@Component</span>
+<span class="kw">class</span> <span class="ty">UserLookupBean</span> <span class="kw">implements</span> <span class="ty">UserLookup</span> <span class="pn">{</span>
+  <span class="kw">private final</span> <span class="ty">UserService</span> users<span class="pn">;</span> <span class="cm">// your existing service</span>
+
+  <span class="at">@Override</span>
+  <span class="kw">public</span> <span class="ty">Optional&lt;UserHandle&gt;</span> <span class="fn">findHandleByUsername</span><span class="pn">(</span><span class="ty">String</span> u<span class="pn">)</span> <span class="pn">{</span>
+    <span class="kw">return</span> users<span class="pn">.</span><span class="fn">findByUsername</span><span class="pn">(</span>u<span class="pn">)</span><span class="pn">.</span><span class="fn">map</span><span class="pn">(</span>x <span class="pn">-&gt;</span> <span class="ty">UserHandle</span><span class="pn">.</span><span class="fn">of</span><span class="pn">(</span>x<span class="pn">.</span><span class="fn">handle</span><span class="pn">()</span><span class="pn">))</span><span class="pn">;</span>
+  <span class="pn">}</span>
+
+  <span class="at">@Override</span>
+  <span class="kw">public</span> <span class="ty">Optional&lt;UserView&gt;</span> <span class="fn">findViewByHandle</span><span class="pn">(</span><span class="ty">UserHandle</span> h<span class="pn">)</span> <span class="pn">{</span>
+    <span class="kw">return</span> users<span class="pn">.</span><span class="fn">findByHandle</span><span class="pn">(</span>h<span class="pn">.</span><span class="fn">bytes</span><span class="pn">()</span><span class="pn">)</span>
+        <span class="pn">.</span><span class="fn">map</span><span class="pn">(</span>x <span class="pn">-&gt;</span> <span class="kw">new</span> <span class="ty">UserView</span><span class="pn">(</span>h, x<span class="pn">.</span><span class="fn">username</span><span class="pn">()</span>, x<span class="pn">.</span><span class="fn">displayName</span><span class="pn">())</span><span class="pn">)</span><span class="pn">;</span>
+  <span class="pn">}</span>
+
+  <span class="at">@Override</span>
+  <span class="kw">public</span> <span class="ty">UserHandle</span> <span class="fn">getOrCreateHandle</span><span class="pn">(</span><span class="ty">String</span> u<span class="pn">)</span> <span class="pn">{</span>
+    <span class="kw">return</span> <span class="ty">UserHandle</span><span class="pn">.</span><span class="fn">of</span><span class="pn">(</span>users<span class="pn">.</span><span class="fn">findOrCreate</span><span class="pn">(</span>u<span class="pn">)</span><span class="pn">.</span><span class="fn">handle</span><span class="pn">()</span><span class="pn">)</span><span class="pn">;</span>
+  <span class="pn">}</span>
+<span class="pn">}</span></pre>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== MODULES ============== -->
+    <section id="modules">
+      <div class="container">
+        <div class="section-marker"><span class="num">&sect; 004</span><span>modules &mdash; twelve artifacts</span></div>
+        <div class="module-intro">
+          <h2>Compose <em>only</em> what you need.</h2>
+          <div class="module-key">
+            <span class="req"><i></i>Required</span>
+            <span class="pick"><i></i>Pick one</span>
+            <span class="opt"><i></i>Optional</span>
+          </div>
+        </div>
+
+        <div class="module-groups">
+
+          <div class="module-group">
+            <div class="module-group-head">
+              <span class="count">&sect; 004.A &middot; 2 artifacts</span>
+              <h4>Core</h4>
+              <span class="role req">Required</span>
+            </div>
+            <div class="module-list">
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-core</span>
+                <span class="tag">Always</span>
+                <p>Framework-neutral ceremony engine, all SPIs, sealed-sum result types, and the WebAuthn4J wiring. Every other module depends on this one.</p>
+              </div>
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-jwt</span>
+                <span class="tag">Always</span>
+                <p>HS256 mint &amp; validate via Nimbus JOSE+JWT. Ships the optional <code style="font-family:var(--mono);font-size:12px">RevocationCheck</code> SPI for &ldquo;logout-all&rdquo; semantics.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-group">
+            <div class="module-group-head">
+              <span class="count">&sect; 004.B &middot; 3 artifacts</span>
+              <h4>Adapters</h4>
+              <span class="role pick">Pick one</span>
+            </div>
+            <div class="module-list">
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-spring-boot-starter</span>
+                <span class="tag">Spring 4</span>
+                <p>Auto-configures controllers, JWT filter, and bean defaults for Spring Boot 4 &amp; Spring Security 7.</p>
+              </div>
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-dropwizard</span>
+                <span class="tag">Dropwizard 5</span>
+                <p>A <code style="font-family:var(--mono);font-size:12px">ConfiguredBundle</code> wired via Dagger 2; mounts Jersey resources for <code style="font-family:var(--mono);font-size:12px">/auth/**</code>.</p>
+              </div>
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-micronaut</span>
+                <span class="tag">Micronaut 4</span>
+                <p>A <code style="font-family:var(--mono);font-size:12px">@Factory</code> plus controllers and a plain <code style="font-family:var(--mono);font-size:12px">@Filter</code> JWT validator &mdash; intentionally not Micronaut Security.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-group">
+            <div class="module-group-head">
+              <span class="count">&sect; 004.C &middot; 3 artifacts</span>
+              <h4>Persistence</h4>
+              <span class="role pick">Pick one</span>
+            </div>
+            <div class="module-list">
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-testkit</span>
+                <span class="tag">In-memory</span>
+                <p><code style="font-family:var(--mono);font-size:12px">InMemoryX</code> for every SPI plus a <code style="font-family:var(--mono);font-size:12px">FakeAuthenticator</code> for driving WebAuthn ceremonies from unit tests. Always on the test classpath.</p>
+              </div>
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-persistence-jdbi</span>
+                <span class="tag">Postgres</span>
+                <p>JDBI 3 + Postgres + Flyway. Migrations run automatically. Atomic-claim via conditional <code style="font-family:var(--mono);font-size:12px">UPDATE ... WHERE consumed = FALSE</code>.</p>
+              </div>
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-persistence-dynamodb</span>
+                <span class="tag">DynamoDB</span>
+                <p>AWS SDK v2 Enhanced client, single physical table, schema per item type. TTL attribute honored on challenges and OTPs.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-group">
+            <div class="module-group-head">
+              <span class="count">&sect; 004.D &middot; 3 artifacts</span>
+              <h4>Alternate flows</h4>
+              <span class="role opt">Optional</span>
+            </div>
+            <div class="module-list">
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-backup-codes</span>
+                <span class="tag">Recovery</span>
+                <p>View-once Argon2id-hashed codes. Single-use atomic claim; per-user sliding-window rate limit.</p>
+              </div>
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-magic-link</span>
+                <span class="tag">Email</span>
+                <p>Stateless JWT-on-the-wire magic links. Consumed-JTI tracking via a swappable <code style="font-family:var(--mono);font-size:12px">ConsumedJtiStore</code> SPI.</p>
+              </div>
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-otp</span>
+                <span class="tag">SMS</span>
+                <p>6-digit phone OTP with attempt caps; Argon2id-hashed storage and pepper-resolved at boot.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-group">
+            <div class="module-group-head">
+              <span class="count">&sect; 004.E &middot; 1 artifact</span>
+              <h4>Admin</h4>
+              <span class="role opt">Optional</span>
+            </div>
+            <div class="module-list">
+              <div class="module-card">
+                <span class="module-card-name"><b>com.codeheadsystems:</b>pk-auth-admin-api</span>
+                <span class="tag">/auth/admin/**</span>
+                <p>Framework-neutral admin service: account summary, credential rename / delete (with last-credential guard), backup-code regeneration, email &amp; phone verification.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="module-group">
+            <div class="module-group-head">
+              <span class="count">&sect; 004.F &middot; 1 npm package</span>
+              <h4>Browser SDK</h4>
+              <span class="role opt">Optional</span>
+            </div>
+            <div class="module-list">
+              <div class="module-card">
+                <span class="module-card-name"><b>npm:</b>@pk-auth/passkeys-browser</span>
+                <span class="tag">TypeScript</span>
+                <p>Zero-dependency ceremony + admin clients. ESM and CJS bundles. Handles all <code style="font-family:var(--mono);font-size:12px">ArrayBuffer</code> &harr; <code style="font-family:var(--mono);font-size:12px">base64url</code> wrangling around <code style="font-family:var(--mono);font-size:12px">navigator.credentials</code>.</p>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== WIRE ============== -->
+    <section id="wire">
+      <div class="container">
+        <div class="section-marker"><span class="num">&sect; 005</span><span>wire contract</span></div>
+        <h2>Same JSON. <em>Three adapters.</em></h2>
+        <p class="lede">
+          Every adapter mounts the same paths under <code style="font-family:var(--mono);font-size:14px;background:var(--paper-warm);padding:1px 6px;border-radius:2px;border:1px solid var(--rule-soft);color:var(--ink)">/auth/**</code>
+          and consumes the same JSON shapes. The TypeScript SDK is written against this
+          surface; clients in other languages can target it just as directly.
+        </p>
+
+        <div class="wire-grid">
+          <div class="wire-col">
+            <h4>Ceremony <small>&middot; unauthenticated</small></h4>
+
+            <div class="endpoint">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/auth/passkeys/registration/start</span>
+              <span class="endpoint-note">returns <code style="background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">{challengeId, publicKey}</code> &mdash; WebAuthn <code style="background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">create()</code> options</span>
+            </div>
+            <div class="endpoint">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/auth/passkeys/registration/finish</span>
+              <span class="endpoint-note">persists the credential; returns a <code style="background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">CredentialSummary</code></span>
+            </div>
+            <div class="endpoint">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/auth/passkeys/authentication/start</span>
+              <span class="endpoint-note">returns <code style="background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">{challengeId, publicKey}</code> &mdash; WebAuthn <code style="background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">get()</code> options</span>
+            </div>
+            <div class="endpoint">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/auth/passkeys/authentication/finish</span>
+              <span class="endpoint-note">mints a JWT; returns <code style="background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">{token: "&lt;jwt&gt;"}</code></span>
+            </div>
+          </div>
+
+          <div class="wire-col">
+            <h4>Admin <small>&middot; bearer jwt required</small></h4>
+
+            <div class="endpoint">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/auth/admin/account</span>
+            </div>
+            <div class="endpoint">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/auth/admin/credentials</span>
+            </div>
+            <div class="endpoint">
+              <span class="method patch">PATCH</span>
+              <span class="endpoint-path">/auth/admin/credentials/{id}</span>
+            </div>
+            <div class="endpoint">
+              <span class="method del">DELETE</span>
+              <span class="endpoint-path">/auth/admin/credentials/{id}</span>
+              <span class="endpoint-note">last-credential guard returns <code style="background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">409</code></span>
+            </div>
+            <div class="endpoint">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/auth/admin/backup-codes/regenerate</span>
+            </div>
+            <div class="endpoint">
+              <span class="method get">GET</span>
+              <span class="endpoint-path">/auth/admin/backup-codes/count</span>
+            </div>
+            <div class="endpoint">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/auth/admin/email/{start,complete}-verification</span>
+            </div>
+            <div class="endpoint">
+              <span class="method post">POST</span>
+              <span class="endpoint-path">/auth/admin/phone/{start,complete}-verification</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="wire-note">
+          <strong>Conventions.</strong> Bytes on the wire are <code>base64url</code> with no padding (RFC 4648 &sect;5).
+          Errors return a 4xx with <code>{outcome, error, detail}</code> where <code>outcome</code> and <code>error</code> carry the same machine-readable tag.
+          The <code>rate_limited</code> outcome is paired with a <code>Retry-After</code> response header.
+          The full per-variant table lives in <a href="https://github.com/codeheadsystems/pk-auth/blob/main/DESIGN.md">DESIGN.md &sect; 4</a>.
+        </div>
+      </div>
+    </section>
+
+    <!-- ============== SECURITY ============== -->
+    <section id="security">
+      <div class="container">
+        <div class="section-marker"><span class="num">&sect; 006</span><span>security posture</span></div>
+        <div class="security-intro">
+          <h2>Defaults that <em>refuse</em>, not warn.</h2>
+          <p class="lede">
+            Choices that change the security contract are explicit configuration.
+            Defaults are the strict path: rejection on origin mismatch, rejection on
+            counter regression, single-use challenges with a five-minute ceiling.
+            The full STRIDE pass lives in the threat model.
+          </p>
+        </div>
+
+        <div class="sec-grid">
+          <div class="sec-card">
+            <div class="idx">01 &middot; origin</div>
+            <h4>Strict origin allow-list</h4>
+            <p>Every <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">finish</code> call validates the client-reported origin against the configured allow-list. Mismatches return <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">origin_mismatch</code> &mdash; there is no &ldquo;permit&rdquo; mode.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">02 &middot; clones</div>
+            <h4>Counter regression rejects</h4>
+            <p>The authenticator's signing counter must monotonically increase. Regressions are rejected by default. Sites that primarily expect counter-0 synced passkeys can switch to <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">warn</code> at the cost of weakening clone detection.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">03 &middot; replay</div>
+            <h4>Single-use challenges</h4>
+            <p>Challenges are 32 random bytes, atomically consumed via <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">ChallengeStore.takeOnce</code>. Default TTL is five minutes; <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">finish</code> after expiry returns <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">challenge_expired</code>.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">04 &middot; hashing</div>
+            <h4>Argon2id everywhere</h4>
+            <p>Backup codes and OTPs are stored as Argon2id hashes. Plaintext is returned exactly once at regeneration time. OTP additionally carries a deployment pepper resolved at boot and never logged.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">05 &middot; lockout</div>
+            <h4>Last-credential guard</h4>
+            <p>Deleting the last passkey returns <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">409 Conflict</code>. Backup codes remain the documented recovery path. Encourage users to enroll a second passkey before removing the first.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">06 &middot; pii</div>
+            <h4>No PII ownership</h4>
+            <p>pk-auth never stores names, emails, or display names of its own. The <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">UserLookup</code> SPI is the only channel to user data, and your implementation decides what crosses the boundary.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">07 &middot; flood</div>
+            <h4>Built-in rate limiter</h4>
+            <p>The <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">CeremonyRateLimiter</code> SPI throttles per-IP and per-username; in-memory Caffeine default ships. Swap for a shared store across replicas. WAF / API gateway upstream is still recommended for heavy floods.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">08 &middot; tokens</div>
+            <h4>Stateless JWTs, short TTL</h4>
+            <p>One-hour default TTL. No revocation list by default &mdash; the cost of statelessness. The optional <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">RevocationCheck</code> SPI lets hosts add logout-all or per-user disable backed by a Redis set of revoked JTIs.</p>
+          </div>
+          <div class="sec-card">
+            <div class="idx">09 &middot; audit</div>
+            <h4>Structured logs first</h4>
+            <p>Credential deletion emits <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">pkauth.credential.deleted</code>. Every ceremony logs <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">userHandle</code>, <code style="font-family:var(--mono);font-size:12px;background:var(--paper-warm);padding:1px 4px;border-radius:2px;border:1px solid var(--rule-soft)">credentialId</code>, origin, and counter; ship to an immutable store and alert on regressions.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <h3>pk-auth</h3>
+          <p>
+            A passkey credential layer for the JVM. MIT-licensed.
+            Three adapters, one wire contract, your user table.
+          </p>
+        </div>
+        <div class="footer-col">
+          <h4>Read first</h4>
+          <ul>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/GETTING_STARTED.md">Getting started</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/DESIGN.md">Design</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/docs/operator-guide.md">Operator guide</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/docs/threat-model.md">Threat model</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>References</h4>
+          <ul>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/docs/stability.md">Stability &amp; versioning</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/docs/transactional-semantics.md">Transactional semantics</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/tree/main/docs/adr">ADRs (12)</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/RELEASE.md">Release notes</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Project</h4>
+          <ul>
+            <li><a href="https://github.com/codeheadsystems/pk-auth">Source on GitHub</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/issues">Issues</a></li>
+            <li><a href="https://central.sonatype.com/search?q=g:com.codeheadsystems+a:pk-auth-core">Maven Central</a></li>
+            <li><a href="https://github.com/codeheadsystems/pk-auth/blob/main/CONTRIBUTING.md">Contributing</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bar">
+        <span>&copy; codeheadsystems &middot; MIT licensed</span>
+        <span>JDK 21 &middot; WebAuthn4J &middot; Nimbus JOSE+JWT</span>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
