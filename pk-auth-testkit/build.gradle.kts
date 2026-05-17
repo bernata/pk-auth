@@ -20,6 +20,9 @@ dependencies {
     // AccessTokenStore lives in pk-auth-jwt; in-memory impl + parity scenarios need it on the API
     // surface so downstream test code can drive both pk-auth-core and pk-auth-jwt SPIs.
     api(project(":pk-auth-jwt"))
+    // RefreshTokenRepository SPI + RefreshTokenScenarios live with the testkit so the JDBI and
+    // DynamoDB integration tests can drive the same parity scenarios.
+    api(project(":pk-auth-refresh-tokens"))
     api(libs.bundles.jackson)
     api(libs.webauthn4j.core)
     // AssertJ on the api surface because CeremonyScenarios uses `assertThat`. Downstream

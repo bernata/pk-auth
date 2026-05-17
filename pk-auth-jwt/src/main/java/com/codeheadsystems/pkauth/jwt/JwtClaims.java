@@ -95,6 +95,16 @@ public record JwtClaims(
     return new JwtClaims(userHandle, AuthMethod.MAGIC_LINK, null, amr, null, audience);
   }
 
+  /**
+   * Convenience factory for refresh-derived access tokens (minted as the access leg of a refresh
+   * rotation). Always carries {@link AuthMethod#REFRESH}.
+   *
+   * @since 1.1.0
+   */
+  public static JwtClaims forRefresh(UserHandle userHandle, String audience, List<String> amr) {
+    return new JwtClaims(userHandle, AuthMethod.REFRESH, null, amr, null, audience);
+  }
+
   @Override
   public byte @Nullable [] credentialId() {
     return credentialId == null ? null : credentialId.clone();

@@ -18,20 +18,40 @@ export type {
   StartRegistrationParams,
 } from "./ceremonies";
 export { PkAuthAdminClient } from "./admin";
+export { PkAuthRefreshClient, isRefreshSuccess, isRefreshFailure } from "./refresh";
+export type {
+  RefreshResult,
+  RefreshSuccess,
+  RefreshFailure,
+  RefreshFailureReason,
+} from "./refresh";
 export type * from "./types";
 
 import { PkAuthAdminClient } from "./admin";
 import { PkAuthCeremonyClient } from "./ceremonies";
 import type { CeremonyOptions } from "./ceremonies";
+import { PkAuthRefreshClient, type RefreshResult } from "./refresh";
 import type { ClientOptions } from "./types";
 
-/** Convenience facade: a single object exposing both ceremony and admin clients. */
+/** Convenience facade: a single object exposing ceremony, admin, and refresh clients. */
 export class PkAuthClient {
   readonly ceremonies: PkAuthCeremonyClient;
   readonly admin: PkAuthAdminClient;
+  readonly refreshClient: PkAuthRefreshClient;
 
   constructor(options: ClientOptions, ceremonyOptions: CeremonyOptions = {}) {
     this.ceremonies = new PkAuthCeremonyClient(options, ceremonyOptions);
     this.admin = new PkAuthAdminClient(options);
+    this.refreshClient = new PkAuthRefreshClient(options);
+  }
+
+  /**
+   * Convenience shortcut to {@link PkAuthRefreshClient#refresh}. Returns a typed
+   * {@link RefreshResult} sum — does not throw on 401.
+   *
+   * @since 1.1.0
+   */
+  refresh(refreshToken: string): Promise<RefreshResult> {
+    return this.refreshClient.refresh(refreshToken);
   }
 }

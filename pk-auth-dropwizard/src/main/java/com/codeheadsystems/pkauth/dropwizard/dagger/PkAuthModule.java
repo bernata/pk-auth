@@ -20,6 +20,11 @@ import com.codeheadsystems.pkauth.jwt.TokenTtlPolicy;
 import com.codeheadsystems.pkauth.lifecycle.CredentialRepositoryDeletionListener;
 import com.codeheadsystems.pkauth.lifecycle.UserDeletionListener;
 import com.codeheadsystems.pkauth.lifecycle.UserDeletionService;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenConfig;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenService;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenServiceDeletionListener;
+import com.codeheadsystems.pkauth.refresh.spi.RefreshTokenRepository;
+import com.codeheadsystems.pkauth.refresh.web.RefreshHandler;
 import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
 import com.codeheadsystems.pkauth.spi.ClockProvider;
@@ -31,6 +36,7 @@ import dagger.multibindings.IntoSet;
 import jakarta.inject.Singleton;
 import java.time.Duration;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -203,6 +209,50 @@ public final class PkAuthModule {
   @Singleton
   UserDeletionService provideUserDeletionService(Set<UserDeletionListener> listeners) {
     return new UserDeletionService(listeners);
+  }
+
+  // -- Refresh tokens (only active when PersistenceBindings.refreshTokenRepository != null) ----
+
+  @Provides
+  @Singleton
+  RefreshTokenConfig provideRefreshTokenConfig(PkAuthConfig cfg) {
+    PkAuthConfig.Refresh refresh = cfg.refresh();
+    return (refresh == null ? new PkAuthConfig.Refresh() : refresh).toRefreshTokenConfig();
+  }
+
+  /**
+   * Provides an {@code Optional<RefreshHandler>} threaded through Dagger so the component can
+   * surface a nullable value without forcing every downstream graph to know about refresh tokens.
+   * Empty when {@code PersistenceBindings.refreshTokenRepository()} is null — the bundle then skips
+   * registering the refresh resource.
+   */
+  @Provides
+  @Singleton
+  Optional<RefreshHandler> provideRefreshHandler(
+      RefreshTokenConfig refreshConfig, ClockProvider clockProvider, PkAuthJwtIssuer accessIssuer) {
+    RefreshTokenRepository repo = persistence.refreshTokenRepository();
+    if (repo == null) {
+      return Optional.empty();
+    }
+    RefreshTokenService service = new RefreshTokenService(repo, refreshConfig, clockProvider);
+    return Optional.of(new RefreshHandler(service, accessIssuer));
+  }
+
+  /**
+   * Optional refresh-token deletion listener. When refresh tokens aren't wired, contributes an
+   * empty set to the {@link UserDeletionService}'s listener multibinding — the deletion fan-out
+   * silently skips the refresh branch.
+   */
+  @Provides
+  @dagger.multibindings.ElementsIntoSet
+  Set<UserDeletionListener> provideRefreshDeletionListener(
+      RefreshTokenConfig refreshConfig, ClockProvider clockProvider) {
+    RefreshTokenRepository repo = persistence.refreshTokenRepository();
+    if (repo == null) {
+      return Set.of();
+    }
+    RefreshTokenService service = new RefreshTokenService(repo, refreshConfig, clockProvider);
+    return Set.of(new RefreshTokenServiceDeletionListener(service));
   }
 
   @Provides

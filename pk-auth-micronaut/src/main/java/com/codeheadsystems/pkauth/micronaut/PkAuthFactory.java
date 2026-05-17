@@ -29,6 +29,12 @@ import com.codeheadsystems.pkauth.otp.LoggingSmsSender;
 import com.codeheadsystems.pkauth.otp.OtpPepperResolver;
 import com.codeheadsystems.pkauth.otp.OtpService;
 import com.codeheadsystems.pkauth.otp.SmsSender;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenConfig;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenService;
+import com.codeheadsystems.pkauth.refresh.RefreshTokenServiceDeletionListener;
+import com.codeheadsystems.pkauth.refresh.RefreshTtlPolicy;
+import com.codeheadsystems.pkauth.refresh.spi.RefreshTokenRepository;
+import com.codeheadsystems.pkauth.refresh.web.RefreshHandler;
 import com.codeheadsystems.pkauth.spi.BackupCodeRepository;
 import com.codeheadsystems.pkauth.spi.CeremonyRateLimiter;
 import com.codeheadsystems.pkauth.spi.ChallengeStore;
@@ -183,6 +189,50 @@ public class PkAuthFactory {
   @Singleton
   UserDeletionService userDeletionService(Collection<UserDeletionListener> listeners) {
     return new UserDeletionService(new ArrayList<>(listeners));
+  }
+
+  // -- Refresh tokens (only active when a RefreshTokenRepository bean is wired) ----------------
+
+  @Singleton
+  RefreshTokenConfig refreshTokenConfig(PkAuthConfiguration config) {
+    PkAuthConfiguration.Refresh refresh = config.getRefresh();
+    Duration defaultTtl =
+        refresh.getDefaultTtl() == null
+            ? RefreshTokenConfig.DEFAULT_REFRESH_TTL
+            : refresh.getDefaultTtl();
+    Map<String, Duration> overrides = refresh.getTtlsByAudience();
+    RefreshTtlPolicy policy =
+        overrides == null || overrides.isEmpty()
+            ? RefreshTtlPolicy.single(defaultTtl)
+            : RefreshTtlPolicy.fixed(defaultTtl, overrides);
+    Duration retention =
+        refresh.getCleanupRetention() == null
+            ? RefreshTokenConfig.DEFAULT_CLEANUP_RETENTION
+            : refresh.getCleanupRetention();
+    return new RefreshTokenConfig(
+        policy,
+        RefreshTokenConfig.DEFAULT_SECRET_BYTES,
+        RefreshTokenConfig.DEFAULT_REFRESH_ID_BYTES,
+        retention);
+  }
+
+  @Singleton
+  @Requires(beans = RefreshTokenRepository.class)
+  RefreshTokenService refreshTokenService(
+      RefreshTokenRepository repository, RefreshTokenConfig config, ClockProvider clockProvider) {
+    return new RefreshTokenService(repository, config, clockProvider);
+  }
+
+  @Singleton
+  @Requires(beans = RefreshTokenService.class)
+  UserDeletionListener refreshTokenServiceDeletionListener(RefreshTokenService service) {
+    return new RefreshTokenServiceDeletionListener(service);
+  }
+
+  @Singleton
+  @Requires(beans = RefreshTokenService.class)
+  RefreshHandler refreshHandler(RefreshTokenService service, PkAuthJwtIssuer issuer) {
+    return new RefreshHandler(service, issuer);
   }
 
   /**

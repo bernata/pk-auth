@@ -55,8 +55,40 @@ variables (`PKAUTH_JWT_SECRET`, `PKAUTH_OTP_PEPPER`). The adapters bind both.
   adapter does not create it.
 - TTL attribute `expiresAt` is honored on `Challenge` / `OneTimePasscode` /
   `MagicLink` items — enable it on the table.
+- 1.1.0 adds `access_tokens` and `refresh_tokens` items on the same table (ADR
+  0015, 0013). Both set the DynamoDB-native `ttl` attribute to the row's
+  `expiresAt` epoch second so background pruning is automatic — TTL must be
+  enabled on the table for this to work.
 - Capacity-mode: on-demand is recommended for steady reads but bursty registration;
   provisioned only makes sense once you have a stable signing/verification baseline.
+
+### Token-table cleanup (1.1.0)
+
+The new stateful access-token store (ADR 0015) and refresh-token store
+(ADR 0013) keep used/revoked rows around for a configurable retention
+window so operators have a forensic trail. Schedule a daily cleanup job:
+
+**JDBI / Postgres** — call the SPI methods or run the canonical SQL:
+
+```sql
+-- Access tokens: drop rows whose exp has passed.
+DELETE FROM access_tokens WHERE expires_at < NOW() - INTERVAL '1 day';
+
+-- Refresh tokens: keep used/revoked rows for the configured retention
+-- (default 30 days) so a forensic look-back survives.
+DELETE FROM refresh_tokens
+ WHERE expires_at < NOW() - INTERVAL '30 days'
+   AND (used_at IS NOT NULL OR revoked_at IS NOT NULL);
+```
+
+**DynamoDB** — native TTL handles routine expiry asynchronously. If you
+need synchronous pruning (operator action / test), call
+`DynamoDbAccessTokenStore.deleteExpiredBefore(Instant)` and
+`DynamoDbRefreshTokenRepository.deleteExpiredBefore(Instant)` —
+both walk the primary items and remove anything past the cutoff.
+
+A daily cron is sufficient for both tables; neither row count grows
+unboundedly because TTL is set at issue time.
 
 ## 4. Observability
 

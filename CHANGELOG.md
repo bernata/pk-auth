@@ -30,6 +30,39 @@ tags.
   calls `exists` on every validate. The default `AccessTokenStore.noop()` keeps
   stateless behaviour; hosts wire a real store (JDBI, DynamoDB) to opt in. See
   ADR 0015.
+- `pk-auth-refresh-tokens` (new module): `RefreshTokenService` with `issue`,
+  `rotate`, `revokeFamily`, `revokeAllForUser`, `listForUser`. Sealed
+  `RotateResult` (Success / Replayed / Expired / Unknown / Revoked). Wire
+  format `{refreshId}.{secret}` (both halves base64url); SHA-256
+  hash-at-rest; hash-before-mark-used invariant. Family-based replay
+  defense — re-presenting a used token scorches the entire family. See
+  ADR 0013.
+- `RefreshTokenRepository` SPI with the load-bearing `rotateAtomically`
+  primitive: parent mark-used and successor insert commit atomically on
+  every backend (JDBI transaction, DynamoDB `TransactWriteItems`,
+  in-memory `ConcurrentHashMap.compute`).
+- `pk-auth-persistence-jdbi`: `JdbiRefreshTokenRepository` + Flyway V9
+  migration. PkAuthJdbiSchema.CURRENT_SCHEMA_VERSION → "9".
+- `pk-auth-persistence-dynamodb`: `DynamoDbRefreshTokenRepository` with
+  three-item layout (primary jti / user-index / family-index) and
+  DynamoDB-native TTL.
+- `pk-auth-testkit`: `InMemoryRefreshTokenRepository` +
+  `RefreshTokenScenarios` parity test class — nine scenarios including
+  the non-negotiable `concurrentRotationExactlyOneSucceedsFamilyRevoked`
+  race test, driven by 8 threads + `CountDownLatch`, passing against
+  in-memory, real Postgres, and DynamoDB Local.
+- `RefreshHandler` (framework-neutral HTTP composer) + `PkAuthRefreshController`
+  / `PkAuthRefreshResource` in Spring, Dropwizard, Micronaut adapters.
+  `POST /auth/refresh` returns the new refresh + access JWT on success,
+  401 with a typed `detail` on any failure.
+- `AuthMethod.REFRESH` for access tokens minted from a refresh rotation.
+- `JwtClaims.forRefresh(userHandle, audience, amr)` factory.
+- Browser SDK: `PkAuthClient.refresh(wireToken)` returning a typed
+  `RefreshResult` sum (`RefreshSuccess | RefreshFailure`) — never throws
+  on 401.
+- `RefreshTokenServiceDeletionListener` plugged into `UserDeletionService`
+  so user-delete revokes every active refresh family alongside access
+  tokens / credentials / backup codes / OTPs.
 - `pk-auth-persistence-jdbi`: `JdbiAccessTokenStore` backed by the new
   `access_tokens` table (Flyway V8).
 - `pk-auth-persistence-dynamodb`: `DynamoDbAccessTokenStore` using two items

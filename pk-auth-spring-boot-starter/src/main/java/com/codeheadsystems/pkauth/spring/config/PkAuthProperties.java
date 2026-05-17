@@ -26,12 +26,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties("pkauth")
 public record PkAuthProperties(
-    RelyingParty relyingParty, Jwt jwt, Ceremony ceremony, Otp otp, boolean devMode) {
+    RelyingParty relyingParty,
+    Jwt jwt,
+    Ceremony ceremony,
+    Otp otp,
+    Refresh refresh,
+    boolean devMode) {
 
   /**
-   * Normalises the optional blocks ({@code ceremony}, {@code otp}) to their defaults so callers
-   * don't have to null-check. Required blocks ({@code relyingParty}, {@code jwt}) are left as the
-   * framework bound them — if absent, downstream wiring fails fast with a clear message.
+   * Normalises the optional blocks ({@code ceremony}, {@code otp}, {@code refresh}) to their
+   * defaults so callers don't have to null-check. Required blocks ({@code relyingParty}, {@code
+   * jwt}) are left as the framework bound them — if absent, downstream wiring fails fast with a
+   * clear message.
    */
   public PkAuthProperties {
     if (ceremony == null) {
@@ -39,6 +45,9 @@ public record PkAuthProperties(
     }
     if (otp == null) {
       otp = Otp.defaults();
+    }
+    if (refresh == null) {
+      refresh = Refresh.defaults();
     }
   }
 
@@ -101,6 +110,32 @@ public record PkAuthProperties(
 
     public static Otp defaults() {
       return new Otp(null);
+    }
+  }
+
+  /**
+   * Refresh-token service tunables. Only active when a {@code RefreshTokenRepository} bean is
+   * present in the application context (the JDBI and DynamoDB persistence modules each provide
+   * one).
+   *
+   * @param defaultTtl how long an issued refresh token lasts when its audience isn't listed in
+   *     {@code ttlsByAudience}. Null defaults to {@code 14d}.
+   * @param ttlsByAudience per-audience refresh TTL overrides (e.g. {@code web=PT336H,
+   *     cli=PT2160H}). Empty/null means every audience uses {@code defaultTtl}.
+   * @param cleanupRetention how long after a row is used or revoked to keep it for forensic
+   *     visibility. Null defaults to {@code 30d}.
+   * @param path HTTP path the {@code PkAuthRefreshController} mounts at; null defaults to {@code
+   *     /auth/refresh}.
+   * @since 1.1.0
+   */
+  public record Refresh(
+      @Nullable Duration defaultTtl,
+      @Nullable Map<String, Duration> ttlsByAudience,
+      @Nullable Duration cleanupRetention,
+      @Nullable String path) {
+
+    public static Refresh defaults() {
+      return new Refresh(null, null, null, null);
     }
   }
 }

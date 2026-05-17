@@ -25,6 +25,7 @@ dependencies {
     api(project(":pk-auth-backup-codes"))
     api(project(":pk-auth-magic-link"))
     api(project(":pk-auth-otp"))
+    api(project(":pk-auth-refresh-tokens"))
     api(project(":pk-auth-admin-api"))
     api(libs.micronaut.context)
     api(libs.micronaut.http)

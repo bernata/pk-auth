@@ -8,7 +8,16 @@ package com.codeheadsystems.pkauth.jwt;
 public enum AuthMethod {
   PASSKEY("passkey"),
   BACKUP_CODE("backup-code"),
-  MAGIC_LINK("magic-link");
+  MAGIC_LINK("magic-link"),
+
+  /**
+   * Token minted as the access leg of a refresh-token rotation. The original auth method that
+   * established the session is not preserved on the new JWT; hosts that care about provenance
+   * should look it up via the refresh-token row.
+   *
+   * @since 1.1.0
+   */
+  REFRESH("refresh");
 
   private final String wireValue;
 

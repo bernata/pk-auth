@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.dropwizard.config;
 
+import com.codeheadsystems.pkauth.refresh.RefreshTokenConfig;
+import com.codeheadsystems.pkauth.refresh.RefreshTtlPolicy;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -37,7 +39,8 @@ public record PkAuthConfig(
     Ceremony ceremony,
     @Nullable Otp otp,
     @Nullable MagicLink magicLink,
-    @Nullable BackupCode backupCode) {
+    @Nullable BackupCode backupCode,
+    @Nullable Refresh refresh) {
 
   public PkAuthConfig {
     Objects.requireNonNull(relyingParty, "relyingParty");
@@ -47,12 +50,28 @@ public record PkAuthConfig(
 
   /**
    * Backwards-compatible four-arg constructor for hosts that do not configure alt-flow services.
-   * Equivalent to {@code new PkAuthConfig(relyingParty, jwt, ceremony, null, null, null)}.
+   * Equivalent to {@code new PkAuthConfig(relyingParty, jwt, ceremony, null, null, null, null)}.
    *
    * @since 0.9.1
    */
   public PkAuthConfig(RelyingParty relyingParty, Jwt jwt, Ceremony ceremony) {
-    this(relyingParty, jwt, ceremony, null, null, null);
+    this(relyingParty, jwt, ceremony, null, null, null, null);
+  }
+
+  /**
+   * Six-arg constructor preserved for callers that pre-date the refresh-token block. Equivalent to
+   * passing {@code null} for {@code refresh}.
+   *
+   * @since 0.9.1
+   */
+  public PkAuthConfig(
+      RelyingParty relyingParty,
+      Jwt jwt,
+      Ceremony ceremony,
+      @Nullable Otp otp,
+      @Nullable MagicLink magicLink,
+      @Nullable BackupCode backupCode) {
+    this(relyingParty, jwt, ceremony, otp, magicLink, backupCode, null);
   }
 
   /**
@@ -191,4 +210,46 @@ public record PkAuthConfig(
    * @since 0.9.1
    */
   public record BackupCode() {}
+
+  /**
+   * Refresh-token tunables. Only consulted when the host wires a {@link
+   * com.codeheadsystems.pkauth.refresh.spi.RefreshTokenRepository} via {@link
+   * com.codeheadsystems.pkauth.dropwizard.dagger.PersistenceBindings.Builder#refreshTokenRepository}.
+   *
+   * @param defaultTtl how long a refresh token lasts when its audience isn't in {@code
+   *     ttlsByAudience}; null defaults to {@link RefreshTokenConfig#DEFAULT_REFRESH_TTL}.
+   * @param ttlsByAudience per-audience refresh TTL overrides.
+   * @param cleanupRetention forensic-retention window; null defaults to {@link
+   *     RefreshTokenConfig#DEFAULT_CLEANUP_RETENTION}.
+   * @since 1.1.0
+   */
+  public record Refresh(
+      @Nullable Duration defaultTtl,
+      @Nullable Map<String, Duration> ttlsByAudience,
+      @Nullable Duration cleanupRetention) {
+
+    /** Default block: every value null (effective defaults from {@link RefreshTokenConfig}). */
+    public Refresh() {
+      this(null, null, null);
+    }
+
+    /** Builds a {@link RefreshTokenConfig} from this block. */
+    public RefreshTokenConfig toRefreshTokenConfig() {
+      Duration ttl = defaultTtl == null ? RefreshTokenConfig.DEFAULT_REFRESH_TTL : defaultTtl;
+      Map<String, Duration> overrides = ttlsByAudience;
+      RefreshTtlPolicy policy =
+          overrides == null || overrides.isEmpty()
+              ? RefreshTtlPolicy.single(ttl)
+              : RefreshTtlPolicy.fixed(ttl, overrides);
+      Duration retention =
+          cleanupRetention == null
+              ? RefreshTokenConfig.DEFAULT_CLEANUP_RETENTION
+              : cleanupRetention;
+      return new RefreshTokenConfig(
+          policy,
+          RefreshTokenConfig.DEFAULT_SECRET_BYTES,
+          RefreshTokenConfig.DEFAULT_REFRESH_ID_BYTES,
+          retention);
+    }
+  }
 }

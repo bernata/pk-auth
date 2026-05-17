@@ -7,14 +7,17 @@ import com.codeheadsystems.pkauth.json.PkAuthObjectMappers;
 import com.codeheadsystems.pkauth.jwt.CeremonyOrchestrator;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtValidator;
+import com.codeheadsystems.pkauth.refresh.web.RefreshHandler;
 import com.codeheadsystems.pkauth.spi.CredentialRepository;
 import com.codeheadsystems.pkauth.spring.security.PkAuthJwtAuthenticationFilter;
 import com.codeheadsystems.pkauth.spring.web.PkAuthCeremonyController;
 import com.codeheadsystems.pkauth.spring.web.PkAuthExceptionHandler;
+import com.codeheadsystems.pkauth.spring.web.PkAuthRefreshController;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
@@ -91,6 +94,10 @@ public class PkAuthWebAutoConfiguration {
                 authz
                     .requestMatchers("/auth/passkeys/**")
                     .permitAll()
+                    // /auth/refresh carries its own credential (the refresh token) — the JWT
+                    // filter must not reject it for missing bearer auth.
+                    .requestMatchers("/auth/refresh")
+                    .permitAll()
                     .requestMatchers("/auth/admin/email/complete-verification")
                     .permitAll()
                     .requestMatchers("/auth/admin/**")
@@ -123,6 +130,19 @@ public class PkAuthWebAutoConfiguration {
   @ConditionalOnMissingBean
   public PkAuthCeremonyController pkAuthCeremonyController(CeremonyOrchestrator orchestrator) {
     return new PkAuthCeremonyController(orchestrator);
+  }
+
+  /**
+   * Refresh controller — only mounted when a {@link RefreshHandler} is present (which itself
+   * requires a {@code RefreshTokenRepository} bean wired by the host).
+   *
+   * @since 1.1.0
+   */
+  @Bean
+  @ConditionalOnMissingBean
+  @ConditionalOnBean(RefreshHandler.class)
+  public PkAuthRefreshController pkAuthRefreshController(RefreshHandler handler) {
+    return new PkAuthRefreshController(handler);
   }
 
   /**

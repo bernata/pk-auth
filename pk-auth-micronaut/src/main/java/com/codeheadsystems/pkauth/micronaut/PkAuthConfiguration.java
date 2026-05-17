@@ -26,6 +26,8 @@ public final class PkAuthConfiguration {
   private Otp otp = new Otp();
   private boolean devMode;
 
+  private Refresh refresh = new Refresh();
+
   public RelyingParty getRelyingParty() {
     return relyingParty;
   }
@@ -56,6 +58,20 @@ public final class PkAuthConfiguration {
 
   public void setOtp(Otp v) {
     this.otp = v;
+  }
+
+  /**
+   * Refresh-token tunables. Only consulted when a {@code RefreshTokenRepository} bean is bound in
+   * the host context.
+   *
+   * @since 1.1.0
+   */
+  public Refresh getRefresh() {
+    return refresh;
+  }
+
+  public void setRefresh(Refresh refresh) {
+    this.refresh = refresh;
   }
 
   /**
@@ -209,6 +225,45 @@ public final class PkAuthConfiguration {
 
     public void setPepper(@Nullable String pepper) {
       this.pepper = pepper;
+    }
+  }
+
+  /**
+   * Refresh-token block. {@code defaultTtl} and {@code ttlsByAudience} feed the {@link
+   * com.codeheadsystems.pkauth.refresh.RefreshTtlPolicy}; {@code cleanupRetention} sets the
+   * forensic retention window. Null fields fall through to {@link
+   * com.codeheadsystems.pkauth.refresh.RefreshTokenConfig#defaults()}.
+   *
+   * @since 1.1.0
+   */
+  @ConfigurationProperties("refresh")
+  public static final class Refresh {
+    private @Nullable Duration defaultTtl;
+    private @Nullable Map<String, Duration> ttlsByAudience;
+    private @Nullable Duration cleanupRetention;
+
+    public @Nullable Duration getDefaultTtl() {
+      return defaultTtl;
+    }
+
+    public void setDefaultTtl(@Nullable Duration defaultTtl) {
+      this.defaultTtl = defaultTtl;
+    }
+
+    public @Nullable Map<String, Duration> getTtlsByAudience() {
+      return ttlsByAudience;
+    }
+
+    public void setTtlsByAudience(@Nullable Map<String, Duration> ttlsByAudience) {
+      this.ttlsByAudience = ttlsByAudience;
+    }
+
+    public @Nullable Duration getCleanupRetention() {
+      return cleanupRetention;
+    }
+
+    public void setCleanupRetention(@Nullable Duration cleanupRetention) {
+      this.cleanupRetention = cleanupRetention;
     }
   }
 }

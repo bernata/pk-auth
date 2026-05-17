@@ -59,6 +59,7 @@ public final class PostgresFixture {
         h ->
             h.execute(
                 "TRUNCATE TABLE credentials, challenges, users, backup_codes, otp_codes,"
-                    + " pkauth_audit_events, access_tokens RESTART IDENTITY CASCADE"));
+                    + " pkauth_audit_events, access_tokens, refresh_tokens"
+                    + " RESTART IDENTITY CASCADE"));
   }
 }
