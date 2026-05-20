@@ -101,7 +101,7 @@ public final class DynamoDbAccessTokenStore implements AccessTokenStore {
   }
 
   @Override
-  public boolean delete(String jti) {
+  public boolean delete(UserHandle userHandle, String jti) {
     if (jti == null) {
       return false;
     }
@@ -114,18 +114,22 @@ public final class DynamoDbAccessTokenStore implements AccessTokenStore {
           if (primary == null) {
             return false;
           }
+          // Defense-in-depth ownership check — silent no-op on mismatch so callers can't probe
+          // for jti existence across users.
+          String ownerB64u = Base64Url.encode(userHandle.value());
+          if (!ownerB64u.equals(primary.getUserHandleB64u())) {
+            return false;
+          }
           // Delete primary first — the load-bearing row for validation.
           table.deleteItem(
               Key.builder().partitionValue("AT#" + jti).sortValue("AT#" + jti).build());
           // Best-effort: delete the user-index pointer too. If this fails, native TTL or a
           // later deleteExpiredBefore will eventually clear it.
-          if (primary.getUserHandleB64u() != null) {
-            table.deleteItem(
-                Key.builder()
-                    .partitionValue("USER#" + primary.getUserHandleB64u())
-                    .sortValue("AT#" + jti)
-                    .build());
-          }
+          table.deleteItem(
+              Key.builder()
+                  .partitionValue("USER#" + primary.getUserHandleB64u())
+                  .sortValue("AT#" + jti)
+                  .build());
           return true;
         });
   }

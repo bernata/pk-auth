@@ -28,7 +28,7 @@ class AccessTokenStoreIntegrationTest {
   void noopStoreAcceptsEveryJtiAndPersistsNothing() {
     AccessTokenStore store = AccessTokenStore.noop();
     assertThat(store.exists("anything")).isTrue();
-    assertThat(store.delete("anything")).isFalse();
+    assertThat(store.delete(UserHandle.of(new byte[] {1}), "anything")).isFalse();
     assertThat(store.deleteAllForUser(UserHandle.of(new byte[] {1}))).isZero();
     assertThat(store.deleteExpiredBefore(NOW)).isZero();
     // record is a true no-op — accepts any inputs without throwing.
@@ -142,7 +142,11 @@ class AccessTokenStoreIntegrationTest {
     }
 
     @Override
-    public boolean delete(String jti) {
+    public boolean delete(UserHandle userHandle, String jti) {
+      Row row = recorded.get(jti);
+      if (row == null || !row.userHandle.equals(userHandle)) {
+        return false;
+      }
       return recorded.remove(jti) != null;
     }
 
@@ -181,7 +185,7 @@ class AccessTokenStoreIntegrationTest {
     }
 
     @Override
-    public boolean delete(String jti) {
+    public boolean delete(UserHandle userHandle, String jti) {
       return false;
     }
 

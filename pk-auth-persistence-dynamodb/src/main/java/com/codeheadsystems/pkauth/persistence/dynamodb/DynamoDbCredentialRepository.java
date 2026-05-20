@@ -150,7 +150,7 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
   }
 
   @Override
-  public void updateLabel(CredentialId credentialId, String label) {
+  public void updateLabel(UserHandle userHandle, CredentialId credentialId, String label) {
     wrap(
         "credentials.updateLabel",
         () -> {
@@ -162,6 +162,12 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
               return null;
             }
             CredentialItem item = existing.get();
+            // Defense-in-depth: refuse to mutate a credential whose owner doesn't match the
+            // caller. Silent no-op so behaviour mirrors the no-op of "row not found" (callers
+            // already verified existence via findByCredentialId at the service layer).
+            if (!Base64Url.encode(userHandle.value()).equals(item.getUserHandle())) {
+              return null;
+            }
             item.setLabel(label);
             try {
               table.updateItem(
@@ -176,18 +182,19 @@ public final class DynamoDbCredentialRepository implements CredentialRepository 
   }
 
   @Override
-  public void delete(CredentialId credentialId) {
+  public void delete(UserHandle userHandle, CredentialId credentialId) {
     wrap(
         "credentials.delete",
         () -> {
           lookupItem(credentialId)
               .ifPresent(
-                  item ->
-                      table.deleteItem(
-                          Key.builder()
-                              .partitionValue(item.getPk())
-                              .sortValue(item.getSk())
-                              .build()));
+                  item -> {
+                    if (!Base64Url.encode(userHandle.value()).equals(item.getUserHandle())) {
+                      return; // defense-in-depth ownership mismatch
+                    }
+                    table.deleteItem(
+                        Key.builder().partitionValue(item.getPk()).sortValue(item.getSk()).build());
+                  });
           return null;
         });
   }

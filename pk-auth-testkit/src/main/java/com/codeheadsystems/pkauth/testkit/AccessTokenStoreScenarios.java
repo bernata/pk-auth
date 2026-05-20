@@ -33,10 +33,19 @@ public final class AccessTokenStoreScenarios {
     UserHandle user = UserHandle.of(new byte[] {1, 2, 3});
     store.record("jti-A", user, "web", Optional.empty(), NOW, NOW.plusSeconds(900));
     assertThat(store.exists("jti-A")).isTrue();
-    assertThat(store.delete("jti-A")).isTrue();
+    assertThat(store.delete(user, "jti-A")).isTrue();
     assertThat(store.exists("jti-A")).isFalse();
     // delete is idempotent
-    assertThat(store.delete("jti-A")).isFalse();
+    assertThat(store.delete(user, "jti-A")).isFalse();
+  }
+
+  /** Ownership mismatch is a silent no-op — caller can't probe for jti existence across users. */
+  public void deleteRejectsForeignOwner() {
+    UserHandle alice = UserHandle.of(new byte[] {1});
+    UserHandle bob = UserHandle.of(new byte[] {2});
+    store.record("alice-jti", alice, "web", Optional.empty(), NOW, NOW.plusSeconds(900));
+    assertThat(store.delete(bob, "alice-jti")).isFalse();
+    assertThat(store.exists("alice-jti")).isTrue();
   }
 
   /** Unknown jti always returns false from exists. */

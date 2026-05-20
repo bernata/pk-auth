@@ -72,7 +72,7 @@ public class PkAuthAdminController {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
     CredentialId id = CredentialId.fromB64Url(credentialId);
-    return map(adminService.renameCredential(actor, actor, id, body.label()));
+    return map(adminService.renameCredential(actor, actor, id, body == null ? "" : body.label()));
   }
 
   /** Deletes the credential identified by its base64url-encoded id. */
@@ -106,7 +106,7 @@ public class PkAuthAdminController {
       HttpRequest<?> request, @Body StartEmailVerification body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    return map(adminService.startEmailVerification(actor, actor, body.email()));
+    return map(adminService.startEmailVerification(actor, actor, body == null ? "" : body.email()));
   }
 
   /** Unauthenticated. */
@@ -114,7 +114,8 @@ public class PkAuthAdminController {
   public HttpResponse<?> finishEmailVerification(@Body FinishEmailVerification body) {
     return toMicronaut(
         AdminResponseMapper.toResponse(
-            adminService.finishEmailVerification(body.token()), EmailVerificationResult::new));
+            adminService.finishEmailVerification(body == null ? "" : body.token()),
+            EmailVerificationResult::new));
   }
 
   @Post("/phone/start-verification")
@@ -122,7 +123,7 @@ public class PkAuthAdminController {
       HttpRequest<?> request, @Body StartPhoneVerification body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    return map(adminService.startPhoneVerification(actor, actor, body.phone()));
+    return map(adminService.startPhoneVerification(actor, actor, body == null ? "" : body.phone()));
   }
 
   @Post("/phone/complete-verification")
@@ -130,7 +131,9 @@ public class PkAuthAdminController {
       HttpRequest<?> request, @Body FinishPhoneVerification body) {
     UserHandle actor = PkAuthJwtAuthenticationFilter.attachedUserHandle(request);
     if (actor == null) return HttpResponse.status(HttpStatus.UNAUTHORIZED);
-    return map(adminService.finishPhoneVerification(actor, actor, body.phone(), body.code()));
+    return map(
+        adminService.finishPhoneVerification(
+            actor, actor, body == null ? "" : body.phone(), body == null ? "" : body.code()));
   }
 
   /**

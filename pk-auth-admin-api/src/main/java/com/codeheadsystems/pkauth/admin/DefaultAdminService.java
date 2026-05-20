@@ -106,7 +106,7 @@ public final class DefaultAdminService implements AdminService {
     if (cred.isEmpty() || !cred.get().userHandle().equals(target)) {
       return new AdminResult.NotFound<>();
     }
-    credentialRepository.updateLabel(credentialId, newLabel);
+    credentialRepository.updateLabel(target, credentialId, newLabel);
     CredentialRecord updated = credentialRepository.findByCredentialId(credentialId).orElseThrow();
     return new AdminResult.Success<>(CredentialSummary.of(updated));
   }
@@ -127,7 +127,7 @@ public final class DefaultAdminService implements AdminService {
             "Cannot delete the last credential while no backup codes remain.");
       }
     }
-    credentialRepository.delete(credentialId);
+    credentialRepository.delete(target, credentialId);
     // Structured deletion event — replaces the per-implementation audit-table writes the
     // soft-delete path used to emit. Hosts capture this through their normal log pipeline.
     LOG.info(

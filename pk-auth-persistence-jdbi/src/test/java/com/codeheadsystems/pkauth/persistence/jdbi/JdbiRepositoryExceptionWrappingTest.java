@@ -71,9 +71,9 @@ class JdbiRepositoryExceptionWrappingTest {
                 repo.updateSignCount(
                     CredentialId.of(new byte[] {1}), 5L, Instant.parse("2026-05-15T00:00:00Z")))
         .isInstanceOf(PkAuthPersistenceException.class);
-    assertThatThrownBy(() -> repo.updateLabel(CredentialId.of(new byte[] {1}), "x"))
+    assertThatThrownBy(() -> repo.updateLabel(user, CredentialId.of(new byte[] {1}), "x"))
         .isInstanceOf(PkAuthPersistenceException.class);
-    assertThatThrownBy(() -> repo.delete(CredentialId.of(new byte[] {1})))
+    assertThatThrownBy(() -> repo.delete(user, CredentialId.of(new byte[] {1})))
         .isInstanceOf(PkAuthPersistenceException.class);
   }
 

@@ -23,11 +23,19 @@ public interface CredentialRepository {
 
   void updateSignCount(CredentialId credentialId, long newCount, Instant lastUsedAt);
 
-  void updateLabel(CredentialId credentialId, String label);
+  /**
+   * Renames the credential identified by {@code credentialId}, but only if it is owned by {@code
+   * userHandle}. Implementations must include {@code user_handle} in the predicate so that a forged
+   * or guessed credential id cannot be used to rename another user's credential — pure
+   * defense-in-depth on top of the service-layer ownership check. A row mismatch is a silent no-op
+   * (no exception); the caller has already established existence via {@code findByCredentialId}.
+   */
+  void updateLabel(UserHandle userHandle, CredentialId credentialId, String label);
 
   /**
-   * Hard-deletes the credential row. Implementations must remove the row outright; soft-delete
-   * (e.g. a {@code revoked_at} marker) is no longer permitted on this SPI.
+   * Hard-deletes the credential row, but only if it is owned by {@code userHandle}. Implementations
+   * must include {@code user_handle} in the predicate (defense in depth — see {@link
+   * #updateLabel}). Soft-delete (e.g. a {@code revoked_at} marker) is not permitted on this SPI.
    *
    * <p>Audit history for credential deletions is the responsibility of the host's structured log
    * pipeline. pk-auth's {@code DefaultAdminService.deleteCredential} emits a {@code
@@ -35,7 +43,7 @@ public interface CredentialRepository {
    * handle) around every call to this method; consume that signal rather than persisting deletion
    * tombstones inside the credentials table.
    */
-  void delete(CredentialId credentialId);
+  void delete(UserHandle userHandle, CredentialId credentialId);
 
   /**
    * Hard-deletes every credential owned by the supplied user. Called by {@link

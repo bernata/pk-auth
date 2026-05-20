@@ -128,10 +128,10 @@ class UserDeletionServiceTest {
     public void updateSignCount(CredentialId credentialId, long newCount, Instant lastUsedAt) {}
 
     @Override
-    public void updateLabel(CredentialId credentialId, String label) {}
+    public void updateLabel(UserHandle userHandle, CredentialId credentialId, String label) {}
 
     @Override
-    public void delete(CredentialId credentialId) {}
+    public void delete(UserHandle userHandle, CredentialId credentialId) {}
 
     @Override
     public int deleteByUserHandle(UserHandle userHandle) {

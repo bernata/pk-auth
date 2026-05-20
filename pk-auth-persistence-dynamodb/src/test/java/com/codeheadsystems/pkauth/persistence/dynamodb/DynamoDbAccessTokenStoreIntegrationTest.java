@@ -51,4 +51,9 @@ class DynamoDbAccessTokenStoreIntegrationTest {
   void recordIsIdempotent() {
     new AccessTokenStoreScenarios(store).recordIsIdempotent();
   }
+
+  @Test
+  void deleteRejectsForeignOwner() {
+    new AccessTokenStoreScenarios(store).deleteRejectsForeignOwner();
+  }
 }

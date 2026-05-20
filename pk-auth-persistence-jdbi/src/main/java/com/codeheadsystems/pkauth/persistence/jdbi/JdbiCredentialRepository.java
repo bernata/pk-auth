@@ -31,10 +31,10 @@ import org.jdbi.v3.core.statement.Update;
 /**
  * {@link CredentialRepository} backed by the Phase 5 {@code credentials} table.
  *
- * <p>{@link #delete(CredentialId)} is a hard delete (since V7): the row is removed outright. Audit
- * history is the responsibility of the service layer's structured log pipeline ({@code
- * pkauth.credential.deleted} event emitted by {@code DefaultAdminService}); this repository no
- * longer writes to {@code pkauth_audit_events} for credential deletions.
+ * <p>{@link #delete(UserHandle, CredentialId)} is a hard delete (since V7): the row is removed
+ * outright. Audit history is the responsibility of the service layer's structured log pipeline
+ * ({@code pkauth.credential.deleted} event emitted by {@code DefaultAdminService}); this repository
+ * no longer writes to {@code pkauth_audit_events} for credential deletions.
  *
  * @since 0.9.1
  */
@@ -149,15 +149,18 @@ public final class JdbiCredentialRepository implements CredentialRepository {
   }
 
   @Override
-  public void updateLabel(CredentialId credentialId, String label) {
+  public void updateLabel(UserHandle userHandle, CredentialId credentialId, String label) {
     wrap(
         "credentials.updateLabel",
         () -> {
           jdbi.useHandle(
               h ->
-                  h.createUpdate("UPDATE credentials SET label = :label WHERE credential_id = :cid")
+                  h.createUpdate(
+                          "UPDATE credentials SET label = :label"
+                              + " WHERE credential_id = :cid AND user_handle = :uh")
                       .bind("label", label)
                       .bind("cid", credentialId.value())
+                      .bind("uh", userHandle.value())
                       .execute());
           return null;
         });
@@ -169,15 +172,17 @@ public final class JdbiCredentialRepository implements CredentialRepository {
    * event around this call.
    */
   @Override
-  public void delete(CredentialId credentialId) {
+  public void delete(UserHandle userHandle, CredentialId credentialId) {
     byte[] credIdBytes = credentialId.value();
     wrap(
         "credentials.delete",
         () -> {
           jdbi.useHandle(
               h ->
-                  h.createUpdate("DELETE FROM credentials WHERE credential_id = :cid")
+                  h.createUpdate(
+                          "DELETE FROM credentials WHERE credential_id = :cid AND user_handle = :uh")
                       .bind("cid", credIdBytes)
+                      .bind("uh", userHandle.value())
                       .execute());
           return null;
         });

@@ -89,7 +89,7 @@ public final class JdbiAccessTokenStore implements AccessTokenStore {
   }
 
   @Override
-  public boolean delete(String jti) {
+  public boolean delete(UserHandle userHandle, String jti) {
     if (jti == null) {
       return false;
     }
@@ -98,8 +98,11 @@ public final class JdbiAccessTokenStore implements AccessTokenStore {
         () ->
             jdbi.withHandle(
                 h ->
-                    h.createUpdate("DELETE FROM access_tokens WHERE jti = :jti")
+                    h.createUpdate(
+                                "DELETE FROM access_tokens"
+                                    + " WHERE jti = :jti AND user_handle = :uh")
                             .bind("jti", jti)
+                            .bind("uh", userHandle.value())
                             .execute()
                         > 0));
   }

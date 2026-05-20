@@ -56,27 +56,32 @@ public final class InMemoryCredentialRepository implements CredentialRepository 
   }
 
   @Override
-  public void updateLabel(CredentialId credentialId, String label) {
+  public void updateLabel(UserHandle userHandle, CredentialId credentialId, String label) {
     byCredentialId.computeIfPresent(
         credentialId,
-        (k, existing) ->
-            new CredentialRecord(
-                existing.credentialId(),
-                existing.userHandle(),
-                existing.publicKeyCose(),
-                existing.signCount(),
-                label,
-                existing.aaguid(),
-                existing.transports(),
-                existing.backupEligible(),
-                existing.backupState(),
-                existing.createdAt(),
-                existing.lastUsedAt()));
+        (k, existing) -> {
+          if (!existing.userHandle().equals(userHandle)) {
+            return existing; // defense-in-depth ownership mismatch
+          }
+          return new CredentialRecord(
+              existing.credentialId(),
+              existing.userHandle(),
+              existing.publicKeyCose(),
+              existing.signCount(),
+              label,
+              existing.aaguid(),
+              existing.transports(),
+              existing.backupEligible(),
+              existing.backupState(),
+              existing.createdAt(),
+              existing.lastUsedAt());
+        });
   }
 
   @Override
-  public void delete(CredentialId credentialId) {
-    byCredentialId.remove(credentialId);
+  public void delete(UserHandle userHandle, CredentialId credentialId) {
+    byCredentialId.computeIfPresent(
+        credentialId, (k, existing) -> existing.userHandle().equals(userHandle) ? null : existing);
   }
 
   @Override

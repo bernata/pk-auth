@@ -30,4 +30,9 @@ class InMemoryAccessTokenStoreTest {
   void recordIsIdempotent() {
     new AccessTokenStoreScenarios(new InMemoryAccessTokenStore()).recordIsIdempotent();
   }
+
+  @Test
+  void deleteRejectsForeignOwner() {
+    new AccessTokenStoreScenarios(new InMemoryAccessTokenStore()).deleteRejectsForeignOwner();
+  }
 }

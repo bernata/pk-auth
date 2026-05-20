@@ -82,25 +82,20 @@ public final class JdbiOtpRepository implements OtpRepository {
                   // so the cap check in OtpService never tripped). Matches the DynamoDB impl,
                   // which also increments without a guard. Caller is required to compare the
                   // returned count against maxAttempts.
-                  int updated =
-                      h.createUpdate(
-                              "UPDATE otp_codes SET attempts = attempts + 1"
-                                  + " WHERE user_handle = :uh AND otp_id = :oid")
-                          .bind("uh", userHandle.value())
-                          .bind("oid", otpId)
-                          .execute();
-                  if (updated == 0) {
-                    // SPI contract: empty signals "no such row".
-                    return OptionalInt.empty();
-                  }
+                  //
+                  // Single statement via RETURNING so the post-increment value the caller sees is
+                  // this transaction's own write — concurrent attempts get distinct counters and
+                  // the cap check in OtpService can't be bypassed by an interleaved read.
                   Optional<Integer> current =
                       h.createQuery(
-                              "SELECT attempts FROM otp_codes"
-                                  + " WHERE user_handle = :uh AND otp_id = :oid")
+                              "UPDATE otp_codes SET attempts = attempts + 1"
+                                  + " WHERE user_handle = :uh AND otp_id = :oid"
+                                  + " RETURNING attempts")
                           .bind("uh", userHandle.value())
                           .bind("oid", otpId)
                           .mapTo(Integer.class)
                           .findFirst();
+                  // SPI contract: empty signals "no such row".
                   return current.map(OptionalInt::of).orElse(OptionalInt.empty());
                 }));
   }

@@ -44,8 +44,21 @@ public final class InMemoryAccessTokenStore implements AccessTokenStore {
   }
 
   @Override
-  public boolean delete(String jti) {
-    return byJti.remove(jti) != null;
+  public boolean delete(UserHandle userHandle, String jti) {
+    if (jti == null) {
+      return false;
+    }
+    boolean[] removed = {false};
+    byJti.computeIfPresent(
+        jti,
+        (k, row) -> {
+          if (row.userHandle.equals(userHandle)) {
+            removed[0] = true;
+            return null;
+          }
+          return row;
+        });
+    return removed[0];
   }
 
   @Override

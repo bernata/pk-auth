@@ -33,7 +33,7 @@ final class NoopAccessTokenStore implements AccessTokenStore {
   }
 
   @Override
-  public boolean delete(String jti) {
+  public boolean delete(UserHandle userHandle, String jti) {
     return false;
   }
 

@@ -68,10 +68,15 @@ public interface AccessTokenStore {
   boolean exists(String jti);
 
   /**
-   * Removes the row for the given {@code jti}, idempotently. Returns {@code true} iff a row was
-   * deleted.
+   * Removes the row for the given {@code jti}, but only if it is owned by {@code userHandle}.
+   * Idempotent. Returns {@code true} iff a row was deleted; an ownership mismatch returns {@code
+   * false} (silent — same shape as "not found", so callers can't use this to probe for jti
+   * existence across users). The {@code userHandle} scope is defense-in-depth on top of the
+   * service-layer ownership check: even with a 122-bit random JTI making cross-user collision
+   * implausible, requiring the owner on the predicate ensures a future caller forwarding a
+   * client-supplied jti without an ownership check can't escalate into IDOR.
    */
-  boolean delete(String jti);
+  boolean delete(UserHandle userHandle, String jti);
 
   /**
    * Removes every row for the supplied user. Called by {@link
