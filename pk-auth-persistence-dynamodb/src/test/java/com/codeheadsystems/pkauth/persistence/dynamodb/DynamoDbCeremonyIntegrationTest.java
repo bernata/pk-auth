@@ -102,4 +102,10 @@ class DynamoDbCeremonyIntegrationTest {
     assertThat(challengeStore.takeOnce(id)).isPresent();
     assertThat(challengeStore.takeOnce(id)).isEmpty();
   }
+
+  @Test
+  void challengeStoreSingleUseUnderConcurrency() throws Exception {
+    new com.codeheadsystems.pkauth.testkit.ChallengeStoreScenarios(challengeStore)
+        .concurrentTakeOnceYieldsExactlyOneWinner();
+  }
 }
