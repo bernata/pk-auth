@@ -152,7 +152,8 @@ public final class InMemoryRefreshTokenRepository implements RefreshTokenReposit
         r.expiresAt(),
         Optional.of(now),
         r.revokedAt(),
-        r.revokedReason());
+        r.revokedReason(),
+        r.amr());
   }
 
   private static RefreshTokenRecord markRevoked(
@@ -169,6 +170,7 @@ public final class InMemoryRefreshTokenRepository implements RefreshTokenReposit
         r.expiresAt(),
         r.usedAt(),
         Optional.of(now),
-        Optional.of(reason));
+        Optional.of(reason),
+        r.amr());
   }
 }

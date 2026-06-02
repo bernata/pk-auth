@@ -23,9 +23,10 @@ import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.Update;
 
 /**
- * {@link RefreshTokenRepository} backed by the {@code refresh_tokens} table (Flyway V9). The
- * load-bearing {@link #rotateAtomically} uses a JDBI transaction that wraps a conditional {@code
- * UPDATE} on the parent + an {@code INSERT} for the successor — see ADR 0013.
+ * {@link RefreshTokenRepository} backed by the {@code refresh_tokens} table (Flyway V9; the {@code
+ * amr} column added in V10). The load-bearing {@link #rotateAtomically} uses a JDBI transaction
+ * that wraps a conditional {@code UPDATE} on the parent + an {@code INSERT} for the successor — see
+ * ADR 0013.
  *
  * @since 1.1.0
  */
@@ -180,9 +181,9 @@ public final class JdbiRefreshTokenRepository implements RefreshTokenRepository 
                 "INSERT INTO refresh_tokens"
                     + " (refresh_id, token_hash, user_handle, audience, device_id, family_id,"
                     + "  parent_refresh_id, issued_at, expires_at, used_at, revoked_at,"
-                    + "  revoked_reason)"
+                    + "  revoked_reason, amr)"
                     + " VALUES (:rid, :hash, :uh, :aud, :did, :fam, :pid, :iat, :exp, :uat, :rat,"
-                    + "  :reason)")
+                    + "  :reason, :amr)")
             .bind("rid", r.refreshId())
             .bind("hash", r.tokenHash())
             .bind("uh", r.userHandle().value())
@@ -192,7 +193,8 @@ public final class JdbiRefreshTokenRepository implements RefreshTokenRepository 
             .bind("pid", r.parentRefreshId().orElse(null))
             .bind("iat", OffsetDateTime.ofInstant(r.issuedAt(), ZoneOffset.UTC))
             .bind("exp", OffsetDateTime.ofInstant(r.expiresAt(), ZoneOffset.UTC))
-            .bind("reason", r.revokedReason().map(Enum::name).orElse(null));
+            .bind("reason", r.revokedReason().map(Enum::name).orElse(null))
+            .bind("amr", joinAmr(r.amr()));
     // used_at and revoked_at are TIMESTAMPTZ; JDBI's untyped-null default (Types.VARCHAR) is
     // rejected by Postgres against a TIMESTAMPTZ column. Force Types.TIMESTAMP_WITH_TIMEZONE on
     // the null branch.
@@ -247,6 +249,23 @@ public final class JdbiRefreshTokenRepository implements RefreshTokenRepository 
         rs.getObject("expires_at", OffsetDateTime.class).toInstant(),
         Optional.ofNullable(usedAt).map(OffsetDateTime::toInstant),
         Optional.ofNullable(revokedAt).map(OffsetDateTime::toInstant),
-        Optional.ofNullable(revokedReasonStr).map(RevokeReason::valueOf));
+        Optional.ofNullable(revokedReasonStr).map(RevokeReason::valueOf),
+        splitAmr(rs.getString("amr")));
+  }
+
+  /** Serializes the RFC 8176 {@code amr} references as a comma-separated string for storage. */
+  private static String joinAmr(List<String> amr) {
+    return String.join(",", amr);
+  }
+
+  /**
+   * Parses the stored comma-separated {@code amr} string back into a list. A null/blank value (rows
+   * written before the V10 column existed) maps to the generic {@code ["user"]}.
+   */
+  private static List<String> splitAmr(String stored) {
+    if (stored == null || stored.isBlank()) {
+      return List.of("user");
+    }
+    return List.of(stored.split(","));
   }
 }

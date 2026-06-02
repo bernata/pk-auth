@@ -5,7 +5,6 @@ import com.codeheadsystems.pkauth.jwt.JwtClaims;
 import com.codeheadsystems.pkauth.jwt.PkAuthJwtIssuer;
 import com.codeheadsystems.pkauth.refresh.RefreshTokenService;
 import com.codeheadsystems.pkauth.refresh.RotateResult;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -52,7 +51,7 @@ public final class RefreshHandler {
             JwtClaims.forRefresh(
                 s.claimsForAccessIssue().userHandle(),
                 s.claimsForAccessIssue().audience(),
-                List.of("user"));
+                s.claimsForAccessIssue().amr());
         String accessJwt = accessIssuer.issue(claims);
         yield new Outcome.Success(
             new RefreshResponse(s.pair().wireToken(), accessJwt, s.pair().record().expiresAt()));

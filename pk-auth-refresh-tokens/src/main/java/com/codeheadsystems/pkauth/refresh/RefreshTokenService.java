@@ -32,6 +32,9 @@ public final class RefreshTokenService {
 
   private static final Logger LOG = LoggerFactory.getLogger(RefreshTokenService.class);
 
+  /** Default {@code amr} applied when a caller issues a refresh token without specifying one. */
+  private static final List<String> DEFAULT_AMR = List.of("user");
+
   private final RefreshTokenRepository repository;
   private final RefreshTokenConfig config;
   private final ClockProvider clockProvider;
@@ -58,13 +61,33 @@ public final class RefreshTokenService {
   }
 
   /**
-   * Issues a fresh refresh token belonging to a new family (root of the rotation chain). Returns
-   * the wire token plus the persisted record summary.
+   * Issues a fresh refresh token belonging to a new family (root of the rotation chain), defaulting
+   * the carried {@code amr} to {@code ["user"]}.
+   *
+   * @deprecated since 1.3.0 — prefer {@link #issue(UserHandle, String, Optional, List)} so the
+   *     refresh family records the original authentication method references (RFC 8176) and
+   *     refreshed access tokens reflect how the session was first established instead of a generic
+   *     {@code ["user"]}. Retained for source compatibility.
    */
+  @Deprecated
   public RefreshTokenPair issue(UserHandle userHandle, String audience, Optional<String> deviceId) {
+    return issue(userHandle, audience, deviceId, DEFAULT_AMR);
+  }
+
+  /**
+   * Issues a fresh refresh token belonging to a new family (root of the rotation chain). Returns
+   * the wire token plus the persisted record summary. The supplied {@code amr} — RFC 8176
+   * authentication method references describing how the user just authenticated — is stored on the
+   * family and carried verbatim into every access token minted from a rotation of this token.
+   *
+   * @since 1.3.0
+   */
+  public RefreshTokenPair issue(
+      UserHandle userHandle, String audience, Optional<String> deviceId, List<String> amr) {
     Objects.requireNonNull(userHandle, "userHandle");
     Objects.requireNonNull(audience, "audience");
     Objects.requireNonNull(deviceId, "deviceId");
+    Objects.requireNonNull(amr, "amr");
     if (audience.isBlank()) {
       throw new IllegalArgumentException("audience must be non-blank");
     }
@@ -84,7 +107,8 @@ public final class RefreshTokenService {
             now.plus(config.ttlPolicy().refreshTtl(audience)),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            amr);
     repository.create(record);
     return new RefreshTokenPair(wireFormat(refreshId, secret), record);
   }
@@ -158,7 +182,8 @@ public final class RefreshTokenService {
             now.plus(config.ttlPolicy().refreshTtl(parent.audience())),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            parent.amr()); // carry the original authentication method references verbatim
 
     boolean rotated = repository.rotateAtomically(parent.refreshId(), now, successor);
     if (!rotated) {
@@ -172,7 +197,8 @@ public final class RefreshTokenService {
     String wire = wireFormat(successorId, successorSecret);
     RefreshTokenPair pair = new RefreshTokenPair(wire, successor);
     RotatedClaims claims =
-        new RotatedClaims(successor.userHandle(), successor.audience(), successor.deviceId());
+        new RotatedClaims(
+            successor.userHandle(), successor.audience(), successor.deviceId(), successor.amr());
     return new RotateResult.Success(pair, claims);
   }
 
