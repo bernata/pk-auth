@@ -138,12 +138,18 @@ public final class DynamoDbRefreshTokenRepository implements RefreshTokenReposit
 
           // Transact: conditional update on parent primary (still fresh) + put successor items.
           // ConditionExpression — fresh iff used_at, revoked_at unset and expires_at > now.
+          // Expiry compares the numeric epoch-second `ttl` attribute (== expiresAt.epochSecond),
+          // NOT the ISO string: Instant.toString() is variable-precision (it drops the
+          // fractional-seconds field when zero), so a lexicographic ">" sorts "...:00Z" after
+          // "...:00.000001Z" and would treat an expired token as still fresh.
           Expression freshness =
               Expression.builder()
                   .expression(
                       "attribute_not_exists(usedAtIso) AND attribute_not_exists(revokedAtIso)"
-                          + " AND expiresAtIso > :now")
-                  .putExpressionValue(":now", AttributeValue.fromS(nowIso))
+                          + " AND #ttl > :nowEpoch")
+                  .putExpressionName("#ttl", "ttl")
+                  .putExpressionValue(
+                      ":nowEpoch", AttributeValue.fromN(Long.toString(now.getEpochSecond())))
                   .build();
 
           try {

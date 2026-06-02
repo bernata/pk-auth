@@ -11,6 +11,39 @@ tags.
 
 ## [Unreleased]
 
+## [1.2.0]
+
+### Security
+
+- **DynamoDB refresh-token rotation now compares expiry numerically, not
+  lexically.** `DynamoDbRefreshTokenRepository.rotateAtomically` gated the
+  atomic-rotate `ConditionExpression` on `expiresAtIso > :now`, comparing two
+  `Instant.toString()` strings. That output is variable-precision (the
+  fractional-seconds field is dropped when zero), so a bytewise `>` sorts
+  `…:00Z` *after* `…:00.000001Z` and could treat a just-expired token as still
+  fresh. The condition now compares the numeric epoch-second `ttl` attribute
+  (`#ttl > :nowEpoch`). The authoritative expiry check in `RefreshTokenService`
+  was already correct, so the exposure was limited to a sub-second
+  fail-open in the database-level backstop for the rotate TOCTOU window.
+- **Stateful JWT validation rejects `jti`-less tokens instead of skipping
+  revocation.** When a non-noop `AccessTokenStore` is bound,
+  `PkAuthJwtValidator` previously guarded the store lookup with `jti != null`,
+  so a validly-signed, in-issuer, in-audience, unexpired token carrying no
+  `jti` bypassed the `exists` revocation gate entirely. The validator now
+  returns `MissingClaim("jti")` for a `jti`-less token in stateful mode. Tokens
+  minted by `PkAuthJwtIssuer` always carry a `jti`, so this never affected the
+  library's own tokens; it closes the gap for any other token signed with the
+  same keyset.
+- **Corrected the `MagicLinkService.startLogin` timing-side-channel
+  contract (documentation).** The javadoc claimed the method defeats timing
+  side-channels, but the not-found path returns before JWT issuance and email
+  dispatch, so response latency still distinguishes known from unknown
+  usernames. The contract now documents the result-shape guarantee only and
+  points hosts at uniform-latency / rate-limiting mitigations. No behavioural
+  change.
+
+## [1.1.0] — 2026-06-02
+
 ### Added
 
 - `TokenTtlPolicy` SPI in `pk-auth-jwt` for per-audience JWT access-token TTL
@@ -112,5 +145,7 @@ tags.
 First stable release. Captures the surface produced by the 0.x development
 series; see `git log` for the full history.
 
-[Unreleased]: https://github.com/codeheadsystems/pk-auth/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/codeheadsystems/pk-auth/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/codeheadsystems/pk-auth/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/codeheadsystems/pk-auth/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/codeheadsystems/pk-auth/releases/tag/v1.0.0

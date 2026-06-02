@@ -45,6 +45,7 @@ public final class PkAuthJwtValidator {
   private final ClockProvider clockProvider;
   private final RevocationCheck revocationCheck;
   private final AccessTokenStore accessTokenStore;
+  private final boolean statefulStore;
 
   /**
    * Constructs a validator with no-op revocation and no-op access-token store (tokens are valid
@@ -88,6 +89,7 @@ public final class PkAuthJwtValidator {
     this.clockProvider = Objects.requireNonNull(clockProvider, "clockProvider");
     this.revocationCheck = Objects.requireNonNull(revocationCheck, "revocationCheck");
     this.accessTokenStore = Objects.requireNonNull(accessTokenStore, "accessTokenStore");
+    this.statefulStore = accessTokenStore != NoopAccessTokenStore.INSTANCE;
   }
 
   /** Verifies signature and standard claims, then reconstructs a {@link JwtClaims}. */
@@ -167,10 +169,18 @@ public final class PkAuthJwtValidator {
     if (revocationCheck.isRevoked(jti, subject)) {
       return new JwtVerificationResult.Revoked(jti, subject);
     }
-    if (jti != null && !accessTokenStore.exists(jti)) {
-      // Stateful mode: the token's jti is not in the store (logout / admin-revoke / never
-      // recorded). The noop store always returns true so stateless deployments skip this branch.
-      return new JwtVerificationResult.Revoked(jti, subject);
+    if (statefulStore) {
+      // Stateful mode: every token we issue carries a jti recorded in the store. A token without a
+      // jti can't be checked against the store, so it can't be proven un-revoked — reject it rather
+      // than letting it bypass the revocation gate entirely. (The noop store leaves statefulStore
+      // false, so stateless deployments skip this branch and remain valid-until-exp.)
+      if (jti == null) {
+        return new JwtVerificationResult.MissingClaim("jti");
+      }
+      if (!accessTokenStore.exists(jti)) {
+        // jti not in the store: logout / admin-revoke / never recorded.
+        return new JwtVerificationResult.Revoked(jti, subject);
+      }
     }
 
     String methodClaim = stringClaim(body, PkAuthJwtIssuer.CLAIM_METHOD);

@@ -225,13 +225,20 @@ public final class MagicLinkService {
   /**
    * Sends a login email to the user with the supplied username.
    *
-   * <p><strong>Privacy invariant:</strong> this method ALWAYS returns {@link SendResult.Sent},
-   * regardless of whether the supplied username exists in the system. When no user is found the
-   * method returns early (skipping JWT issuance and email dispatch) but returns the same {@code
-   * Sent} shape as a successful send. This prevents account-enumeration via both result-shape
-   * side-channels and timing side-channels that would otherwise reveal whether an account exists.
-   * Callers MUST NOT rely on a {@link SendResult.UserNotFound} outcome from this method — that
-   * variant is produced only by signup flows where confirming account non-existence is intentional.
+   * <p><strong>Privacy invariant (result-shape only):</strong> this method ALWAYS returns {@link
+   * SendResult.Sent}, regardless of whether the supplied username exists in the system. When no
+   * user is found the method returns early (skipping JWT issuance and email dispatch) but returns
+   * the same {@code Sent} shape as a successful send, so the response body never reveals whether an
+   * account exists. Callers MUST NOT rely on a {@link SendResult.UserNotFound} outcome from this
+   * method — that variant is produced only by signup flows where confirming account non-existence
+   * is intentional.
+   *
+   * <p><strong>This method is NOT constant-time.</strong> The not-found path returns before JWT
+   * issuance and the (typically blocking) email dispatch, so a known username incurs measurably
+   * more latency than an unknown one; an attacker who can time responses can still enumerate
+   * accounts. Equalising this is impractical at the library layer because SMTP/transport latency
+   * dominates and varies — hosts that need timing-side-channel resistance should front this with a
+   * uniform-latency wrapper or rate-limit and monitor for enumeration probing.
    *
    * @since 0.9.1
    */
