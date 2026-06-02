@@ -56,12 +56,6 @@ public sealed interface ChallengeValidation {
     }
   }
 
-  /**
-   * The challenge id derived from {@code clientData.challenge} did not match the explicit
-   * challengeId field on the request. This catches a tampered or swapped client payload.
-   */
-  record IdMismatch() implements ChallengeValidation {}
-
   /** No record exists for the challenge id — unknown, expired, or already consumed. */
   record MissingOrConsumed() implements ChallengeValidation {}
 
@@ -97,8 +91,6 @@ public sealed interface ChallengeValidation {
 
     R invalidEncoding(String detail);
 
-    R idMismatch();
-
     R missingOrConsumed();
 
     R purposeMismatch();
@@ -122,7 +114,6 @@ public sealed interface ChallengeValidation {
       case CeremonyTypeMismatch t -> mapper.ceremonyTypeMismatch(t.expected(), t.actual());
       case OriginMismatch o -> mapper.originMismatch(o.actual());
       case InvalidEncoding e -> mapper.invalidEncoding(e.detail());
-      case IdMismatch ignored -> mapper.idMismatch();
       case MissingOrConsumed ignored -> mapper.missingOrConsumed();
       case PurposeMismatch ignored -> mapper.purposeMismatch();
       case BytesMismatch ignored -> mapper.bytesMismatch();

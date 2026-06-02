@@ -23,10 +23,11 @@ import java.util.Optional;
  *   <li>parses the client-supplied {@code clientDataJSON};
  *   <li>checks the ceremony marker (registration vs authentication);
  *   <li>checks the origin against {@link OriginValidator};
- *   <li>derives the challenge id and checks it matches the explicit field on the request;
  *   <li>consumes the {@link ChallengeRecord} via {@link ChallengeStore#takeOnce} (one-shot — even
- *       on later failure the record is gone);
- *   <li>checks the stored record's purpose, byte equality, and expiry.
+ *       on later failure the record is gone), keyed by the opaque {@link ChallengeId} the client
+ *       round-trips from the start response;
+ *   <li>checks the stored record's purpose, byte equality (the cryptographic binding between the
+ *       stored challenge and the bytes the authenticator signed), and expiry.
  * </ol>
  *
  * <p>The caller maps the returned {@link ChallengeValidation} variant to the result hierarchy that
@@ -139,17 +140,17 @@ public final class ChallengeValidator {
     }
 
     byte[] challengeBytes;
-    ChallengeId derivedId;
     try {
       challengeBytes = clientData.challengeBytes();
-      derivedId = ChallengeGenerator.idOf(challengeBytes);
     } catch (RuntimeException ex) {
       return new ChallengeValidation.InvalidEncoding("invalid challenge encoding");
     }
-    if (!derivedId.equals(challengeId)) {
-      return new ChallengeValidation.IdMismatch();
-    }
 
+    // The challengeId is an opaque, server-generated handle (random UUID) independent of the
+    // challenge bytes. Look the record up by it, then enforce the cryptographic binding below by
+    // byte-comparing the stored challenge against the bytes the authenticator actually signed over
+    // (clientData.challenge) — WebAuthn4J independently re-checks the same challenge during
+    // signature verification.
     Optional<ChallengeRecord> stored = challengeStore.takeOnce(challengeId);
     if (stored.isEmpty()) {
       return new ChallengeValidation.MissingOrConsumed();
