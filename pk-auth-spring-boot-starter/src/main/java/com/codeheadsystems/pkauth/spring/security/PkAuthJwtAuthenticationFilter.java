@@ -29,6 +29,14 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * add a cookie fallback here; host apps that want session-cookie auth should layer their own filter
  * ahead of this one and accept the CSRF responsibilities that come with it.
  *
+ * <p><b>Additive, not authoritative-clearing.</b> The filter only ever <em>sets</em> the
+ * authentication on a successful token; it never <em>clears</em> a pre-existing one on an invalid
+ * or absent token. Under the shipped stateless chain ({@code SessionCreationPolicy.STATELESS}) the
+ * context starts empty every request, so this is moot. But a host that layers a
+ * session-establishing filter <em>ahead</em> of this one would let a request bearing a valid
+ * session cookie plus a bogus or expired bearer keep the session identity. If you combine the two,
+ * clear the context on a non-{@code Success} result here, or order this filter first.
+ *
  * <p><b>Design note.</b> This filter intentionally bypasses Spring's {@code AuthenticationManager}
  * for zero-overhead JWT validation. There is no companion {@code AuthenticationProvider} — host
  * apps that need the canonical manager pipeline can declare their own filter + provider.

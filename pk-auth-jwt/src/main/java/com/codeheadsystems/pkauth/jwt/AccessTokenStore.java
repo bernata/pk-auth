@@ -64,6 +64,13 @@ public interface AccessTokenStore {
    *
    * <p>The {@link #noop()} implementation returns {@code true} unconditionally so stateless
    * deployments behave as if no store were involved.
+   *
+   * <p><strong>Fail closed on outage.</strong> If the backing store is unreachable, throw rather
+   * than returning {@code true}: a thrown exception propagates out of {@link
+   * PkAuthJwtValidator#validate(String)} so the host's filter rejects the request (no token
+   * accepted), whereas returning {@code true} would fail <em>open</em> and accept a
+   * possibly-revoked token during the outage. Host integrations must therefore treat a thrown
+   * {@code validate(...)} as an authentication failure, not swallow it into success.
    */
   boolean exists(String jti);
 
