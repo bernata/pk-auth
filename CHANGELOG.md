@@ -11,6 +11,61 @@ tags.
 
 ## [Unreleased]
 
+## [1.3.0]
+
+Security-review follow-ups (hardening; no known exploit in the items below).
+
+### Added
+
+- **Refresh tokens carry the original `amr` through rotation.**
+  `RefreshTokenService.issue(UserHandle, String, Optional, List<String>)`
+  records the RFC 8176 authentication method references on the refresh
+  family, and every rotation propagates them verbatim, so an access token
+  minted from `POST /auth/refresh` reflects how the session was first
+  established (e.g. `["pkauth","webauthn"]`) instead of a generic
+  `["user"]`. `RefreshTokenRecord` and `RotatedClaims` gain an `amr`
+  field; persisted as the `amr` column (JDBI, Flyway **V10**) and the
+  `amr` attribute (DynamoDB). The previous three-arg
+  `issue(UserHandle, String, Optional)` is **deprecated** (defaults `amr`
+  to `["user"]`, preserving prior behavior).
+- `ChallengeStoreScenarios` in `pk-auth-testkit`: a shared SPI compliance
+  suite asserting `ChallengeStore.takeOnce` is single-use, including a
+  concurrent "exactly one winner" race test, now driven against the
+  in-memory, JDBI/Postgres, and DynamoDB backends.
+
+### Changed
+
+- **`ChallengeId` is now an opaque random handle, decoupled from the
+  challenge bytes.** Previously the store key was
+  `base64url(challenge)`; it is now a random UUID
+  (`ChallengeId.random()`). Finish-time validation still enforces the
+  cryptographic binding by byte-comparing the stored challenge against
+  the bytes the authenticator signed (and WebAuthn4J re-checks the same
+  challenge), so the store key no longer reveals or depends on the
+  challenge. No wire-format change; the browser SDK already round-trips
+  the id. `ChallengeGenerator.idOf(byte[])` and the internal
+  `ChallengeValidation.IdMismatch` variant are removed.
+- **`PkAuthJwtValidator` (stateful mode) rejects `jti`-less tokens.** When
+  a non-noop `AccessTokenStore` is bound, a validly-signed token with no
+  `jti` now returns `MissingClaim("jti")` instead of bypassing the
+  revocation gate. (Carried over from 1.2.0's fix; the validator now
+  detects stateful mode up front.)
+- **DynamoDB refresh rotation uses a conditional `UpdateItem`.**
+  `rotateAtomically` now marks the parent used via a partial conditional
+  update (`ignoreNullsMode(SCALAR_ONLY)`) instead of a full-item PUT from
+  a prior read — it no longer reads the parent first and can't clobber a
+  concurrently-written parent attribute. Behavior is unchanged; the
+  freshness condition (incl. the numeric-`ttl` expiry compare from 1.2.0)
+  is preserved.
+
+### Documentation
+
+- Documented that the stateless access-token TTL is the effective
+  revocation window (`JwtConfig`), that `AccessTokenStore.exists` must
+  fail closed on outage, that custom `RevocationCheck` deny-lists must
+  handle a `null` jti, and that the Spring JWT filter is additive (never
+  clears a pre-existing `SecurityContext`).
+
 ## [1.2.0]
 
 ### Security
@@ -145,7 +200,8 @@ tags.
 First stable release. Captures the surface produced by the 0.x development
 series; see `git log` for the full history.
 
-[Unreleased]: https://github.com/codeheadsystems/pk-auth/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/codeheadsystems/pk-auth/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/codeheadsystems/pk-auth/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/codeheadsystems/pk-auth/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/codeheadsystems/pk-auth/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/codeheadsystems/pk-auth/releases/tag/v1.0.0
