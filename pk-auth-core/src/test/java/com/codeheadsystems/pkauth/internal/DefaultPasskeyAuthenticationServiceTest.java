@@ -152,7 +152,11 @@ class DefaultPasskeyAuthenticationServiceTest {
     StartRegistrationResponse resp =
         service.startRegistration(new StartRegistrationRequest("alice", "Alice", null, null));
 
-    assertThat(resp.challengeId()).isEqualTo(CHALLENGE_ID);
+    // The challengeId is now an opaque random handle, independent of the challenge bytes. Assert it
+    // is well-formed and that the SAME id is what gets persisted (the binding to the bytes is
+    // enforced at finish time, not via the id).
+    assertThat(resp.challengeId()).isNotNull();
+    assertThat(resp.challengeId().value()).isNotBlank();
     assertThat(resp.publicKey().rp().id()).isEqualTo("example.com");
     assertThat(resp.publicKey().user().name()).isEqualTo("alice");
     assertThat(resp.publicKey().user().displayName()).isEqualTo("Alice");
@@ -163,7 +167,7 @@ class DefaultPasskeyAuthenticationServiceTest {
     assertThat(resp.publicKey().excludeCredentials()).isNotNull().isEmpty();
 
     verify(challengeStore)
-        .put(eq(CHALLENGE_ID), any(ChallengeRecord.class), eq(Duration.ofMinutes(5)));
+        .put(eq(resp.challengeId()), any(ChallengeRecord.class), eq(Duration.ofMinutes(5)));
     verify(metrics).incrementCounter("pkauth.registration.start", "rp", "example.com");
   }
 
@@ -260,10 +264,19 @@ class DefaultPasskeyAuthenticationServiceTest {
   }
 
   @Test
-  void finishRegistrationRejectsChallengeIdMismatch() {
-    byte[] otherChallenge = filled(32, (byte) 7);
-    byte[] cd =
-        clientData("webauthn.create", Base64Url.encode(otherChallenge), "https://example.com");
+  void finishRegistrationRejectsChallengeBytesMismatch() {
+    // The record stored under the opaque CHALLENGE_ID carries different challenge bytes than the
+    // client returned in clientData.challenge. The finish-time byte comparison is the cryptographic
+    // binding (the challengeId itself is just an opaque handle), so this must be rejected.
+    when(challengeStore.takeOnce(CHALLENGE_ID))
+        .thenReturn(
+            Optional.of(
+                new ChallengeRecord(
+                    filled(32, (byte) 7),
+                    ChallengeRecord.Purpose.REGISTRATION,
+                    USER_HANDLE,
+                    NOW.plusSeconds(60))));
+    byte[] cd = clientData("webauthn.create", Base64Url.encode(CHALLENGE), "https://example.com");
     RegistrationResult result = service.finishRegistration(finishReg(cd));
     assertThat(result).isInstanceOf(RegistrationResult.InvalidChallenge.class);
   }

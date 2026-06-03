@@ -51,7 +51,10 @@ class PkAuthRefreshIntegrationTest {
   void rotateMintsValidAccessJwtAndNewRefreshToken() throws Exception {
     RefreshTokenPair root =
         refreshService.issue(
-            UserHandle.of(new byte[] {1}), "pk-auth-test-clients", Optional.empty());
+            UserHandle.of(new byte[] {1}),
+            "pk-auth-test-clients",
+            Optional.empty(),
+            java.util.List.of("pkauth", "webauthn"));
 
     MvcResult result =
         mockMvc
@@ -80,7 +83,10 @@ class PkAuthRefreshIntegrationTest {
   void replayReturns401Replayed() throws Exception {
     RefreshTokenPair root =
         refreshService.issue(
-            UserHandle.of(new byte[] {2}), "pk-auth-test-clients", Optional.empty());
+            UserHandle.of(new byte[] {2}),
+            "pk-auth-test-clients",
+            Optional.empty(),
+            java.util.List.of("pkauth", "webauthn"));
 
     // First rotation succeeds.
     mockMvc

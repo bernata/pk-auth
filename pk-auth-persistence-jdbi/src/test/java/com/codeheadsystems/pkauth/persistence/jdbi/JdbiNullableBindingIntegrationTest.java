@@ -90,7 +90,8 @@ class JdbiNullableBindingIntegrationTest {
             now.plusSeconds(3600),
             Optional.empty(),
             Optional.empty(),
-            Optional.empty());
+            Optional.empty(),
+            java.util.List.of("user"));
 
     refreshTokens.create(token);
 

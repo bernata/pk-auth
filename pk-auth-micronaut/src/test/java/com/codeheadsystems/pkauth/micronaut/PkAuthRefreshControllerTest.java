@@ -42,7 +42,10 @@ class PkAuthRefreshControllerTest {
   void rotateMintsValidAccessJwtAndNewRefreshToken() {
     RefreshTokenPair root =
         refreshService.issue(
-            UserHandle.of(new byte[] {1}), "https://app.example.com", Optional.empty());
+            UserHandle.of(new byte[] {1}),
+            "https://app.example.com",
+            Optional.empty(),
+            java.util.List.of("pkauth", "webauthn"));
 
     RefreshResponse response =
         client
@@ -61,7 +64,10 @@ class PkAuthRefreshControllerTest {
   void replayReturns401() {
     RefreshTokenPair root =
         refreshService.issue(
-            UserHandle.of(new byte[] {2}), "https://app.example.com", Optional.empty());
+            UserHandle.of(new byte[] {2}),
+            "https://app.example.com",
+            Optional.empty(),
+            java.util.List.of("pkauth", "webauthn"));
 
     // First rotation succeeds.
     client

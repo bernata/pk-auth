@@ -14,6 +14,16 @@ import java.util.Set;
  * validator. Additional accepted audiences come from {@link TokenTtlPolicy#knownAudiences()} — see
  * {@link #allowedAudiences()} for the resolved set.
  *
+ * <p><strong>Access-token TTL is your revocation window in stateless mode.</strong> With the
+ * default {@link AccessTokenStore#noop() no-op access-token store}, pk-auth issues stateless JWTs
+ * that cannot be invalidated before their {@code exp} — a logout or user-disable only stops
+ * <em>new</em> tokens, while already-issued access tokens stay valid until they expire. The access
+ * TTL ({@link #DEFAULT_TOKEN_TTL} = 1 hour by default, or per-audience via {@link TokenTtlPolicy})
+ * is therefore the worst-case window an attacker keeps access after credentials are pulled; keep it
+ * short (minutes-to-an-hour) and pair it with rotating refresh tokens for long sessions. Hosts that
+ * need <em>immediate</em> revocation must bind a real {@link AccessTokenStore} (stateful mode); see
+ * ADR 0015.
+ *
  * @param issuer the {@code iss} claim value
  * @param defaultAudience the audience used when {@link JwtClaims#audience()} is absent at issue
  *     time; always part of {@link #allowedAudiences()}

@@ -222,7 +222,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     UserHandle userHandle = userLookup.getOrCreateHandle(req.username());
 
     byte[] challenge = challengeGenerator.generate();
-    ChallengeId challengeId = ChallengeGenerator.idOf(challenge);
+    ChallengeId challengeId = ChallengeId.random();
 
     challengeStore.put(
         challengeId,
@@ -458,7 +458,7 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
     }
 
     byte[] challenge = challengeGenerator.generate();
-    ChallengeId challengeId = ChallengeGenerator.idOf(challenge);
+    ChallengeId challengeId = ChallengeId.random();
 
     challengeStore.put(
         challengeId,
@@ -674,12 +674,6 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
           }
 
           @Override
-          public RegistrationResult idMismatch() {
-            return new RegistrationResult.InvalidChallenge(
-                "challengeId / clientData.challenge mismatch");
-          }
-
-          @Override
           public RegistrationResult missingOrConsumed() {
             return new RegistrationResult.InvalidChallenge(
                 "unknown, expired, or already-consumed challenge");
@@ -729,12 +723,6 @@ public final class DefaultPasskeyAuthenticationService implements PasskeyAuthent
           @Override
           public AssertionResult invalidEncoding(String detail) {
             return new AssertionResult.InvalidChallenge(detail);
-          }
-
-          @Override
-          public AssertionResult idMismatch() {
-            return new AssertionResult.InvalidChallenge(
-                "challengeId / clientData.challenge mismatch");
           }
 
           @Override

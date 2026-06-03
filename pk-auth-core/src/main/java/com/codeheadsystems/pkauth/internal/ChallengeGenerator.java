@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.internal;
 
-import com.codeheadsystems.pkauth.api.ChallengeId;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import java.security.SecureRandom;
 
 /**
- * Produces challenge bytes and the matching {@link ChallengeId}. The id is the base64url-encoded
- * challenge so the server can rebuild it from the client's {@code clientDataJSON} at finish time
- * (the client also sends it explicitly as a cross-check).
+ * Produces WebAuthn challenge bytes. The challenge's store handle is a separate, random {@code
+ * ChallengeId} (see {@link com.codeheadsystems.pkauth.api.ChallengeId#random()}) — the id is
+ * deliberately independent of the challenge bytes, so the store key never exposes the challenge and
+ * the finish-time binding rests solely on the byte comparison in {@link ChallengeValidator}.
  *
  * <p>32 random bytes matches the WebAuthn level 3 recommendation of "at least 16 bytes" with
  * comfortable headroom.
@@ -33,17 +32,5 @@ public final class ChallengeGenerator {
     byte[] challenge = new byte[CHALLENGE_BYTES];
     random.nextBytes(challenge);
     return challenge;
-  }
-
-  /**
-   * Derives a {@link ChallengeId} from challenge bytes (base64url-encodes them as the id value).
-   *
-   * <p>Future work: {@code ChallengeId} could wrap a random UUID instead of the challenge bytes,
-   * but that requires a {@code ChallengeStore.takeByBytes(byte[])} so finish-time lookup can still
-   * find the record by the bytes carried in {@code clientDataJSON.challenge}, plus schema / index
-   * changes in the JDBI and DynamoDB impls.
-   */
-  public static ChallengeId idOf(byte[] challenge) {
-    return new ChallengeId(Base64Url.encode(challenge));
   }
 }

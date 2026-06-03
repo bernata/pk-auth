@@ -101,12 +101,23 @@ class ChallengeValidatorTest {
   }
 
   @Test
-  void challengeIdMismatchReturnsIdMismatch() {
-    byte[] otherChallenge = filled(32, (byte) 7);
-    byte[] cd = clientData("webauthn.get", Base64Url.encode(otherChallenge), "https://example.com");
+  void opaqueChallengeIdIndependentOfBytesStillValidates() {
+    // The challengeId is now an opaque handle unrelated to the challenge bytes. A record stored
+    // under a random UUID id, looked up by that same id, with matching bytes, must still validate —
+    // proving the id is no longer derived from (or coupled to) the challenge bytes.
+    ChallengeId opaqueId = new ChallengeId("11111111-2222-3333-4444-555555555555");
+    when(challengeStore.takeOnce(opaqueId))
+        .thenReturn(
+            Optional.of(
+                new ChallengeRecord(
+                    CHALLENGE,
+                    ChallengeRecord.Purpose.AUTHENTICATION,
+                    USER_HANDLE,
+                    NOW.plusSeconds(60))));
+    byte[] cd = clientData("webauthn.get", Base64Url.encode(CHALLENGE), "https://example.com");
     ChallengeValidation out =
-        validator.validate(ChallengeValidator.Ceremony.AUTHENTICATION, CHALLENGE_ID, cd);
-    assertThat(out).isInstanceOf(ChallengeValidation.IdMismatch.class);
+        validator.validate(ChallengeValidator.Ceremony.AUTHENTICATION, opaqueId, cd);
+    assertThat(out).isInstanceOf(ChallengeValidation.Valid.class);
   }
 
   @Test
@@ -129,9 +140,9 @@ class ChallengeValidatorTest {
 
   @Test
   void mismatchedStoredBytesReturnsBytesMismatch() {
-    // store has different bytes than what client returned. Trick: ChallengeId is derived from
-    // bytes, so to bypass IdMismatch we have to store a record under the same id but with
-    // different bytes — which only happens if the store hands back tampered data. Emulate that.
+    // The record stored under CHALLENGE_ID carries different bytes than the client returned in
+    // clientData.challenge. The finish-time byte comparison is the cryptographic binding, so this
+    // must be rejected as BytesMismatch.
     when(challengeStore.takeOnce(CHALLENGE_ID))
         .thenReturn(
             Optional.of(

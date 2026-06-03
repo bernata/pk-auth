@@ -3,8 +3,6 @@ package com.codeheadsystems.pkauth.internal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.codeheadsystems.pkauth.api.ChallengeId;
-import com.codeheadsystems.pkauth.json.Base64Url;
 import java.security.SecureRandom;
 import org.junit.jupiter.api.Test;
 
@@ -33,12 +31,5 @@ class ChallengeGeneratorTest {
     assertThat(challenge[1]).isEqualTo((byte) 8);
     assertThat(challenge[2]).isEqualTo((byte) 9);
     assertThat(challenge[3]).isEqualTo((byte) 7);
-  }
-
-  @Test
-  void idOfDerivesBase64UrlOfChallenge() {
-    byte[] challenge = new byte[] {1, 2, 3};
-    ChallengeId id = ChallengeGenerator.idOf(challenge);
-    assertThat(id.value()).isEqualTo(Base64Url.encode(challenge));
   }
 }

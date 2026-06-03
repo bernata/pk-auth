@@ -4,6 +4,7 @@ package com.codeheadsystems.pkauth.refresh;
 import com.codeheadsystems.pkauth.api.UserHandle;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -32,6 +33,11 @@ import java.util.Optional;
  * @param revokedAt set when this token (or its family) is revoked
  * @param revokedReason categorical reason matching {@link #revokedAt}; present iff {@code
  *     revokedAt} is set
+ * @param amr RFC 8176 authentication method references from the original authentication, carried
+ *     verbatim through every rotation so refreshed access tokens reflect how the session was first
+ *     established (e.g. {@code ["pkauth", "webauthn"]}). Must be non-empty; entries are simple
+ *     method tokens and must not contain a comma (the persistence layer joins them
+ *     comma-separated). Added in 1.3.0.
  * @since 1.1.0
  */
 public record RefreshTokenRecord(
@@ -46,7 +52,8 @@ public record RefreshTokenRecord(
     Instant expiresAt,
     Optional<Instant> usedAt,
     Optional<Instant> revokedAt,
-    Optional<RevokeReason> revokedReason) {
+    Optional<RevokeReason> revokedReason,
+    List<String> amr) {
 
   public RefreshTokenRecord {
     Objects.requireNonNull(refreshId, "refreshId");
@@ -77,6 +84,20 @@ public record RefreshTokenRecord(
       throw new IllegalArgumentException(
           "revokedAt and revokedReason must both be set or both absent");
     }
+    Objects.requireNonNull(amr, "amr");
+    if (amr.isEmpty()) {
+      throw new IllegalArgumentException("amr must be non-empty");
+    }
+    for (String m : amr) {
+      Objects.requireNonNull(m, "amr entry");
+      if (m.isBlank()) {
+        throw new IllegalArgumentException("amr entries must be non-blank");
+      }
+      if (m.indexOf(',') >= 0) {
+        throw new IllegalArgumentException("amr entries must not contain ','");
+      }
+    }
+    amr = List.copyOf(amr);
     tokenHash = tokenHash.clone();
   }
 
@@ -100,7 +121,8 @@ public record RefreshTokenRecord(
         && Objects.equals(expiresAt, r.expiresAt)
         && Objects.equals(usedAt, r.usedAt)
         && Objects.equals(revokedAt, r.revokedAt)
-        && Objects.equals(revokedReason, r.revokedReason);
+        && Objects.equals(revokedReason, r.revokedReason)
+        && Objects.equals(amr, r.amr);
   }
 
   @Override
@@ -117,6 +139,7 @@ public record RefreshTokenRecord(
         expiresAt,
         usedAt,
         revokedAt,
-        revokedReason);
+        revokedReason,
+        amr);
   }
 }

@@ -91,4 +91,10 @@ class JdbiCeremonyIntegrationTest {
     assertThat(challengeStore.takeOnce(new com.codeheadsystems.pkauth.api.ChallengeId("ch-1")))
         .isEmpty();
   }
+
+  @Test
+  void challengeStoreSingleUseUnderConcurrency() throws Exception {
+    new com.codeheadsystems.pkauth.testkit.ChallengeStoreScenarios(challengeStore)
+        .concurrentTakeOnceYieldsExactlyOneWinner();
+  }
 }

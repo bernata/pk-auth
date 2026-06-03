@@ -43,6 +43,7 @@ public final class RefreshTokenScenarios {
   private static final Instant NOW = Instant.parse("2026-05-16T12:00:00Z");
   private static final UserHandle USER = UserHandle.of(new byte[] {1, 2, 3});
   private static final String AUDIENCE = "web";
+  private static final List<String> AMR = List.of("pkauth", "webauthn");
 
   private final RefreshTokenRepository repository;
   private final RefreshTokenService service;
@@ -68,7 +69,7 @@ public final class RefreshTokenScenarios {
 
   /** Issue → rotate → revoke happy path. */
   public void issueRotateRevokeHappyPath() {
-    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty());
+    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty(), AMR);
     assertThat(root.wireToken()).contains(".");
     assertThat(root.record().userHandle()).isEqualTo(USER);
     assertThat(root.record().familyId()).isEqualTo(root.record().refreshId());
@@ -80,6 +81,11 @@ public final class RefreshTokenScenarios {
     assertThat(success.pair().record().parentRefreshId()).hasValue(root.record().refreshId());
     assertThat(success.claimsForAccessIssue().userHandle()).isEqualTo(USER);
     assertThat(success.claimsForAccessIssue().audience()).isEqualTo(AUDIENCE);
+    // amr is persisted on the family and carried verbatim through rotation (survives the backend
+    // round-trip), so a refreshed access token reflects the original authentication method.
+    assertThat(root.record().amr()).isEqualTo(AMR);
+    assertThat(success.pair().record().amr()).isEqualTo(AMR);
+    assertThat(success.claimsForAccessIssue().amr()).isEqualTo(AMR);
 
     // Revoke the family — subsequent rotates of the successor return Revoked.
     service.revokeFamily(root.record().familyId(), RevokeReason.LOGOUT);
@@ -90,7 +96,7 @@ public final class RefreshTokenScenarios {
 
   /** Successor's parent-link points back at the parent's refreshId. */
   public void rotationUpdatesFamilyChainAndChildLinksToParent() {
-    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty());
+    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty(), AMR);
     RotateResult.Success rotated = (RotateResult.Success) service.rotate(root.wireToken());
 
     List<String> familyIds = new ArrayList<>();
@@ -103,7 +109,7 @@ public final class RefreshTokenScenarios {
 
   /** Presenting a used token triggers a family scorch and returns Replayed. */
   public void replayOfUsedTokenScorchesEntireFamily() {
-    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty());
+    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty(), AMR);
     RotateResult.Success first = (RotateResult.Success) service.rotate(root.wireToken());
     // Re-present the root (already used) — replay defense.
     RotateResult replay = service.rotate(root.wireToken());
@@ -123,7 +129,7 @@ public final class RefreshTokenScenarios {
   /** Past-due tokens return Expired without any family revocation. */
   public void expiredTokenRotationReturnsExpired() {
     // Issue at NOW, then build a service whose clock is 60 days later (default TTL is 14d).
-    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty());
+    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty(), AMR);
     RefreshTokenService laterService =
         new RefreshTokenService(
             repository,
@@ -148,7 +154,7 @@ public final class RefreshTokenScenarios {
    * mark the legitimate token used. This is the hash-before-mark-used invariant from ADR 0013.
    */
   public void wrongSecretReturnsUnknownAndDoesNotBurnLegitToken() {
-    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty());
+    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty(), AMR);
     String forged = root.record().refreshId() + ".wrongSecretBase64Url";
     assertThat(service.rotate(forged)).isInstanceOf(RotateResult.Unknown.class);
     // Legitimate rotation still works after the failed presentation.
@@ -157,7 +163,7 @@ public final class RefreshTokenScenarios {
 
   /** Calling revokeFamily twice is a no-op the second time. */
   public void revokeFamilyIsIdempotent() {
-    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty());
+    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty(), AMR);
     service.revokeFamily(root.record().familyId(), RevokeReason.LOGOUT);
     service.revokeFamily(root.record().familyId(), RevokeReason.LOGOUT);
     var family = repository.findByFamilyId(root.record().familyId());
@@ -169,9 +175,9 @@ public final class RefreshTokenScenarios {
   public void revokeAllForUserRevokesEveryActiveFamily() {
     UserHandle alice = UserHandle.of(new byte[] {1});
     UserHandle bob = UserHandle.of(new byte[] {2});
-    service.issue(alice, AUDIENCE, Optional.empty());
-    service.issue(alice, "cli", Optional.empty());
-    service.issue(bob, AUDIENCE, Optional.empty());
+    service.issue(alice, AUDIENCE, Optional.empty(), AMR);
+    service.issue(alice, "cli", Optional.empty(), AMR);
+    service.issue(bob, AUDIENCE, Optional.empty(), AMR);
 
     int revoked = service.revokeAllForUser(alice, RevokeReason.USER_DELETED);
     assertThat(revoked).isEqualTo(2);
@@ -188,7 +194,7 @@ public final class RefreshTokenScenarios {
    * on motif's {@code concurrent_sameSecret_exactlyOneSucceeds_familyRevoked}.
    */
   public void concurrentRotationExactlyOneSucceedsFamilyRevoked() throws Exception {
-    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty());
+    RefreshTokenPair root = service.issue(USER, AUDIENCE, Optional.empty(), AMR);
 
     int threads = 8;
     CountDownLatch ready = new CountDownLatch(threads);

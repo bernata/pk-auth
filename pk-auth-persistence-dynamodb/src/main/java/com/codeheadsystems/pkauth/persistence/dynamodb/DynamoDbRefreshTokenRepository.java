@@ -22,9 +22,11 @@ import software.amazon.awssdk.enhanced.dynamodb.Expression;
 import software.amazon.awssdk.enhanced.dynamodb.Key;
 import software.amazon.awssdk.enhanced.dynamodb.TableSchema;
 import software.amazon.awssdk.enhanced.dynamodb.model.ConditionCheck;
+import software.amazon.awssdk.enhanced.dynamodb.model.IgnoreNullsMode;
 import software.amazon.awssdk.enhanced.dynamodb.model.PutItemEnhancedRequest;
 import software.amazon.awssdk.enhanced.dynamodb.model.QueryConditional;
 import software.amazon.awssdk.enhanced.dynamodb.model.TransactPutItemEnhancedRequest;
+import software.amazon.awssdk.enhanced.dynamodb.model.TransactUpdateItemEnhancedRequest;
 import software.amazon.awssdk.enhanced.dynamodb.model.TransactWriteItemsEnhancedRequest;
 import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 import software.amazon.awssdk.services.dynamodb.model.ConditionalCheckFailedException;
@@ -98,26 +100,33 @@ public final class DynamoDbRefreshTokenRepository implements RefreshTokenReposit
     return wrap(
         "refresh_tokens.rotateAtomically",
         () -> {
-          // We can't read userHandleB64u from the predicate, so we need to look up the parent
-          // first to know which user-index item to update. The lookup + transact path is
-          // safe because the conditional on the parent UpdateItem inside the transaction is
-          // the authoritative freshness check — even if state changed between lookup and
-          // transaction, the conditional fails and we return false.
-          RefreshTokenItem parent =
-              table.getItem(
-                  Key.builder()
-                      .partitionValue(PRIMARY_PK_PREFIX + parentRefreshId)
-                      .sortValue(PRIMARY_PK_PREFIX + parentRefreshId)
-                      .build());
-          if (parent == null) {
-            return false;
-          }
+          // Mark the parent's primary item used via a conditional UpdateItem that touches ONLY
+          // used_at (ignoreNulls) — not a read-modify-write of the whole item — so a concurrent
+          // writer to any other parent attribute can never be clobbered, and no prior read is
+          // needed. The successor's user-index partition is derived from the successor's own
+          // userHandle, not the parent's, so the parent never has to be loaded.
+          //
+          // The condition is the authoritative freshness check: the parent must exist
+          // (attribute_exists(pk) — UpdateItem would otherwise upsert a brand-new row) and be
+          // unused, unrevoked, and unexpired. Expiry compares the numeric epoch-second `ttl`
+          // attribute (== expiresAt.epochSecond), NOT the ISO string: Instant.toString() is
+          // variable-precision (it drops the fractional-seconds field when zero), so a
+          // lexicographic ">" sorts "...:00Z" after "...:00.000001Z" and would treat an expired
+          // token as still fresh.
+          RefreshTokenItem parentMark = new RefreshTokenItem();
+          parentMark.setPk(PRIMARY_PK_PREFIX + parentRefreshId);
+          parentMark.setSk(PRIMARY_PK_PREFIX + parentRefreshId);
+          parentMark.setUsedAtIso(now.toString());
 
-          String nowIso = now.toString();
-          // Mark the parent's primary item used. The user-index and family-index items aren't
-          // authoritative for used_at — only the primary is — so we don't mutate them here.
-          RefreshTokenItem updatedParent = copy(parent);
-          updatedParent.setUsedAtIso(nowIso);
+          Expression freshness =
+              Expression.builder()
+                  .expression(
+                      "attribute_exists(pk) AND attribute_not_exists(usedAtIso)"
+                          + " AND attribute_not_exists(revokedAtIso) AND #ttl > :nowEpoch")
+                  .putExpressionName("#ttl", "ttl")
+                  .putExpressionValue(
+                      ":nowEpoch", AttributeValue.fromN(Long.toString(now.getEpochSecond())))
+                  .build();
 
           // Build the three successor items.
           RefreshTokenItem successorPrimary =
@@ -136,29 +145,14 @@ public final class DynamoDbRefreshTokenRepository implements RefreshTokenReposit
                   FAMILY_PK_PREFIX + successor.familyId(),
                   INDEX_SK_PREFIX + successor.refreshId());
 
-          // Transact: conditional update on parent primary (still fresh) + put successor items.
-          // ConditionExpression — fresh iff used_at, revoked_at unset and expires_at > now.
-          // Expiry compares the numeric epoch-second `ttl` attribute (== expiresAt.epochSecond),
-          // NOT the ISO string: Instant.toString() is variable-precision (it drops the
-          // fractional-seconds field when zero), so a lexicographic ">" sorts "...:00Z" after
-          // "...:00.000001Z" and would treat an expired token as still fresh.
-          Expression freshness =
-              Expression.builder()
-                  .expression(
-                      "attribute_not_exists(usedAtIso) AND attribute_not_exists(revokedAtIso)"
-                          + " AND #ttl > :nowEpoch")
-                  .putExpressionName("#ttl", "ttl")
-                  .putExpressionValue(
-                      ":nowEpoch", AttributeValue.fromN(Long.toString(now.getEpochSecond())))
-                  .build();
-
           try {
             enhanced.transactWriteItems(
                 TransactWriteItemsEnhancedRequest.builder()
-                    .addPutItem(
+                    .addUpdateItem(
                         table,
-                        TransactPutItemEnhancedRequest.builder(RefreshTokenItem.class)
-                            .item(updatedParent)
+                        TransactUpdateItemEnhancedRequest.builder(RefreshTokenItem.class)
+                            .item(parentMark)
+                            .ignoreNullsMode(IgnoreNullsMode.SCALAR_ONLY)
                             .conditionExpression(freshness)
                             .build())
                     .addPutItem(
@@ -438,27 +432,8 @@ public final class DynamoDbRefreshTokenRepository implements RefreshTokenReposit
     item.setUsedAtIso(r.usedAt().map(Instant::toString).orElse(null));
     item.setRevokedAtIso(r.revokedAt().map(Instant::toString).orElse(null));
     item.setRevokedReason(r.revokedReason().map(Enum::name).orElse(null));
+    item.setAmr(String.join(",", r.amr()));
     item.setTtl(r.expiresAt().getEpochSecond());
-    return item;
-  }
-
-  private static RefreshTokenItem copy(RefreshTokenItem from) {
-    RefreshTokenItem item = new RefreshTokenItem();
-    item.setPk(from.getPk());
-    item.setSk(from.getSk());
-    item.setRefreshId(from.getRefreshId());
-    item.setTokenHashB64u(from.getTokenHashB64u());
-    item.setUserHandleB64u(from.getUserHandleB64u());
-    item.setAudience(from.getAudience());
-    item.setDeviceId(from.getDeviceId());
-    item.setFamilyId(from.getFamilyId());
-    item.setParentRefreshId(from.getParentRefreshId());
-    item.setIssuedAtIso(from.getIssuedAtIso());
-    item.setExpiresAtIso(from.getExpiresAtIso());
-    item.setUsedAtIso(from.getUsedAtIso());
-    item.setRevokedAtIso(from.getRevokedAtIso());
-    item.setRevokedReason(from.getRevokedReason());
-    item.setTtl(from.getTtl());
     return item;
   }
 
@@ -477,7 +452,19 @@ public final class DynamoDbRefreshTokenRepository implements RefreshTokenReposit
         Instant.parse(item.getExpiresAtIso()),
         Optional.ofNullable(item.getUsedAtIso()).map(Instant::parse),
         Optional.ofNullable(item.getRevokedAtIso()).map(Instant::parse),
-        Optional.ofNullable(item.getRevokedReason()).map(RevokeReason::valueOf));
+        Optional.ofNullable(item.getRevokedReason()).map(RevokeReason::valueOf),
+        splitAmr(item.getAmr()));
+  }
+
+  /**
+   * Parses the stored comma-separated {@code amr} attribute back into a list. A null/blank value
+   * (items written before the attribute existed) maps to the generic {@code ["user"]}.
+   */
+  private static List<String> splitAmr(String stored) {
+    if (stored == null || stored.isBlank()) {
+      return List.of("user");
+    }
+    return List.of(stored.split(","));
   }
 
   private static <T> T wrap(String op, Supplier<T> body) {

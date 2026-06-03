@@ -41,6 +41,7 @@ public class RefreshTokenItem {
   private String usedAtIso;
   private String revokedAtIso;
   private String revokedReason;
+  private String amr;
   private Long ttl;
 
   public RefreshTokenItem() {}
@@ -157,6 +158,15 @@ public class RefreshTokenItem {
 
   public void setRevokedReason(String revokedReason) {
     this.revokedReason = revokedReason;
+  }
+
+  /** RFC 8176 {@code amr} method references, stored comma-separated (e.g. "pkauth,webauthn"). */
+  public String getAmr() {
+    return amr;
+  }
+
+  public void setAmr(String amr) {
+    this.amr = amr;
   }
 
   public Long getTtl() {
