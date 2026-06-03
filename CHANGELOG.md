@@ -9,9 +9,7 @@ The 0.x line is treated as a single pre-stable development series — see
 1.0.0 stabilisation cut; for 0.x history consult `git log` against the relevant
 tags.
 
-## [Unreleased]
-
-## [1.3.0]
+## [1.3.0]  — 2026-06-03
 
 Security-review follow-ups (hardening; no known exploit in the items below).
 
@@ -66,7 +64,7 @@ Security-review follow-ups (hardening; no known exploit in the items below).
   handle a `null` jti, and that the Spring JWT filter is additive (never
   clears a pre-existing `SecurityContext`).
 
-## [1.2.0]
+## [1.2.0] — 2026-06-02
 
 ### Security
 
@@ -97,7 +95,7 @@ Security-review follow-ups (hardening; no known exploit in the items below).
   points hosts at uniform-latency / rate-limiting mitigations. No behavioural
   change.
 
-## [1.1.0] — 2026-06-02
+## [1.1.0] — 2026-05-18
 
 ### Added
 
