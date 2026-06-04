@@ -14,6 +14,7 @@ import com.codeheadsystems.pkauth.admin.BackupCodesCountResponse;
 import com.codeheadsystems.pkauth.admin.EmailVerificationResult;
 import com.codeheadsystems.pkauth.api.CredentialId;
 import com.codeheadsystems.pkauth.api.UserHandle;
+import io.micronaut.context.annotation.Requires;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -38,9 +39,16 @@ import io.micronaut.scheduling.annotation.ExecuteOn;
  * <p>Every {@link AdminResult} is routed through {@link AdminResponseMapper} so the JSON shape is
  * byte-for-byte identical across the Spring, Dropwizard, and Micronaut adapters.
  *
+ * <p>Mounted only when an {@link AdminService} bean is present — which, because {@code
+ * pk-auth-admin-api} is a {@code compileOnly} dependency of this adapter, happens only when the
+ * host keeps that module on its runtime classpath. A host that omits it gets no {@code
+ * /auth/admin/**} routes at all, matching the optional-admin contract of the Spring Boot starter
+ * and the Dropwizard bundle.
+ *
  * @since 0.9.1
  */
 @Controller("/auth/admin")
+@Requires(beans = AdminService.class)
 @Produces(MediaType.APPLICATION_JSON)
 @ExecuteOn(TaskExecutors.BLOCKING)
 public class PkAuthAdminController {

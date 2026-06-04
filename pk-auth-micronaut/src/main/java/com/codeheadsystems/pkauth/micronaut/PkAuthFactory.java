@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.micronaut;
 
-import com.codeheadsystems.pkauth.admin.AdminService;
-import com.codeheadsystems.pkauth.admin.DefaultAdminService;
 import com.codeheadsystems.pkauth.backupcodes.BackupCodeService;
 import com.codeheadsystems.pkauth.ceremony.InMemoryCeremonyRateLimiter;
 import com.codeheadsystems.pkauth.ceremony.PasskeyAuthenticationService;
@@ -307,15 +305,8 @@ public class PkAuthFactory {
     return OtpService.create(OtpService.Dependencies.of(repo, sms, clock), pepper);
   }
 
-  @Singleton
-  AdminService adminService(
-      CredentialRepository credentialRepository,
-      UserLookup userLookup,
-      BackupCodeService backupCodeService,
-      MagicLinkService magicLinkService,
-      OtpService otpService) {
-    return DefaultAdminService.create(
-        new DefaultAdminService.Dependencies(
-            credentialRepository, userLookup, backupCodeService, magicLinkService, otpService));
-  }
+  // The optional admin service lives in PkAuthAdminFactory, which is gated with
+  // @Requires(classes = AdminService.class). Keeping it off this factory means PkAuthFactory holds
+  // no reference to the compileOnly pk-auth-admin-api module, so a host that omits that module can
+  // still build the ceremony / JWT beans here without a NoClassDefFoundError on the admin types.
 }

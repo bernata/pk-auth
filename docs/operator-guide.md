@@ -134,6 +134,39 @@ Recommended dashboards:
 | DynamoDB `ConditionalCheckFailedException` on `takeOnce` | Two clients tried to consume the same challenge | Expected; only one succeeds. If the rate is high, inspect for double-submit on the client |
 | Spring Security 7 chain mounts before the pk-auth filter | Filter order regression | Verify `PkAuthSecurityConfig.pkAuthSecurityFilterChain` has the higher precedence in the host's chain |
 
-## 7. Threat model
+## 7. Disabling the admin endpoints
+
+The account-admin surface (`/auth/admin/**` — list / rename / delete passkeys,
+regenerate backup codes, email / phone verification) lives in the optional
+`com.codeheadsystems:pk-auth-admin-api` module. If a deployment drives those
+operations out-of-band (an internal console, a separate service) and wants a
+smaller public HTTP surface, the admin endpoints can be turned **off by
+configuration alone — no source changes to pk-auth**. In every adapter the rule
+is the same: the admin routes mount **only when `pk-auth-admin-api` is on the
+runtime classpath**. Leave it off and no `/auth/admin/**` routes are registered
+(requests get a clean 404); the ceremony, JWT, and refresh endpoints are
+unaffected.
+
+| Adapter | How admin is wired | To disable |
+|---|---|---|
+| Spring Boot (`pk-auth-spring-boot-starter`) | `pk-auth-admin-api` is `compileOnly`; `PkAuthAdminAutoConfiguration` is `@ConditionalOnClass(AdminService)` | Do not add `pk-auth-admin-api` as a runtime dependency (the starter does not pull it transitively) |
+| Dropwizard (`pk-auth-dropwizard`) | `pk-auth-admin-api` is `compileOnly`; the bundle mounts `PkAuthAdminResource` only when admin is wired | Omit `pk-auth-admin-api`, **or** register the bundle with the no-admin constructor `new PkAuthBundle(persistence)` |
+| Micronaut (`pk-auth-micronaut`) | `pk-auth-admin-api` is `compileOnly`; `PkAuthAdminFactory` is `@Requires(classes = AdminService.class)` and `PkAuthAdminController` is `@Requires(beans = AdminService.class)` | Do not add `pk-auth-admin-api` as a runtime dependency (the adapter does not pull it transitively) |
+
+For Maven/Gradle consumers this is purely a dependency decision in the host
+application — the admin module is opt-in. The three example apps under
+`examples/` declare `pk-auth-admin-api` explicitly because they exercise the full
+admin walkthrough; a production host that wants the ceremony surface only simply
+leaves that line out.
+
+> **Note (Micronaut).** Keep `PkAuthAdminFactory` (the `@Requires`-gated
+> `AdminService` bean) separate from `PkAuthFactory`. Because Micronaut's
+> generated bean definition for a `@Factory` references the return types of its
+> factory methods, hosting the optional `AdminService` bean on the main factory
+> would make `PkAuthFactory` unloadable when `pk-auth-admin-api` is absent
+> (`NoClassDefFoundError` on the first ceremony request). The split keeps the
+> always-on factory free of any reference to the optional module.
+
+## 8. Threat model
 
 See `docs/threat-model.md` for the formal STRIDE pass.

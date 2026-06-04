@@ -21,6 +21,10 @@ application {
 
 dependencies {
     implementation(project(":pk-auth-micronaut"))
+    // pk-auth-admin-api is compileOnly in the adapter (the admin surface is opt-in), so the demo —
+    // which exercises the full admin walkthrough — declares it explicitly, the same way the
+    // Spring Boot and Dropwizard demos do.
+    implementation(project(":pk-auth-admin-api"))
     implementation(project(":pk-auth-testkit"))
     implementation(libs.micronaut.runtime)
     runtimeOnly(libs.logback.classic)
