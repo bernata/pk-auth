@@ -52,7 +52,9 @@ What you get out of the box:
 - Persistence options: in-memory (testkit), JDBI + Postgres with Flyway
   migrations, or DynamoDB single-table.
 - A zero-dependency browser SDK (`@pk-auth/passkeys-browser`) covering
-  both ceremony and admin operations.
+  both ceremony and admin operations, published on npm
+  (`npm install @pk-auth/passkeys-browser`). Its version tracks the
+  pk-auth server release it speaks to.
 
 ```mermaid
 flowchart LR

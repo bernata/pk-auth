@@ -64,6 +64,17 @@ Security-review follow-ups (hardening; no known exploit in the items below).
   handle a `null` jti, and that the Spring JWT filter is additive (never
   clears a pre-existing `SecurityContext`).
 
+### Distribution
+
+- **The browser SDK is now published to npm as
+  [`@pk-auth/passkeys-browser`](https://www.npmjs.com/package/@pk-auth/passkeys-browser)
+  at `1.3.0`** — its first npm release. The SDK version tracks the pk-auth
+  server release it speaks to, so `1.3.0` matches this release's Maven
+  Central artifacts. Install with `npm install @pk-auth/passkeys-browser`.
+  See [`RELEASE.md`](./RELEASE.md) for the publish steps. (The example
+  apps still consume the SDK via a relative `dist/` import built by
+  Gradle, not the published package.)
+
 ## [1.2.0] — 2026-06-02
 
 ### Security

@@ -120,7 +120,7 @@ modules implement SPIs declared in core and are wired in by the host.
 | `pk-auth-spring-boot-starter` | Spring Boot 4 / Spring Security 7 autoconfigure + controller. |
 | `pk-auth-dropwizard` | Dropwizard 5 `ConfiguredBundle` + Dagger 2 wiring + Jersey resources. |
 | `pk-auth-micronaut` | Micronaut 4 controllers + `@Filter` JWT validation (no Micronaut Security). |
-| `clients/passkeys-browser` | TypeScript SDK. ESM + CJS, zero deps, vitest-tested. |
+| `clients/passkeys-browser` | TypeScript SDK (npm: `@pk-auth/passkeys-browser`). ESM + CJS, zero deps, vitest-tested. |
 | `examples/{spring-boot,dropwizard,micronaut}-demo` | Runnable demos with the shared SPA. |
 
 ## 4. The wire contract
@@ -340,7 +340,10 @@ SPIs.
 ## 9. The TS SDK
 
 `clients/passkeys-browser/` is a zero-dep TypeScript SDK that ships
-both ESM and CJS bundles. Two clients:
+both ESM and CJS bundles, published on npm as
+[`@pk-auth/passkeys-browser`](https://www.npmjs.com/package/@pk-auth/passkeys-browser)
+(`npm install @pk-auth/passkeys-browser`; its version tracks the pk-auth
+server release it speaks to). Two clients:
 
 - **`PkAuthCeremonyClient`** — full `register()` and `authenticate()`
   flows that wrap `navigator.credentials.{create,get}`, handling all

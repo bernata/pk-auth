@@ -117,6 +117,12 @@ Skip them and the feature isn't exposed.
 |---|---|---|
 | `clients/passkeys-browser` (`@pk-auth/passkeys-browser`) | Zero-dependency TypeScript SDK. `PkAuthCeremonyClient` wraps `navigator.credentials.{create,get}` and handles all the base64url ↔ ArrayBuffer conversions. `PkAuthAdminClient` calls the admin endpoints with a bearer token. ESM + CJS bundles. | If your frontend talks to pk-auth from a browser. Skip if you're calling the JSON endpoints from a non-browser client (mobile, server-to-server). |
 
+The SDK is on npm — its version tracks the pk-auth release it speaks to:
+
+```sh
+npm install @pk-auth/passkeys-browser
+```
+
 ## 3. What you have to do (the SPI surface)
 
 pk-auth's design assumes **your app already has a user table**. It doesn't
