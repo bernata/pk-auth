@@ -1,10 +1,9 @@
 # Dependabot configuration for pk-auth.
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 #
-# Ecosystems are added as the corresponding directories land in later phases:
-#   - `npm` for clients/passkeys-browser  (Phase 11)
-#   - additional `gradle` directories are not needed — a single root entry covers the whole
-#     multi-project build, including build-logic and example apps.
+# A single root `gradle` entry covers the whole multi-project build, including build-logic and
+# example apps. The `npm` entries cover the published browser SDK and each demo's Playwright
+# e2e suite — these run in CI and on developer machines, so they are part of the supply chain.
 
 version: 2
 updates:
@@ -30,6 +29,20 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "io.micronaut.test:*"
         update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "npm"
+    directories:
+      - "/clients/passkeys-browser"
+      - "/examples/spring-boot-demo/e2e"
+      - "/examples/dropwizard-demo/e2e"
+      - "/examples/micronaut-demo/e2e"
+    schedule:
+      interval: "daily"
+    groups:
+      npm-dependencies:
+        applies-to: version-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: "github-actions"
     directory: "/"
