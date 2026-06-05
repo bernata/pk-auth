@@ -1,6 +1,7 @@
 # Releasing pk-auth
 
-This document explains how to publish the pk-auth libraries to Maven Central.
+This document explains how to publish the pk-auth libraries to Maven Central
+and the browser SDK to npm.
 
 ## What gets published
 
@@ -15,6 +16,12 @@ Every release publishes the same set of 13 artifacts, all under
 - `pk-auth-spring-boot-starter`, `pk-auth-dropwizard`, `pk-auth-micronaut`
 
 The demo applications under `examples/` are intentionally **not** published.
+
+Separately, the browser SDK `clients/passkeys-browser/` is published to **npm**
+as `@pk-auth/passkeys-browser`. Its version tracks the server release it speaks
+to (the SDK and the JVM artifacts share a version), so it is published as part of
+the same release — see [Publishing the browser SDK to npm](#publishing-the-browser-sdk-to-npm)
+below. There is no CI workflow for the npm publish yet; it is a manual step.
 
 ## Prerequisites (one-time)
 
@@ -140,6 +147,79 @@ let CI handle it.
 - **`publishAggregationToCentralPortal` task missing.** Means the
   `com.gradleup.nmcp.settings` plugin in `settings.gradle.kts` did not load.
   Confirm the plugin id and version, then re-run with `--refresh-dependencies`.
+
+## Publishing the browser SDK to npm
+
+The browser SDK (`clients/passkeys-browser/`, package
+`@pk-auth/passkeys-browser`) is published to npm manually after the Maven Central
+release for the same version has gone out. Its version must match the pk-auth
+release version (the SDK speaks the same wire contract as that server release).
+
+### Prerequisites (one-time)
+
+- **Node ≥ 20 + npm** (same toolchain the Gradle SDK build uses).
+- An **npm account** that is a member of the `@pk-auth` org/scope with publish
+  rights. The package is public scoped (`publishConfig.access = "public"` is set
+  in `package.json`, so no `--access public` flag is needed).
+- Authenticate locally once with `npm login` (or set `NPM_TOKEN` /
+  `~/.npmrc`). Confirm with `npm whoami`.
+
+### Steps
+
+Run these from `clients/passkeys-browser/`. Replace `X.Y.Z` with the release
+version you just tagged for Maven Central (without the leading `v`).
+
+```sh
+cd clients/passkeys-browser
+
+# 1. Match the SDK version to the server release (no git tag — the repo is
+#    already tagged for the Maven release). This rewrites package.json's version.
+npm version X.Y.Z --no-git-tag-version --allow-same-version
+
+# 2. Clean install of the locked dependency tree.
+npm ci
+
+# 3. Dry run — verify the file list and resulting tarball before publishing.
+#    `prepublishOnly` (typecheck + test + build) runs automatically on publish;
+#    --dry-run exercises it without uploading.
+npm publish --dry-run
+
+# 4. Publish for real. `prepublishOnly` runs typecheck, tests, and the tsup
+#    build, so dist/ is regenerated from source as part of the publish.
+npm publish
+```
+
+`--no-git-tag-version` is important: the version bump must **not** create its own
+git tag, because the release is already tagged (`vX.Y.Z`) for Maven Central. Pin
+the SDK version to that same number so the two stay in lockstep.
+
+> The committed `version` in `package.json` is the in-development line
+> (e.g. `1.3.0-SNAPSHOT`), mirroring `gradle.properties`. `SNAPSHOT` is a valid
+> semver prerelease identifier, so it will not be published by accident — step 1
+> always pins it to the concrete release version first. After publishing, you may
+> leave `package.json` at the published version or restore the `-SNAPSHOT` line on
+> the development branch; either way, the next release re-pins it in step 1.
+
+### Verifying the npm release
+
+```sh
+npm view @pk-auth/passkeys-browser version          # should report X.Y.Z
+npm view @pk-auth/passkeys-browser dist-tags         # latest -> X.Y.Z
+```
+
+For a **pre-release** (e.g. `X.Y.Z-rc.1`), publish under a dist-tag so it does
+not become `latest`:
+
+```sh
+npm version X.Y.Z-rc.1 --no-git-tag-version --allow-same-version
+npm publish --tag next
+```
+
+### Rolling back an npm release
+
+Like Maven Central, npm publishes are effectively immutable (unpublish is
+restricted and discouraged). To recover from a bad SDK release, publish a new
+patch version with the fix rather than unpublishing.
 
 ## Rolling back a release
 

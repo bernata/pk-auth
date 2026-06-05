@@ -1,7 +1,14 @@
 # `@pk-auth/passkeys-browser`
 
 Zero-dependency TypeScript SDK for the pk-auth wire contract.
-Consumed by every example app via a relative path — no npm publish step.
+Published to npm as [`@pk-auth/passkeys-browser`](https://www.npmjs.com/package/@pk-auth/passkeys-browser);
+its version tracks the pk-auth server release it speaks to. The example apps in
+this repo consume it via a relative `dist/` import (built by Gradle) rather than
+the published package. See [`RELEASE.md`](../../RELEASE.md) for the publish steps.
+
+```sh
+npm install @pk-auth/passkeys-browser
+```
 
 ## API
 
