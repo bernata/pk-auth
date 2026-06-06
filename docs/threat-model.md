@@ -104,7 +104,7 @@ The controls below are defense-in-depth; none alone is sufficient.
 
 | Threat | Mitigation |
 |---|---|
-| A dependency or plugin is swapped for a malicious build (hijacked artifact, MITM of a repository) | **Gradle dependency verification** (`gradle/verification-metadata.xml`) pins a SHA-256 for every resolved dependency, plugin, and build-script artifact; resolution fails if a downloaded artifact does not match. Repositories are restricted to `mavenCentral()` + `gradlePluginPortal()` over HTTPS — no HTTP or untrusted mirrors. All versions are pinned in a single version catalog with no dynamic (`+` / `latest.release`) ranges. |
+| A dependency or plugin is swapped for a malicious build (hijacked artifact, MITM of a repository) | Repositories are restricted to `mavenCentral()` + `gradlePluginPortal()` over HTTPS — no HTTP or untrusted mirrors — and Maven Central artifacts are immutable, so a published coordinate cannot be silently re-bytes'd. All versions are pinned in a single version catalog with no dynamic (`+` / `latest.release`) ranges. **Gradle dependency-verification checksums are intentionally *not* used:** with Dependabot auto-merging patch/minor bumps, the metadata would have to be regenerated automatically from whatever was just downloaded and approved unattended, which notarizes the artifact rather than vetting it — providing no protection against a malicious *release* (the actual threat) while breaking the build on every bump. The "is this version known-bad?" question is instead answered by `dependency-review-action` (next row). |
 | The Gradle distribution itself is tampered with | `gradle-wrapper.properties` carries `distributionSha256Sum`, so the wrapper refuses to run a distribution that doesn't match the published checksum. CI additionally runs `gradle/actions/wrapper-validation` to confirm `gradle-wrapper.jar` matches a known-good Gradle release. |
 | A CI action is repointed to malicious code via a mutable tag | Every GitHub Actions `uses:` is pinned to a full **commit SHA** (with the human-readable version in a trailing comment), not a floating `@vN` tag. This is most important for third-party actions that run in privileged jobs (e.g. `softprops/action-gh-release` in the release pipeline). |
 | A compromised dependency release is merged automatically | The Dependabot auto-merge workflow only auto-approves **patch and minor** bumps, and **never** auto-merges GitHub Actions updates (a privileged surface) — majors and action bumps require human review. A green CI run is not treated as evidence that a newly published version is trustworthy. |
@@ -112,11 +112,14 @@ The controls below are defense-in-depth; none alone is sufficient.
 | A forged or unsigned release reaches consumers | Maven Central artifacts are GPG-signed in CI (`release.yml`); the signing key, passphrase, and Central Portal credentials are injected from GitHub secrets at publish time, scoped to the publish steps only and never exposed to the third-party release action. Releases are triggered exclusively by maintainer-pushed `vX.Y.Z` tags or manual dispatch, so untrusted PR code cannot trigger a publish. CI itself runs on `pull_request` with `contents: read`, so fork PRs execute without secret access. |
 | Secrets leak through the repository | No secrets are committed (`.gitignore` covers `.env`); release credentials exist only as GitHub secrets and, on the ephemeral runner, in a `chmod 600` `~/.gradle/gradle.properties` written at publish time. |
 
-**Residual risk.** Dependency verification records checksums, not signatures
-(`verify-signatures` is off), so it pins *what* was resolved when the metadata was
-generated but does not independently establish provenance — refreshing the metadata
-on a compromised host would pin compromised hashes. The npm SDK is published manually
-(see `RELEASE.md`) and is not yet covered by a provenance attestation
+**Residual risk.** Without artifact-checksum pinning, the project trusts Maven
+Central's and the Gradle Plugin Portal's own integrity (immutability + TLS) for the
+bytes behind each pinned coordinate; a compromise of those registries themselves is
+out of scope. Auto-merged patch/minor dependency bumps are gated by CI and
+`dependency-review-action` but are not human-reviewed, so a malicious release that is
+not yet in the advisory database could land — keep the auto-merge window to patch/minor
+and rely on the advisory feed and post-merge Dependabot alerts. The npm SDK is published
+manually (see `RELEASE.md`) and is not yet covered by a provenance attestation
 (`npm publish --provenance`). Neither the Maven nor npm release is reproducible-build
 verified. These are accepted for now; revisit if the project adopts SLSA provenance.
 
