@@ -22,17 +22,28 @@ jobs:
     steps:
       - name: Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
+      # Only auto-merge low-risk bumps. Major version bumps — and any GitHub Actions
+      # update (a privileged supply-chain surface) — require human review, because a
+      # green CI run does not establish that a newly published dependency is trustworthy.
       - name: Enable auto-merge
+        if: |
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-minor') &&
+          steps.metadata.outputs.package-ecosystem != 'github-actions'
         run: gh pr merge --auto --squash --delete-branch "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Approve PR
+        if: |
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-minor') &&
+          steps.metadata.outputs.package-ecosystem != 'github-actions'
         run: gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

@@ -24,6 +24,10 @@ Boundaries cross-checked in this model:
    a private network.
 3. **Adapter ↔ secrets / KMS** — trusted; assumes the host injects credentials at
    boot.
+4. **Source ↔ build/distribution pipeline** — semi-trusted. The artifacts pk-auth
+   ships (Maven Central jars, the npm SDK) are only as trustworthy as the
+   dependencies, build tools, and CI actions that produce them. See
+   [Supply chain](#supply-chain).
 
 ## STRIDE pass
 
@@ -87,6 +91,34 @@ Boundaries cross-checked in this model:
 - **JWT revocation**: JWTs are valid until `exp` by default. The `RevocationCheck` SPI (added in `pk-auth-jwt`) allows hosts to implement revocation (logout-all, account-disable). Without it, accept the TTL bound on session length and prefer short TTLs.
 - **Passkey export / migration**: not the library's concern. The user's authenticator owns the
   key material; pk-auth never sees it.
+
+## Supply chain
+
+pk-auth is a security library published to Maven Central and npm, so a compromise of
+its build or its dependencies propagates directly into every downstream application —
+a higher-leverage target than any single deployment. The dominant modern attack vector
+is not a typosquat but a **malicious release of an otherwise-legitimate dependency or
+CI action** (maintainer-account takeover, a poisoned transitive, or a retroactively
+repointed Git tag — cf. the `tj-actions/changed-files` tag poisoning, March 2025).
+The controls below are defense-in-depth; none alone is sufficient.
+
+| Threat | Mitigation |
+|---|---|
+| A dependency or plugin is swapped for a malicious build (hijacked artifact, MITM of a repository) | **Gradle dependency verification** (`gradle/verification-metadata.xml`) pins a SHA-256 for every resolved dependency, plugin, and build-script artifact; resolution fails if a downloaded artifact does not match. Repositories are restricted to `mavenCentral()` + `gradlePluginPortal()` over HTTPS — no HTTP or untrusted mirrors. All versions are pinned in a single version catalog with no dynamic (`+` / `latest.release`) ranges. |
+| The Gradle distribution itself is tampered with | `gradle-wrapper.properties` carries `distributionSha256Sum`, so the wrapper refuses to run a distribution that doesn't match the published checksum. CI additionally runs `gradle/actions/wrapper-validation` to confirm `gradle-wrapper.jar` matches a known-good Gradle release. |
+| A CI action is repointed to malicious code via a mutable tag | Every GitHub Actions `uses:` is pinned to a full **commit SHA** (with the human-readable version in a trailing comment), not a floating `@vN` tag. This is most important for third-party actions that run in privileged jobs (e.g. `softprops/action-gh-release` in the release pipeline). |
+| A compromised dependency release is merged automatically | The Dependabot auto-merge workflow only auto-approves **patch and minor** bumps, and **never** auto-merges GitHub Actions updates (a privileged surface) — majors and action bumps require human review. A green CI run is not treated as evidence that a newly published version is trustworthy. |
+| A known-vulnerable dependency is introduced | `actions/dependency-review-action` fails any PR that adds a dependency with a high-severity advisory before it can merge. Dependabot tracks the `gradle`, `npm`, and `github-actions` ecosystems (the npm SDK and each demo's Playwright e2e suite included) so fixes are surfaced promptly. |
+| A forged or unsigned release reaches consumers | Maven Central artifacts are GPG-signed in CI (`release.yml`); the signing key, passphrase, and Central Portal credentials are injected from GitHub secrets at publish time, scoped to the publish steps only and never exposed to the third-party release action. Releases are triggered exclusively by maintainer-pushed `vX.Y.Z` tags or manual dispatch, so untrusted PR code cannot trigger a publish. CI itself runs on `pull_request` with `contents: read`, so fork PRs execute without secret access. |
+| Secrets leak through the repository | No secrets are committed (`.gitignore` covers `.env`); release credentials exist only as GitHub secrets and, on the ephemeral runner, in a `chmod 600` `~/.gradle/gradle.properties` written at publish time. |
+
+**Residual risk.** Dependency verification records checksums, not signatures
+(`verify-signatures` is off), so it pins *what* was resolved when the metadata was
+generated but does not independently establish provenance — refreshing the metadata
+on a compromised host would pin compromised hashes. The npm SDK is published manually
+(see `RELEASE.md`) and is not yet covered by a provenance attestation
+(`npm publish --provenance`). Neither the Maven nor npm release is reproducible-build
+verified. These are accepted for now; revisit if the project adopts SLSA provenance.
 
 ## Token revocation
 
