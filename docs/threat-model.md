@@ -28,6 +28,11 @@ Boundaries cross-checked in this model:
    ships (Maven Central jars, the npm SDK) are only as trustworthy as the
    dependencies, build tools, and CI actions that produce them. See
    [Supply chain](#supply-chain).
+5. **Human ↔ AI coding agent** — semi-trusted, and the most unusual boundary here.
+   Substantially all of this code was written by an AI agent (see the README
+   disclaimer). The agent is unaccountable, can be steered by the untrusted content
+   it reads, and produces code faster than it can be deeply reviewed. Its output is
+   gated only by human review. See [AI-authored code (provenance)](#ai-authored-code-provenance).
 
 ## STRIDE pass
 
@@ -122,6 +127,47 @@ and rely on the advisory feed and post-merge Dependabot alerts. The npm SDK is p
 manually (see `RELEASE.md`) and is not yet covered by a provenance attestation
 (`npm publish --provenance`). Neither the Maven nor npm release is reproducible-build
 verified. These are accepted for now; revisit if the project adopts SLSA provenance.
+
+## AI-authored code (provenance)
+
+Substantially all of pk-auth's code was written by an AI coding agent, with a human
+acting as product manager and architect (see the README's *DISCLAIMER from the human*
+and *Comments from the human*). That makes the **authoring step itself** a supply-chain
+surface, distinct from the dependency/build chain above — and a less well-understood
+one, since the security posture of AI coding agents is still nascent.
+
+Conventional software trust rests on accountable human authorship: identifiable people
+whose access is vetted and whose mistakes are bounded by skill and reviewable intent.
+An AI author breaks those assumptions. It is **unaccountable** (no identity, stake, or
+persistence), **manipulable** through the content it reads, **high-volume** (it emits
+confident, idiomatic-looking code faster than anyone can deeply review — which erodes
+the very review it depends on), and is **itself an opaque supply chain** (model weights,
+inference provider, agent harness, system prompt, and any connected tools). The right
+mental model is to treat AI-generated code like a contribution from an *unvetted external
+contributor with very high output and no accountability* — trustworthy only after
+independent human review, never by provenance. The dominant realistic risk is **not** a
+deliberately planted backdoor (low probability) but confident-but-subtly-wrong code,
+manipulation via injected instructions, and the human review process decaying under volume.
+
+The table below describes the situation **as it actually stands today** — these are
+current realities and partial mitigations, not guarantees the project enforces.
+
+| Threat | Current reality / partial mitigation |
+|---|---|
+| Confident-but-subtly-wrong security code (auth bypass, weak defaults, timing leaks) that passes review *because* it looks idiomatic | The code has **not** had an independent security review; the README states this plainly. The human author reviews and merges every PR but is not acting as a dedicated security reviewer, and intends to seek a third-party review. The test suites, CI gate, and `dependency-review-action` catch some classes; defense-in-depth means no single AI-written check is the only control. The earlier in-repo security review was *itself* AI-produced and carries the same caveat. |
+| Hallucinated or typosquatted (“slopsquat”) dependency introduced by the agent | Dependencies are pinned in a single version catalog with no dynamic ranges; `dependency-review-action` runs on PRs; the human reviews each diff. No automated check specifically verifies that a newly added coordinate is the genuine, intended package. |
+| Indirect prompt injection — malicious instructions hidden in content the agent ingests (issue text, dependency changelogs/release notes, fetched web pages, repo files, tool / MCP output) steering it to insert a backdoor, weaken a check, or exfiltrate | The agent does read such content during development (e.g. dependency release notes, fetched checksums/SHAs, repo files). The mitigation in place is human review of the resulting diffs and the harness's per-action permission prompts. There is no automated detection of injected instructions; reviewing the *entire* diff (not just the described change) is the practical defense. |
+| Excessive agency — the agent can edit code and CI, push branches, open PRs, and invoke the network | Today the **human** triggers tagged releases, holds the GPG signing keys and Central Portal / npm credentials, and merges PRs; the agent holds none of those and operates under the harness's permission model. Releases are signed and maintainer-gated (see [Supply chain](#supply-chain)). |
+| Model / harness / provider compromise (poisoned weights, a malicious harness or MCP update) — a “trusting trust” problem one layer up | Trusted by necessity and out of scope to fully mitigate. Reliance is reduced only indirectly: independent test oracles, pinned build tooling, and human review of output. |
+| Review fatigue / automation bias — AI output outpacing genuine scrutiny | A real, unquantified limitation for a project of this size built this way. Acknowledged here rather than mitigated; the honest control is keeping unreviewed volume within what a human can actually understand and own. |
+
+**Residual risk.** This is the bluntest item in the model: pk-auth's code is AI-authored
+and, absent the third-party security review noted in the README, should be treated as
+**not production-trustworthy on provenance grounds** — evaluate it on its merits, with
+your own review, before relying on it. Note the self-referential limit: this section was
+itself written by the AI agent, so it cannot be relied upon *because* the agent produced
+it — a manipulated or mistaken agent would not faithfully document its own risks. A human
+must validate this analysis like any other AI-authored artifact in the repo.
 
 ## Token revocation
 

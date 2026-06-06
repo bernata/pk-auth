@@ -180,11 +180,24 @@ MIT — see [`LICENSE`](./LICENSE).
 # DISCLAIMER from the human
 
 For this project development, I played the role of product manager and architect,
-but let Claude write all of the code. If you do not like AI generated code, then
-you will want to ignore this project. 
+but let Claude write all the code. If you do not like AI generated code, then
+you will want to ignore this project.
 
-I will be verifying this project by using
-it elsewhere in my work. The description of this git repository indicates if I
-feel it is production worthy or not. I will also try to get legitimate security
-folks to review it; but unless there is a note that they have reviewed the project,
-assume it is not.
+This project is open-source and is not based on any novel ideas. It's a way to
+provide a standardized approach to your project authentication model when you 
+want to have a passkeys-first approach and not write it from scratch. I outlined
+the security limitations and trade-offs in the docs directory, and I encourage
+you to read through those.
+
+That said, I used competing agents and _industry best practices_ <sup>tm</sup> 
+to try to find security issues and bugs outside my own reviews. It is still 
+early in AI development efforts so judge those 'best practices' with a grain of 
+salt given how nascent it is developing with AI tools.
+
+I will be verifying this project by using it elsewhere in my work. The 
+description of this git repository indicates if I feel it is production worthy 
+or not. I will also try to get legitimate security folks to review it; but 
+unless there is a note that they have reviewed the project, assume it is not.
+
+_The AI-as-supply-chain analysis lives in
+[`docs/threat-model.md` → AI-authored code (provenance)](./docs/threat-model.md#ai-authored-code-provenance)._]
