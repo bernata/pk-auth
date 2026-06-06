@@ -4,6 +4,10 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM"],
+    // tsup's .d.ts pipeline injects a `baseUrl`, which TypeScript 6.0 flags as a
+    // deprecation error (TS5101). Acknowledge it explicitly; remove once tsup/
+    // rollup-plugin-dts stops emitting baseUrl (slated to stop working in TS 7.0).
+    "ignoreDeprecations": "6.0",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": false,
