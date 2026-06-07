@@ -44,6 +44,38 @@ jobs:
           path: '**/build/reports/jacoco/**'
           if-no-files-found: ignore
 
+  # Run mutation tests and output mutation testing artifact report
+  # In the future, consider:
+  # Stryker has a free hosted dashboard at stryker-mutator.io that tracks mutation score over time with a badge.
+  # Requires adding STRYKER_DASHBOARD_API_KEY as a repo secret and adding "dashboard" to reporters in
+  # stryker.config.mjs.
+  # The job then passes --dashboard.module passkeys-browser to distinguish it.
+  #
+  browser-mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: clients/passkeys-browser
+
+      - name: Run Stryker mutation tests
+        run: npx stryker run
+        working-directory: clients/passkeys-browser
+
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mutation-report
+          path: clients/passkeys-browser/reports/mutation/
+          if-no-files-found: ignore
+
   # Block PRs that introduce dependencies with known vulnerabilities or incompatible
   # licenses, before they merge. Uses the GitHub dependency graph; PR-only.
   dependency-review:
