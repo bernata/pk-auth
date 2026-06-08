@@ -47,4 +47,21 @@ describe("base64url", () => {
     expect(ab).toBeInstanceOf(ArrayBuffer);
     expect(ab.byteLength).toBe(4);
   });
+
+  // StrykerJS (PR #39, @bernata) flagged the input-type dispatch in toUint8Array.
+  // Encoding a DataView (an ArrayBufferView that is neither Uint8Array nor
+  // ArrayBuffer) exercises the third branch and kills the mutant that forces the
+  // `instanceof ArrayBuffer` check true.
+  it("encodes an ArrayBufferView (DataView) identically to the same bytes", () => {
+    const buf = new Uint8Array([0xde, 0xad, 0xbe, 0xef]).buffer as ArrayBuffer;
+    expect(b64u.encode(new DataView(buf))).toBe(b64u.encode(new Uint8Array(buf)));
+    expect(b64u.encode(new DataView(buf))).toBe("3q2-7w");
+  });
+
+  it("encodes a Uint8Array view that has a non-zero byteOffset", () => {
+    // Subarray view: byteOffset 1, length 2 — guards the Uint8Array branch
+    // against being skipped in favour of a buffer-from-scratch reconstruction.
+    const full = new Uint8Array([0x00, 0xde, 0xad, 0x00]);
+    expect(b64u.encode(full.subarray(1, 3))).toBe(b64u.encode(new Uint8Array([0xde, 0xad])));
+  });
 });
