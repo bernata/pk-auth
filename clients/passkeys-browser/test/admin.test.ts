@@ -165,4 +165,81 @@ describe("PkAuthAdminClient", () => {
     const r = await c.completePhoneVerification("+1555", "123456");
     expect(r.verified).toBe(true);
   });
+
+  // Gaps surfaced by StrykerJS mutation testing (PR #39, @bernata):
+  //  - completeEmailVerification / startPhoneVerification had no coverage at all
+  //    (every mutant in them survived because no test executed them);
+  //  - the per-method tests above assert path + verb but (except getAccount)
+  //    never assert the Authorization header, so the `authenticated` argument
+  //    (the literal `true` on each request() call) could be mutated to `false`
+  //    and survive. Driving every method through one bearer-asserting matrix
+  //    closes both holes.
+  it("completeEmailVerification POSTs the token", async () => {
+    const fetchImpl = stubFetch({
+      "/auth/admin/email/complete-verification": (init) => {
+        expect(init.method).toBe("POST");
+        expect(JSON.parse(String(init.body))).toEqual({ token: "verify-tok" });
+        return { status: 200, body: JSON.stringify({ email: "a@b.c", verified: true }) };
+      },
+    });
+    const c = new PkAuthAdminClient({
+      apiBase: "https://x",
+      getToken: () => "t",
+      fetch: fetchImpl as unknown as typeof fetch,
+    });
+    const r = await c.completeEmailVerification("verify-tok");
+    expect(r.verified).toBe(true);
+  });
+
+  it("startPhoneVerification POSTs the phone", async () => {
+    const fetchImpl = stubFetch({
+      "/auth/admin/phone/start-verification": (init) => {
+        expect(init.method).toBe("POST");
+        expect(JSON.parse(String(init.body))).toEqual({ phone: "+1555" });
+        return { status: 200, body: JSON.stringify({ phone: "+1555", dispatched: true }) };
+      },
+    });
+    const c = new PkAuthAdminClient({
+      apiBase: "https://x",
+      getToken: () => "t",
+      fetch: fetchImpl as unknown as typeof fetch,
+    });
+    await c.startPhoneVerification("+1555");
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["getAccount", "GET", "/auth/admin/account", (c: PkAuthAdminClient) => c.getAccount()],
+    ["listCredentials", "GET", "/auth/admin/credentials", (c: PkAuthAdminClient) => c.listCredentials()],
+    ["renameCredential", "PATCH", "/auth/admin/credentials/abc", (c: PkAuthAdminClient) => c.renameCredential("abc", "L")],
+    ["removeCredential", "DELETE", "/auth/admin/credentials/abc", (c: PkAuthAdminClient) => c.removeCredential("abc")],
+    ["regenerateBackupCodes", "POST", "/auth/admin/backup-codes/regenerate", (c: PkAuthAdminClient) => c.regenerateBackupCodes()],
+    ["remainingBackupCodes", "GET", "/auth/admin/backup-codes/count", (c: PkAuthAdminClient) => c.remainingBackupCodes()],
+    ["startEmailVerification", "POST", "/auth/admin/email/start-verification", (c: PkAuthAdminClient) => c.startEmailVerification("a@b.c")],
+    ["completeEmailVerification", "POST", "/auth/admin/email/complete-verification", (c: PkAuthAdminClient) => c.completeEmailVerification("tok")],
+    ["startPhoneVerification", "POST", "/auth/admin/phone/start-verification", (c: PkAuthAdminClient) => c.startPhoneVerification("+1")],
+    ["completePhoneVerification", "POST", "/auth/admin/phone/complete-verification", (c: PkAuthAdminClient) => c.completePhoneVerification("+1", "000")],
+  ] as const)(
+    "%s calls %s %s as an authenticated (bearer) request",
+    async (_name, method, path, call) => {
+      const seen: { method?: string; auth?: string; path?: string } = {};
+      const recordingFetch = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        seen.path = String(url).replace(/^https:\/\/x/, "");
+        seen.method = init?.method;
+        seen.auth = (init?.headers as Record<string, string> | undefined)?.["authorization"];
+        return new Response("{}", { status: 200 });
+      });
+      const c = new PkAuthAdminClient({
+        apiBase: "https://x",
+        getToken: () => "bearer-tok",
+        fetch: recordingFetch as unknown as typeof fetch,
+      });
+      await call(c);
+      expect(seen.path).toBe(path);
+      expect(seen.method).toBe(method);
+      // The whole point: every admin call must carry the bearer token. If the
+      // `authenticated` flag is flipped to false, this header disappears.
+      expect(seen.auth).toBe("Bearer bearer-tok");
+    },
+  );
 });

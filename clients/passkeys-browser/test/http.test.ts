@@ -122,4 +122,71 @@ describe("request()", () => {
     const e = new PkAuthHttpError(400, JSON.stringify([1, 2, 3]));
     expect(e.data).toBeUndefined();
   });
+
+  // Gaps surfaced by StrykerJS mutation testing (PR #39, @bernata): each case
+  // below kills a mutant that the existing line-covered tests left alive — the
+  // code ran, but nothing asserted the behaviour the mutation changed.
+  it("PkAuthHttpError leaves data undefined for the JSON literal null", () => {
+    // Kills the `parsed !== null && ...` -> `|| ...` mutant: with `||`, a body
+    // of "null" (typeof null === "object") would wrongly be treated as data.
+    const e = new PkAuthHttpError(400, "null");
+    expect(e.data).toBeUndefined();
+    expect(e.error).toBeUndefined();
+  });
+
+  it("PkAuthHttpError leaves data undefined for a primitive JSON body", () => {
+    // Kills the "force the object-check true" mutant: a JSON number is valid
+    // JSON but not a record, so data must stay undefined.
+    expect(new PkAuthHttpError(400, "5").data).toBeUndefined();
+    expect(new PkAuthHttpError(400, '"a string"').data).toBeUndefined();
+  });
+
+  it("always sends an accept: application/json header", async () => {
+    // Kills the `{ accept: "application/json" }` -> `{}` / "" mutants at the
+    // header-initialiser: nothing previously asserted the accept header.
+    const fetchImpl = fakeFetch((_url, init) => {
+      expect((init.headers as Record<string, string>)["accept"]).toBe("application/json");
+      return { status: 200, body: "{}" };
+    });
+    await request(
+      { apiBase: "https://x", fetch: fetchImpl as unknown as typeof fetch },
+      "GET",
+      "/p",
+      undefined,
+      false,
+    );
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("omits content-type when there is no request body", async () => {
+    // Kills the `if (body !== undefined)` -> always-true mutant: a body-less
+    // GET must not advertise a JSON content-type or carry a body.
+    const fetchImpl = fakeFetch((_url, init) => {
+      expect((init.headers as Record<string, string>)["content-type"]).toBeUndefined();
+      expect(init.body).toBeUndefined();
+      return { status: 200, body: "{}" };
+    });
+    await request(
+      { apiBase: "https://x", fetch: fetchImpl as unknown as typeof fetch },
+      "GET",
+      "/p",
+      undefined,
+      false,
+    );
+  });
+
+  it("throws the friendly error (not a TypeError) when getToken is absent", async () => {
+    // Kills the optional-chaining mutant `options.getToken?.()` -> `getToken()`:
+    // with no getToken at all, the optional call yields a clean validation
+    // error; the mutant would throw "getToken is not a function" instead.
+    await expect(
+      request(
+        { apiBase: "https://x" },
+        "GET",
+        "/path",
+        undefined,
+        true,
+      ),
+    ).rejects.toThrow(/requires getToken/);
+  });
 });
