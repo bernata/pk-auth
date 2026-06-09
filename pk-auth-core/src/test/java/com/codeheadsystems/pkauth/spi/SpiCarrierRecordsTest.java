@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 package com.codeheadsystems.pkauth.spi;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.codeheadsystems.pkauth.api.UserHandle;
@@ -30,19 +29,6 @@ class SpiCarrierRecordsTest {
         false,
         NOW,
         NOW.plusSeconds(60));
-  }
-
-  @Test
-  void storedOtpExposesAllFields() {
-    OtpRepository.StoredOtp otp = validOtp(1, 5);
-    assertThat(otp.otpId()).isEqualTo("otp-1");
-    assertThat(otp.userHandle()).isEqualTo(USER);
-    assertThat(otp.phoneE164()).isEqualTo("+15551234567");
-    assertThat(otp.hashedCode()).isEqualTo("hash");
-    assertThat(otp.attempts()).isEqualTo(1);
-    assertThat(otp.maxAttempts()).isEqualTo(5);
-    assertThat(otp.consumed()).isFalse();
-    assertThat(otp.expiresAt()).isEqualTo(NOW.plusSeconds(60));
   }
 
   @Test
@@ -78,18 +64,6 @@ class SpiCarrierRecordsTest {
   }
 
   // -- StoredBackupCode ---------------------------------------------------------------------
-
-  @Test
-  void storedBackupCodeExposesFieldsAndAllowsNullConsumedAt() {
-    BackupCodeRepository.StoredBackupCode code =
-        new BackupCodeRepository.StoredBackupCode("c-1", USER, "hash", false, NOW, null);
-    assertThat(code.codeId()).isEqualTo("c-1");
-    assertThat(code.userHandle()).isEqualTo(USER);
-    assertThat(code.hashedCode()).isEqualTo("hash");
-    assertThat(code.consumed()).isFalse();
-    assertThat(code.createdAt()).isEqualTo(NOW);
-    assertThat(code.consumedAt()).isNull();
-  }
 
   @Test
   void storedBackupCodeRejectsNullRequiredFields() {

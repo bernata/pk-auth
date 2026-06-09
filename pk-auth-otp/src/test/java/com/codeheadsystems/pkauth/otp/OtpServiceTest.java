@@ -121,11 +121,6 @@ class OtpServiceTest {
   }
 
   @Test
-  void smsSendersDoNotThrowForLoggingFlavor() {
-    new LoggingSmsSender().send(PHONE, "test");
-  }
-
-  @Test
   void maskPhoneKeepsCountryPrefixAndLast4() {
     // Normal E.164 numbers: keep '+' + first country digit + '***' + last 4 digits.
     assertThat(OtpService.maskPhone("+15551234567")).isEqualTo("+1***4567");

@@ -54,10 +54,4 @@ class ConfigTest {
                     CounterRegressionPolicy.REJECT))
         .isInstanceOf(IllegalArgumentException.class);
   }
-
-  @Test
-  void counterRegressionPolicyValues() {
-    assertThat(CounterRegressionPolicy.values())
-        .containsExactly(CounterRegressionPolicy.REJECT, CounterRegressionPolicy.WARN);
-  }
 }

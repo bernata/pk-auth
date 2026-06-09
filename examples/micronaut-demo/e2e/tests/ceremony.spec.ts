@@ -31,10 +31,6 @@ async function installVirtualAuthenticator(
   return { authenticatorId: result.authenticatorId };
 }
 
-async function readOut(page: Page, id: string): Promise<string> {
-  return (await page.locator(`#${id}`).textContent()) ?? "";
-}
-
 test.describe("pk-auth Micronaut demo — full flow", () => {
   test.beforeEach(async ({ page }) => {
     await installVirtualAuthenticator(page);

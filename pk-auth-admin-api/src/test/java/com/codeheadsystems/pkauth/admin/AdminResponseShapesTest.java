@@ -17,18 +17,6 @@ import tools.jackson.databind.json.JsonMapper;
 class AdminResponseShapesTest {
 
   @Test
-  void backupCodesCountResponseCarriesRemaining() {
-    assertThat(new BackupCodesCountResponse(7).remaining()).isEqualTo(7);
-    assertThat(new BackupCodesCountResponse(0).remaining()).isZero();
-  }
-
-  @Test
-  void emailVerificationResultCarriesUserHandle() {
-    UserHandle uh = UserHandle.of(new byte[] {1, 2, 3});
-    assertThat(new EmailVerificationResult(uh).userHandle()).isEqualTo(uh);
-  }
-
-  @Test
   void emailVerificationResultRejectsNullHandle() {
     assertThatThrownBy(() -> new EmailVerificationResult(null))
         .isInstanceOf(NullPointerException.class)

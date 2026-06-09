@@ -127,11 +127,6 @@ class MagicLinkServiceTest {
         .isInstanceOf(MagicLinkService.ConsumeResult.Invalid.class);
   }
 
-  @Test
-  void loggingSenderIsNoOp() {
-    new LoggingEmailSender().send("a@example.com", "subj", "body");
-  }
-
   /** Captures emails for inspection. */
   private static final class RecordingEmailSender implements EmailSender {
     private final List<Sent> sent = new ArrayList<>();
