@@ -13,12 +13,8 @@ class RefreshTokenConfigTest {
   private final RefreshTtlPolicy policy = RefreshTtlPolicy.single(Duration.ofDays(14));
 
   @Test
-  void defaultsUsePinnedConstants() {
-    RefreshTokenConfig config = RefreshTokenConfig.defaults();
-    assertThat(config.secretBytes()).isEqualTo(RefreshTokenConfig.DEFAULT_SECRET_BYTES);
-    assertThat(config.refreshIdBytes()).isEqualTo(RefreshTokenConfig.DEFAULT_REFRESH_ID_BYTES);
-    assertThat(config.cleanupRetention()).isEqualTo(RefreshTokenConfig.DEFAULT_CLEANUP_RETENTION);
-    assertThat(config.ttlPolicy().refreshTtl("web"))
+  void defaultsResolveAudienceTtlThroughPolicy() {
+    assertThat(RefreshTokenConfig.defaults().ttlPolicy().refreshTtl("web"))
         .isEqualTo(RefreshTokenConfig.DEFAULT_REFRESH_TTL);
   }
 

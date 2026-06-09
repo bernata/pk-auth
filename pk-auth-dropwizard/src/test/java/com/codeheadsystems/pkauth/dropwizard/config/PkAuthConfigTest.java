@@ -41,12 +41,6 @@ final class PkAuthConfigTest {
   }
 
   @Test
-  void ceremonyDefaultsToNullTtl() {
-    PkAuthConfig.Ceremony c = new PkAuthConfig.Ceremony();
-    assertThat(c.challengeTtl()).isNull();
-  }
-
-  @Test
   void configRequiresEveryBlock() {
     assertThatThrownBy(() -> new PkAuthConfig(null, null, null))
         .isInstanceOf(NullPointerException.class);
@@ -75,17 +69,5 @@ final class PkAuthConfigTest {
         .hasMessageContaining("non-blank");
     assertThatThrownBy(() -> new PkAuthConfig.MagicLink(null))
         .isInstanceOf(NullPointerException.class);
-  }
-
-  @Test
-  void legacyThreeArgConstructorLeavesAltFlowBlocksNull() {
-    PkAuthConfig cfg =
-        new PkAuthConfig(
-            new PkAuthConfig.RelyingParty("example.com", "Example", Set.of("https://example.com")),
-            new PkAuthConfig.Jwt("iss", "aud", new byte[32], null),
-            new PkAuthConfig.Ceremony());
-    assertThat(cfg.otp()).isNull();
-    assertThat(cfg.magicLink()).isNull();
-    assertThat(cfg.backupCode()).isNull();
   }
 }

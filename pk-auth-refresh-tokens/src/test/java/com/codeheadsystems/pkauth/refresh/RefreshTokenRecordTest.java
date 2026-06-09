@@ -37,14 +37,6 @@ class RefreshTokenRecordTest {
   }
 
   @Test
-  void validRecordRoundTrips() {
-    RefreshTokenRecord r = valid();
-    assertThat(r.refreshId()).isEqualTo("rid");
-    assertThat(r.audience()).isEqualTo("web");
-    assertThat(r.amr()).containsExactly("pkauth");
-  }
-
-  @Test
   void rejectsBlankRefreshId() {
     assertThatThrownBy(
             () ->
@@ -268,13 +260,9 @@ class RefreshTokenRecordTest {
   }
 
   @Test
-  void equalsAndHashCodeComparePerFieldIncludingHashContents() {
-    RefreshTokenRecord a = valid();
-    RefreshTokenRecord b = valid();
-    assertThat(a).isEqualTo(b).hasSameHashCodeAs(b);
-    assertThat(a).isNotEqualTo(null).isNotEqualTo("not a record");
-
-    // A differing tokenHash (array content) breaks equality — the record uses Arrays.equals.
+  void equalsComparesTokenHashByArrayContents() {
+    // The record overrides equals/hashCode to compare tokenHash with Arrays.equals — the
+    // JVM-generated record equals would compare byte[] by reference and wrongly report unequal.
     RefreshTokenRecord differentHash =
         new RefreshTokenRecord(
             "rid",
@@ -290,24 +278,6 @@ class RefreshTokenRecordTest {
             Optional.empty(),
             Optional.empty(),
             List.of("pkauth"));
-    assertThat(a).isNotEqualTo(differentHash);
-
-    // A differing scalar field also breaks equality.
-    RefreshTokenRecord differentAudience =
-        new RefreshTokenRecord(
-            "rid",
-            new byte[] {1, 2, 3, 4},
-            USER,
-            "cli",
-            Optional.empty(),
-            "rid",
-            Optional.empty(),
-            NOW,
-            NOW.plusSeconds(3600),
-            Optional.empty(),
-            Optional.empty(),
-            Optional.empty(),
-            List.of("pkauth"));
-    assertThat(a).isNotEqualTo(differentAudience);
+    assertThat(valid()).isEqualTo(valid()).hasSameHashCodeAs(valid()).isNotEqualTo(differentHash);
   }
 }

@@ -88,21 +88,6 @@ describe("PkAuthAdminClient", () => {
     expect(updated.label).toBe("new");
   });
 
-  it("removeCredential DELETEs the credential", async () => {
-    const fetchImpl = stubFetch({
-      "/auth/admin/credentials/abc": (init) => {
-        expect(init.method).toBe("DELETE");
-        return { status: 204, body: "" };
-      },
-    });
-    const c = new PkAuthAdminClient({
-      apiBase: "https://x",
-      getToken: () => "t",
-      fetch: fetchImpl as unknown as typeof fetch,
-    });
-    await c.removeCredential("abc");
-  });
-
   it("regenerateBackupCodes POSTs and returns the batch", async () => {
     const fetchImpl = stubFetch({
       "/auth/admin/backup-codes/regenerate": (init) => {

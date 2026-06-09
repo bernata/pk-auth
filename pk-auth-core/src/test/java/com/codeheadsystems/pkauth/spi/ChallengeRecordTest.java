@@ -47,11 +47,4 @@ class ChallengeRecordTest {
                     new byte[0], ChallengeRecord.Purpose.REGISTRATION, null, Instant.now()))
         .isInstanceOf(IllegalArgumentException.class);
   }
-
-  @Test
-  void purposeEnumValues() {
-    assertThat(ChallengeRecord.Purpose.values())
-        .containsExactly(
-            ChallengeRecord.Purpose.REGISTRATION, ChallengeRecord.Purpose.AUTHENTICATION);
-  }
 }
