@@ -44,13 +44,9 @@ jobs:
           path: '**/build/reports/jacoco/**'
           if-no-files-found: ignore
 
-  # Run mutation tests and output mutation testing artifact report
-  # In the future, consider:
-  # Stryker has a free hosted dashboard at stryker-mutator.io that tracks mutation score over time with a badge.
-  # Requires adding STRYKER_DASHBOARD_API_KEY as a repo secret and adding "dashboard" to reporters in
-  # stryker.config.mjs.
-  # The job then passes --dashboard.module passkeys-browser to distinguish it.
-  #
+  # Run mutation tests and submit results to the Stryker Dashboard (stryker-mutator.io),
+  # which tracks mutation score over time with a badge. Requires STRYKER_DASHBOARD_TOKEN
+  # set as a repo secret.
   browser-mutation:
     runs-on: ubuntu-latest
     steps:
@@ -67,6 +63,29 @@ jobs:
       - name: Run Stryker mutation tests
         run: npx stryker run
         working-directory: clients/passkeys-browser
+        env:
+          STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_TOKEN }}
+
+      - name: Annotate surviving mutants
+        if: always()
+        working-directory: clients/passkeys-browser
+        run: |
+          node -e "
+            const fs = require('fs');
+            if (!fs.existsSync('reports/mutation/mutation.json')) process.exit(0);
+            const report = JSON.parse(fs.readFileSync('reports/mutation/mutation.json', 'utf8'));
+            for (const [file, data] of Object.entries(report.files || {})) {
+              for (const mutant of data.mutants || []) {
+                if (mutant.status !== 'Survived' && mutant.status !== 'NoCoverage') continue;
+                const {start, end} = mutant.location;
+                const title = mutant.status === 'NoCoverage' ? 'No Coverage' : 'Surviving Mutant';
+                const msg = (mutant.mutatorName + ': ' + (mutant.replacement || '(removed)'))
+                  .replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+                const path = 'clients/passkeys-browser/' + file;
+                process.stdout.write('::warning file=' + path + ',line=' + start.line + ',col=' + start.column + ',endLine=' + end.line + ',endColumn=' + end.column + ',title=' + title + '::' + msg + '\n');
+              }
+            }
+          "
 
       - name: Upload mutation report
         if: always()
