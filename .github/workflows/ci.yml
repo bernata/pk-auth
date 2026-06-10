@@ -64,7 +64,7 @@ jobs:
         run: npx stryker run
         working-directory: clients/passkeys-browser
         env:
-          STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_API_KEY }}
+          STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_TOKEN }}
 
       - name: Annotate surviving mutants
         if: always()
