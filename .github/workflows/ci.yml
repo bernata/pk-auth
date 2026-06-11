@@ -57,11 +57,11 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
         working-directory: clients/passkeys-browser
 
       - name: Run Stryker mutation tests
-        run: npx stryker run
+        run: npm exec --no-install -- stryker run
         working-directory: clients/passkeys-browser
         env:
           STRYKER_DASHBOARD_API_KEY: ${{ secrets.STRYKER_DASHBOARD_TOKEN }}
