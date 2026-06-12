@@ -24,6 +24,8 @@ dependencies {
     testRuntimeOnly(libs.logback.classic)
 }
 
+// Stricter ≥80% line bar than the pkauth.test-conventions baseline (LINE ≥0.70, BRANCH ≥0.55);
+// the baseline branch floor applies via the convention.
 tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
     violationRules {
         rule {
@@ -33,8 +35,4 @@ tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
             }
         }
     }
-}
-
-tasks.named("check") {
-    dependsOn("jacocoTestCoverageVerification")
 }
