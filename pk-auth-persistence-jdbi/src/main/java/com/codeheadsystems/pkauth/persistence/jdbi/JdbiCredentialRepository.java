@@ -27,6 +27,7 @@ import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.JdbiException;
 import org.jdbi.v3.core.mapper.RowMapper;
 import org.jdbi.v3.core.statement.Update;
+import org.jspecify.annotations.Nullable;
 
 /**
  * {@link CredentialRepository} backed by the Phase 5 {@code credentials} table.
@@ -205,18 +206,13 @@ public final class JdbiCredentialRepository implements CredentialRepository {
   // -------------------------------------------------------------------------
 
   /**
-   * Runs {@code body} and wraps any {@link JdbiException} (or other unchecked JDBC exception) in a
-   * {@link PkAuthPersistenceException} so adapter exception mappers can produce a uniform 503.
-   * {@link PkAuthPersistenceException} (including {@link DuplicateCredentialException}) is
-   * re-thrown unchanged so the duplicate-credential branch reaches the caller intact.
-   */
-  /**
    * Binds a nullable value. When non-null, defers to JDBI's standard binding. When null, calls
    * {@code bindNull} with the supplied SQL type so Postgres receives a typed NULL rather than the
    * untyped-null default (Types.VARCHAR), which strict typing rejects against UUID and TIMESTAMPTZ
    * columns. See bug report for the original {@code aaguid} failure mode.
    */
-  private static void bindNullable(Update update, String name, Object value, int sqlType) {
+  private static void bindNullable(
+      Update update, String name, @Nullable Object value, int sqlType) {
     if (value == null) {
       update.bindNull(name, sqlType);
     } else {
@@ -224,6 +220,12 @@ public final class JdbiCredentialRepository implements CredentialRepository {
     }
   }
 
+  /**
+   * Runs {@code body} and wraps any {@link JdbiException} (or other unchecked JDBC exception) in a
+   * {@link PkAuthPersistenceException} so adapter exception mappers can produce a uniform 503.
+   * {@link PkAuthPersistenceException} (including {@link DuplicateCredentialException}) is
+   * re-thrown unchanged so the duplicate-credential branch reaches the caller intact.
+   */
   private static <T> T wrap(String op, Supplier<T> body) {
     try {
       return body.get();
